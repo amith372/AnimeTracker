@@ -1,0 +1,17 @@
+# Secrets — never commit
+local.properties
+
+# Android / Gradle / IDE
+.gradle/
+build/
+/app/build/
+.idea/
+*.iml
+.externalNativeBuild/
+.cxx/
+captures/
+*.apk
+*.aab
+*.keystore
+*.jks
+local.properties.*
