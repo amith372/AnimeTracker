@@ -17,12 +17,12 @@ interface SeriesDao {
     @Query("SELECT * FROM series WHERE id = :id")
     fun observeByIdWithEntries(id: Long): Flow<SeriesWithEntries?>
 
-    @Query("SELECT COUNT(*) FROM series")
-    suspend fun count(): Int
-
     @Insert
     suspend fun insert(series: SeriesEntity): Long
 
     @Update
     suspend fun update(series: SeriesEntity)
+
+    @Query("DELETE FROM series")
+    suspend fun deleteAll()
 }

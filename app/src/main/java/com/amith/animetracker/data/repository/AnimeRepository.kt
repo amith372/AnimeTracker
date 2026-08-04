@@ -4,6 +4,7 @@ import com.amith.animetracker.data.local.AnimeDatabase
 import com.amith.animetracker.data.local.SeriesEntity
 import com.amith.animetracker.data.local.SeriesEntryEntity
 import com.amith.animetracker.data.local.SeriesWithEntries
+import com.amith.animetracker.data.local.SyncMetaEntity
 import com.amith.animetracker.domain.EntryStatusInput
 import com.amith.animetracker.domain.Series
 import com.amith.animetracker.domain.SeriesEntry
@@ -16,6 +17,9 @@ class AnimeRepository(private val db: AnimeDatabase) {
     val allSeries: Flow<List<Series>> =
         db.seriesDao().observeAllWithEntries().map { list -> list.map { it.toDomain() } }
 
+    val hasCompletedInitialImport: Flow<Boolean> =
+        db.syncMetaDao().observe().map { it != null }
+
     fun observeSeries(seriesId: Long): Flow<Series?> =
         db.seriesDao().observeByIdWithEntries(seriesId).map { it?.toDomain() }
 
@@ -23,9 +27,18 @@ class AnimeRepository(private val db: AnimeDatabase) {
         db.seriesEntryDao().setWatched(entryId, watched)
     }
 
-    suspend fun seedIfEmpty(seed: () -> List<Pair<SeriesEntity, List<SeriesEntryEntity>>>) {
-        if (db.seriesDao().count() > 0) return
-        for ((series, entries) in seed()) {
+    /** Replaces the whole local library with a fresh import result. */
+    suspend fun replaceAllSeries(items: List<Pair<SeriesEntity, List<SeriesEntryEntity>>>) {
+        db.seriesDao().deleteAll()
+        insertAll(items)
+    }
+
+    suspend fun markInitialImportComplete() {
+        db.syncMetaDao().upsert(SyncMetaEntity(lastSyncEpoch = System.currentTimeMillis()))
+    }
+
+    private suspend fun insertAll(items: List<Pair<SeriesEntity, List<SeriesEntryEntity>>>) {
+        for ((series, entries) in items) {
             val seriesId = db.seriesDao().insert(series)
             db.seriesEntryDao().insertAll(entries.map { it.copy(seriesId = seriesId) })
         }
