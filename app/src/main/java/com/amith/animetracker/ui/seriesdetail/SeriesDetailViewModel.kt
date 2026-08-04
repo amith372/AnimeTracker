@@ -29,6 +29,11 @@ class SeriesDetailViewModel(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SeriesDetailUiState.Loading)
 
+    init {
+        // Opening the series' profile counts as having seen the new season.
+        viewModelScope.launch { repository.setNewSeasonAvailable(seriesId, false) }
+    }
+
     fun toggleWatched(entryId: Long, currentlyWatched: Boolean) {
         viewModelScope.launch { repository.setEntryWatched(entryId, !currentlyWatched) }
     }

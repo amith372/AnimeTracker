@@ -11,6 +11,7 @@ import com.amith.animetracker.data.remote.MalDataApi
 import com.amith.animetracker.data.repository.AnimeRepository
 import com.amith.animetracker.data.repository.DiscoverRepository
 import com.amith.animetracker.data.repository.ImportRepository
+import com.amith.animetracker.data.repository.SyncRepository
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -71,4 +72,6 @@ class AppContainer(context: Context) {
     val importRepository: ImportRepository by lazy { ImportRepository(malDataApi) }
 
     val discoverRepository: DiscoverRepository by lazy { DiscoverRepository(malDataApi, repository) }
+
+    val syncRepository: SyncRepository by lazy { SyncRepository(malDataApi, repository) }
 }

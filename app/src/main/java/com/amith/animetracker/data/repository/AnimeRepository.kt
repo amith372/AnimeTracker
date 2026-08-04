@@ -26,6 +26,9 @@ class AnimeRepository(private val db: AnimeDatabase) {
     fun observeSeries(seriesId: Long): Flow<Series?> =
         db.seriesDao().observeByIdWithEntries(seriesId).map { it?.toDomain() }
 
+    suspend fun getAllSeriesOnce(): List<Series> =
+        db.seriesDao().getAllWithEntriesOnce().map { it.toDomain() }
+
     suspend fun setEntryWatched(entryId: Long, watched: Boolean) {
         db.seriesEntryDao().setWatched(entryId, watched)
     }
@@ -43,6 +46,15 @@ class AnimeRepository(private val db: AnimeDatabase) {
     /** Adds a single new series (e.g. from Discover) without touching the rest of the library. */
     suspend fun addSeries(series: SeriesEntity, entries: List<SeriesEntryEntity>) {
         insertAll(listOf(series to entries))
+    }
+
+    /** Appends newly-discovered seasons/movies to an already-tracked series (monthly sync). */
+    suspend fun addNewEntries(seriesId: Long, entries: List<SeriesEntryEntity>) {
+        db.seriesEntryDao().insertAll(entries.map { it.copy(seriesId = seriesId) })
+    }
+
+    suspend fun setNewSeasonAvailable(seriesId: Long, available: Boolean) {
+        db.seriesDao().setNewSeasonAvailable(seriesId, available)
     }
 
     private suspend fun insertAll(items: List<Pair<SeriesEntity, List<SeriesEntryEntity>>>) {
@@ -77,5 +89,6 @@ private fun SeriesWithEntries.toDomain(): Series {
                 airingStatus = it.airingStatus,
             )
         },
+        newSeasonAvailable = series.newSeasonAvailable,
     )
 }

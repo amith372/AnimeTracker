@@ -21,4 +21,5 @@ data class Series(
     val manualStatus: ManualStatus,
     val status: SeriesStatus,
     val entries: List<SeriesEntry>,
+    val newSeasonAvailable: Boolean = false,
 )

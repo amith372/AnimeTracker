@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -40,6 +41,7 @@ fun LibraryScreen(
     uiState: LibraryUiState,
     onSeriesClick: (Long) -> Unit,
     onDiscoverClick: () -> Unit,
+    onSyncClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Scaffold(
@@ -48,6 +50,9 @@ fun LibraryScreen(
             TopAppBar(
                 title = { Text("AnimeTracker") },
                 actions = {
+                    IconButton(onClick = onSyncClick) {
+                        Icon(Icons.Filled.Refresh, contentDescription = "Check for new seasons")
+                    }
                     IconButton(onClick = onDiscoverClick) {
                         Icon(Icons.Filled.Add, contentDescription = "Discover / add anime")
                     }
@@ -104,6 +109,13 @@ private fun SeriesRow(series: Series, onClick: () -> Unit) {
             Column(modifier = Modifier.padding(start = 16.dp)) {
                 Text(text = series.title, fontWeight = FontWeight.Bold)
                 Text(text = series.status.label())
+                if (series.newSeasonAvailable) {
+                    Text(
+                        text = "New season!",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
             }
         }
     }

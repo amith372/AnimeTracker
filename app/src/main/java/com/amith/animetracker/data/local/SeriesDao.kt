@@ -17,11 +17,18 @@ interface SeriesDao {
     @Query("SELECT * FROM series WHERE id = :id")
     fun observeByIdWithEntries(id: Long): Flow<SeriesWithEntries?>
 
+    @Transaction
+    @Query("SELECT * FROM series ORDER BY title")
+    suspend fun getAllWithEntriesOnce(): List<SeriesWithEntries>
+
     @Insert
     suspend fun insert(series: SeriesEntity): Long
 
     @Update
     suspend fun update(series: SeriesEntity)
+
+    @Query("UPDATE series SET newSeasonAvailable = :available WHERE id = :seriesId")
+    suspend fun setNewSeasonAvailable(seriesId: Long, available: Boolean)
 
     @Query("DELETE FROM series")
     suspend fun deleteAll()

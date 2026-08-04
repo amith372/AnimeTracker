@@ -1,6 +1,7 @@
 package com.amith.animetracker.ui
 
 import android.net.Uri
+import android.widget.Toast
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -10,6 +11,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import com.amith.animetracker.data.auth.AuthRepository
 import com.amith.animetracker.data.repository.AnimeRepository
 import com.amith.animetracker.data.repository.DiscoverRepository
@@ -23,6 +26,7 @@ import com.amith.animetracker.ui.onboarding.ReconcileScreen
 import com.amith.animetracker.ui.onboarding.ReconcileViewModel
 import com.amith.animetracker.ui.seriesdetail.SeriesDetailScreen
 import com.amith.animetracker.ui.seriesdetail.SeriesDetailViewModel
+import com.amith.animetracker.work.SyncWorker
 
 @Composable
 fun AnimeTrackerApp(
@@ -73,10 +77,15 @@ private fun MainNavigation(repository: AnimeRepository, discoverRepository: Disc
         is Route.Library -> {
             val viewModel: LibraryViewModel = viewModel(factory = LibraryViewModel.factory(repository))
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+            val context = LocalContext.current
             LibraryScreen(
                 uiState = uiState,
                 onSeriesClick = { route = Route.Detail(it) },
                 onDiscoverClick = { route = Route.Discover },
+                onSyncClick = {
+                    WorkManager.getInstance(context).enqueue(OneTimeWorkRequestBuilder<SyncWorker>().build())
+                    Toast.makeText(context, "Checking for new seasons...", Toast.LENGTH_SHORT).show()
+                },
             )
         }
 
