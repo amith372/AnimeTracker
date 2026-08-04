@@ -20,6 +20,9 @@ class AnimeRepository(private val db: AnimeDatabase) {
     val hasCompletedInitialImport: Flow<Boolean> =
         db.syncMetaDao().observe().map { it != null }
 
+    val trackedMalIds: Flow<Set<Int>> =
+        db.seriesEntryDao().observeAllMalIds().map { it.toSet() }
+
     fun observeSeries(seriesId: Long): Flow<Series?> =
         db.seriesDao().observeByIdWithEntries(seriesId).map { it?.toDomain() }
 
@@ -35,6 +38,11 @@ class AnimeRepository(private val db: AnimeDatabase) {
 
     suspend fun markInitialImportComplete() {
         db.syncMetaDao().upsert(SyncMetaEntity(lastSyncEpoch = System.currentTimeMillis()))
+    }
+
+    /** Adds a single new series (e.g. from Discover) without touching the rest of the library. */
+    suspend fun addSeries(series: SeriesEntity, entries: List<SeriesEntryEntity>) {
+        insertAll(listOf(series to entries))
     }
 
     private suspend fun insertAll(items: List<Pair<SeriesEntity, List<SeriesEntryEntity>>>) {

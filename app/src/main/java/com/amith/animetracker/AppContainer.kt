@@ -9,6 +9,7 @@ import com.amith.animetracker.data.local.AnimeDatabase
 import com.amith.animetracker.data.remote.MalAuthApi
 import com.amith.animetracker.data.remote.MalDataApi
 import com.amith.animetracker.data.repository.AnimeRepository
+import com.amith.animetracker.data.repository.DiscoverRepository
 import com.amith.animetracker.data.repository.ImportRepository
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -68,4 +69,6 @@ class AppContainer(context: Context) {
     }
 
     val importRepository: ImportRepository by lazy { ImportRepository(malDataApi) }
+
+    val discoverRepository: DiscoverRepository by lazy { DiscoverRepository(malDataApi, repository) }
 }

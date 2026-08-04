@@ -18,6 +18,8 @@ data class ReconcileSeries(
     val type: SeriesType,
     val manualStatus: ManualStatus,
     val entries: List<ReconcileEntry>,
+    /** Only populated for Discover results; import/reconcile leaves this null. */
+    val seasonLabel: String? = null,
 )
 
 fun mapAiringStatus(malStatus: String?): AiringStatus = when (malStatus) {

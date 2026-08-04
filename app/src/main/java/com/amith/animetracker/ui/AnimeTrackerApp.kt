@@ -12,7 +12,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.amith.animetracker.data.auth.AuthRepository
 import com.amith.animetracker.data.repository.AnimeRepository
+import com.amith.animetracker.data.repository.DiscoverRepository
 import com.amith.animetracker.data.repository.ImportRepository
+import com.amith.animetracker.ui.discover.DiscoverScreen
+import com.amith.animetracker.ui.discover.DiscoverViewModel
 import com.amith.animetracker.ui.library.LibraryScreen
 import com.amith.animetracker.ui.library.LibraryViewModel
 import com.amith.animetracker.ui.onboarding.LoginScreen
@@ -26,6 +29,7 @@ fun AnimeTrackerApp(
     repository: AnimeRepository,
     authRepository: AuthRepository,
     importRepository: ImportRepository,
+    discoverRepository: DiscoverRepository,
 ) {
     val isLoggedIn by authRepository.isLoggedIn.collectAsStateWithLifecycle()
 
@@ -42,7 +46,7 @@ fun AnimeTrackerApp(
 
     val hasCompletedInitialImport by repository.hasCompletedInitialImport.collectAsStateWithLifecycle(initialValue = false)
     if (hasCompletedInitialImport) {
-        LibraryAndDetail(repository)
+        MainNavigation(repository, discoverRepository)
     } else {
         val viewModel: ReconcileViewModel = viewModel(factory = ReconcileViewModel.factory(importRepository, repository))
         val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -55,28 +59,55 @@ fun AnimeTrackerApp(
     }
 }
 
-@Composable
-private fun LibraryAndDetail(repository: AnimeRepository) {
-    var selectedSeriesId by remember { mutableStateOf<Long?>(null) }
+private sealed interface Route {
+    data object Library : Route
+    data class Detail(val seriesId: Long) : Route
+    data object Discover : Route
+}
 
-    val currentSeriesId = selectedSeriesId
-    if (currentSeriesId == null) {
-        val viewModel: LibraryViewModel = viewModel(factory = LibraryViewModel.factory(repository))
-        val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-        LibraryScreen(
-            uiState = uiState,
-            onSeriesClick = { selectedSeriesId = it },
-        )
-    } else {
-        val viewModel: SeriesDetailViewModel = viewModel(
-            key = "series-detail-$currentSeriesId",
-            factory = SeriesDetailViewModel.factory(currentSeriesId, repository),
-        )
-        val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-        SeriesDetailScreen(
-            uiState = uiState,
-            onBack = { selectedSeriesId = null },
-            onToggleWatched = viewModel::toggleWatched,
-        )
+@Composable
+private fun MainNavigation(repository: AnimeRepository, discoverRepository: DiscoverRepository) {
+    var route by remember { mutableStateOf<Route>(Route.Library) }
+
+    when (val current = route) {
+        is Route.Library -> {
+            val viewModel: LibraryViewModel = viewModel(factory = LibraryViewModel.factory(repository))
+            val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+            LibraryScreen(
+                uiState = uiState,
+                onSeriesClick = { route = Route.Detail(it) },
+                onDiscoverClick = { route = Route.Discover },
+            )
+        }
+
+        is Route.Detail -> {
+            val viewModel: SeriesDetailViewModel = viewModel(
+                key = "series-detail-${current.seriesId}",
+                factory = SeriesDetailViewModel.factory(current.seriesId, repository),
+            )
+            val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+            SeriesDetailScreen(
+                uiState = uiState,
+                onBack = { route = Route.Library },
+                onToggleWatched = viewModel::toggleWatched,
+            )
+        }
+
+        is Route.Discover -> {
+            val viewModel: DiscoverViewModel = viewModel(factory = DiscoverViewModel.factory(discoverRepository, repository))
+            val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+            val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
+            val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
+            DiscoverScreen(
+                uiState = uiState,
+                selectedTab = selectedTab,
+                searchQuery = searchQuery,
+                onTabSelected = viewModel::selectTab,
+                onSearchQueryChange = viewModel::onSearchQueryChange,
+                onSearchSubmit = viewModel::onSearchSubmit,
+                onAdd = viewModel::addSeries,
+                onBack = { route = Route.Library },
+            )
+        }
     }
 }

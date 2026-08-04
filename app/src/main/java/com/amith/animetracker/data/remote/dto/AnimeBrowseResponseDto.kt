@@ -4,7 +4,18 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class AnimeDetailDto(
+data class AnimeBrowseResponseDto(
+    val data: List<AnimeBrowseEntryDto>,
+    val paging: PagingDto = PagingDto(),
+)
+
+@Serializable
+data class AnimeBrowseEntryDto(
+    val node: AnimeBrowseNodeDto,
+)
+
+@Serializable
+data class AnimeBrowseNodeDto(
     val id: Int,
     val title: String,
     @SerialName("media_type") val mediaType: String,
@@ -12,21 +23,11 @@ data class AnimeDetailDto(
     val status: String? = null,
     val genres: List<GenreDto> = emptyList(),
     @SerialName("main_picture") val mainPicture: MainPictureDto? = null,
-    @SerialName("related_anime") val relatedAnime: List<RelatedAnimeDto> = emptyList(),
     @SerialName("start_season") val startSeason: StartSeasonDto? = null,
 )
 
 @Serializable
-data class GenreDto(val name: String)
-
-@Serializable
-data class MainPictureDto(
-    val medium: String? = null,
-    val large: String? = null,
-)
-
-@Serializable
-data class RelatedAnimeDto(
-    val node: AnimeNodeDto,
-    @SerialName("relation_type") val relationType: String,
+data class StartSeasonDto(
+    val year: Int,
+    val season: String,
 )

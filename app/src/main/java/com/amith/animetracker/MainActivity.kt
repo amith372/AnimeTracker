@@ -20,6 +20,7 @@ class MainActivity : ComponentActivity() {
                     repository = container.repository,
                     authRepository = container.authRepository,
                     importRepository = container.importRepository,
+                    discoverRepository = container.discoverRepository,
                 )
             }
         }

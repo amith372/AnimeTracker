@@ -85,7 +85,7 @@ class ImportRepository(private val malDataApi: MalDataApi) {
     }
 }
 
-private fun AnimeDetailDto.toAnimeRelationDto(): AnimeRelationDto = AnimeRelationDto(
+fun AnimeDetailDto.toAnimeRelationDto(): AnimeRelationDto = AnimeRelationDto(
     id = id,
     title = title,
     mediaType = mediaType,
