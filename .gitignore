@@ -1,17 +1,45 @@
-# Secrets — never commit
-local.properties
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 
-# Android / Gradle / IDE
-.gradle/
-build/
-/app/build/
-.idea/
-*.iml
-.externalNativeBuild/
-.cxx/
-captures/
-*.apk
-*.aab
-*.keystore
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+.kotlin/
+*.orig.*
 *.jks
-local.properties.*
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# JetBrains IDE workspace files — machine-specific, not meant to be shared
+.idea/
+
+# local env files — .env holds EXPO_PUBLIC_MAL_CLIENT_ID, never commit it
+.env
+.env*.local
+
+# typescript
+*.tsbuildinfo
+
+# generated native folders
+/ios
+/android
