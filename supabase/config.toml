@@ -1,0 +1,7 @@
+# mal-oauth-callback is hit by a raw browser redirect from MAL's OAuth server, not by
+# supabase.functions.invoke() — there's no Authorization header on that request at all, so
+# Supabase's default gateway-level JWT check must stay off for this one function. Every other
+# Edge Function is called via supabase-js's invoke(), which always attaches a bearer token
+# (session or anon key), so they keep the default verify_jwt = true.
+[functions.mal-oauth-callback]
+verify_jwt = false

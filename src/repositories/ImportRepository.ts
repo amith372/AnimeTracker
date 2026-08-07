@@ -1,27 +1,31 @@
-// Pulls the user's full MAL list, fetches relation data for each entry, groups it into series
-// via the same groupIntoSeries() algorithm used since Phase 1, and produces the reconcile
-// checklist. Nothing is written to SQLite here — that only happens once the user confirms (see
-// AnimeRepository.replaceAllSeries).
+// Pulls the user's full MAL list, groups it into series via the same groupIntoSeries() algorithm
+// used since Phase 1, and produces the reconcile checklist. Nothing is written to SQLite here —
+// that only happens once the user confirms (see AnimeRepository.replaceAllSeries).
 //
-// Kotlin's version streamed progress as a Flow<ImportProgress>; React has no framework-agnostic
-// equivalent to hold onto outside a component, so this takes a plain progress callback instead —
-// the reconcile screen's own useState plays the role the ViewModel's StateFlow used to.
-import { mapWithConcurrency } from '@/api/concurrency';
-import { getAnimeList, getAnimeListPage, type AnimeDetailDto, type AnimeListEntryDto } from '@/api/malDataApi';
-import { getAnimeDetailCached } from './apiCache';
+// Phase 8: the list fetch + related-anime detail-closure expansion (the slow, many-round-trip part
+// this used to do client-side with mapWithConcurrency) now happens inside the mal-import Edge
+// Function in one call — see supabase/functions/mal-import. groupIntoSeries and the
+// DTO-to-ReconcileSeries mapping stay here, deliberately: that's real domain logic
+// (src/domain/seriesGrouping.ts), not something to duplicate into Deno (see the plan doc's §4).
+// One consequence: there's no more granular "fetching details, N of M" progress phase, since it's
+// a single opaque server call now — this only ever emits FETCHING_LIST while awaiting it, then
+// READY/FAILED. ImportProgress keeps its FETCHING_DETAILS case so app/onboarding/reconcile.tsx
+// doesn't need to change; it just never fires anymore.
+import { callMalImport } from '@/api/edgeFunctions';
+import type { AnimeDetailDto } from '@/api/malDataApi';
 import { mapMalListStatus, mergeSeriesManualStatus } from '@/domain/importStatus';
 import { mapAiringStatus, type ReconcileEntry, type ReconcileSeries } from '@/domain/reconcileSeries';
-import { groupIntoSeries, missingSequelPrequelIds, type AnimeRelationInput, type GroupedSeries } from '@/domain/seriesGrouping';
+import { groupIntoSeries, type AnimeRelationInput, type GroupedSeries } from '@/domain/seriesGrouping';
 import { displayTitle } from '@/domain/title';
 
-// Matches Discover's concurrency: enough to turn a few hundred sequential round-trips into
-// something that finishes while the user is still watching the progress bar, while staying well
-// short of "hammering" MAL's servers (guardrail #3).
-const DETAIL_FETCH_CONCURRENCY = 6;
-
-// Safety cap on closure expansion — Attack on Titan has ~10 related entries, but pathological
-// chains (crossover franchises, etc.) could loop much longer without a cap.
-const MAX_CLOSURE_PASSES = 5;
+interface AnimeNodeDto {
+  id: number;
+  title: string;
+}
+interface AnimeListEntryDto {
+  node: AnimeNodeDto;
+  list_status: { status: string };
+}
 
 export type ImportProgress =
   | { kind: 'FETCHING_LIST' }
@@ -32,77 +36,31 @@ export type ImportProgress =
 /** Fetches + groups the user's MAL list, reporting progress via `onProgress` as it goes. */
 export async function runImport(onProgress: (progress: ImportProgress) => void): Promise<void> {
   onProgress({ kind: 'FETCHING_LIST' });
-  let listEntries: AnimeListEntryDto[];
+
+  let entries: AnimeListEntryDto[];
+  let detailById: Map<number, AnimeDetailDto>;
   try {
-    listEntries = await fetchFullAnimeList();
+    const result = await callMalImport();
+    entries = result.entries as AnimeListEntryDto[];
+    detailById = new Map(Object.entries(result.details).map(([id, dto]) => [Number(id), dto as AnimeDetailDto]));
   } catch (e) {
     onProgress({ kind: 'FAILED', message: describeError(e, 'fetching your list') });
     return;
   }
 
-  const statusByMalId = new Map(listEntries.map((e) => [e.node.id, e.list_status.status]));
-
-  const detailById = new Map<number, AnimeDetailDto>();
-  let completed = 0;
-  onProgress({ kind: 'FETCHING_DETAILS', completed: 0, total: listEntries.length });
-  // Concurrent, and best-effort per entry — matching what Discover and Recommendations already do.
-  // This used to be a sequential await loop that also aborted the entire import on the first
-  // failure, which made onboarding both the slowest thing in the app (one round-trip per entry, so
-  // a few hundred shows took minutes) and the most fragile (one flaky id and you start over). A
-  // dropped entry is simply left out of the grouping below; whatever it belonged to still imports.
-  await mapWithConcurrency(listEntries, DETAIL_FETCH_CONCURRENCY, async (entry) => {
-    try {
-      detailById.set(entry.node.id, await getAnimeDetailCached(entry.node.id));
-    } catch {
-      // Dropped — see comment above.
-    }
-    completed++;
-    onProgress({ kind: 'FETCHING_DETAILS', completed, total: listEntries.length });
-  });
-
-  if (listEntries.length > 0 && detailById.size === 0) {
+  if (entries.length > 0 && detailById.size === 0) {
     onProgress({ kind: 'FAILED', message: 'Could not reach MAL for any of your list.' });
     return;
   }
 
+  const statusByMalId = new Map(entries.map((e) => [e.node.id, e.list_status.status]));
   const animeById = new Map<number, AnimeRelationInput>();
   for (const [id, dto] of detailById) animeById.set(id, toAnimeRelationInput(dto));
-
-  // Closure expansion: the user's MAL list only contains entries they've explicitly added (e.g.
-  // Attack on Titan season 1), but the series has many more seasons linked via sequel/prequel
-  // edges. Chase those links — just like DiscoverRepository already does — so the grouped series
-  // contains every season and movie, not just the one entry the user happened to add.
-  for (let pass = 0; pass < MAX_CLOSURE_PASSES; pass++) {
-    const missing = Array.from(missingSequelPrequelIds(animeById));
-    if (missing.length === 0) break;
-    await mapWithConcurrency(missing, DETAIL_FETCH_CONCURRENCY, async (id) => {
-      try {
-        const detail = await getAnimeDetailCached(id);
-        detailById.set(id, detail);
-        animeById.set(id, toAnimeRelationInput(detail));
-      } catch {
-        // Best-effort: if a related id can't be fetched, it's simply left out of the chain.
-      }
-    });
-  }
 
   const grouped = groupIntoSeries(animeById);
   const reconcileSeries = grouped.map((g) => toReconcileSeries(g, detailById, statusByMalId));
 
   onProgress({ kind: 'READY', series: reconcileSeries });
-}
-
-async function fetchFullAnimeList(): Promise<AnimeListEntryDto[]> {
-  const all: AnimeListEntryDto[] = [];
-  let response = await getAnimeList();
-  all.push(...response.data);
-  let nextUrl = response.paging.next;
-  while (nextUrl) {
-    response = await getAnimeListPage(nextUrl);
-    all.push(...response.data);
-    nextUrl = response.paging.next;
-  }
-  return all;
 }
 
 function describeError(e: unknown, action: string): string {

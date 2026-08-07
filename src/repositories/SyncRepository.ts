@@ -11,7 +11,7 @@
 import * as BackgroundTask from 'expo-background-task';
 import * as TaskManager from 'expo-task-manager';
 import { getAnimeDetail, type AnimeDetailDto } from '@/api/malDataApi';
-import { isLoggedIn, refreshAccessToken } from '@/auth/authRepository';
+import { isMalLinked } from '@/account/malLinkRepository';
 import { mapAiringStatus } from '@/domain/reconcileSeries';
 import { seasonStartEpochMillis } from '@/domain/seasonTiming';
 import type { Series } from '@/domain/series';
@@ -44,18 +44,21 @@ export async function registerBackgroundSync(): Promise<void> {
 }
 
 /**
- * Refreshes the access token, then checks every Watched/Watched X/Y series for new seasons.
- * Also called directly by a manual "Check for new seasons" action in the Library screen — real
- * background-task timing is OS-controlled and can't be observed/tested on demand, so a direct
- * user-triggered path is the only reliable way to verify (and use) this outside of waiting for
- * the OS to decide it's time.
+ * Checks every Watched/Watched X/Y series for new seasons. Also called directly by a manual
+ * "Check for new seasons" action in the Library screen — real background-task timing is
+ * OS-controlled and can't be observed/tested on demand, so a direct user-triggered path is the
+ * only reliable way to verify (and use) this outside of waiting for the OS to decide it's time.
+ *
+ * Phase 8: no explicit token refresh step anymore — mal-anime-detail is a public Edge Function
+ * (detail reads never needed user context, even on the old client-side path), so there's no MAL
+ * token to refresh here at all. Still gated on MAL being linked, same scoping the old isLoggedIn()
+ * check gave: a guest's Discover-built library is real MAL data, but sync stays an
+ * opted-into-MAL-account feature, not something guests get for free.
  *
  * Returns how many series got at least one new season this run.
  */
 export async function runMonthlySync(): Promise<number> {
-  if (!(await isLoggedIn())) return 0;
-  const refreshResult = await refreshAccessToken();
-  if (!refreshResult.success) throw new Error(refreshResult.message);
+  if (!(await isMalLinked())) return 0;
 
   const eligible = (await getAllSeriesOnce()).filter(
     (s) => s.status.kind === 'WATCHED' || s.status.kind === 'WATCHED_PARTIAL',

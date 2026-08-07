@@ -2,16 +2,16 @@
 // MAL list — CLAUDE.md §8, the app's one and only write path. Everything else in this app reads
 // from MAL and writes only to SQLite; this is a separate, explicit, user-confirmed action, never
 // run automatically (no background task, no auto-trigger on status change).
-import { mapWithConcurrency } from '@/api/concurrency';
-import { updateMyListStatus, type MalListStatusValue } from '@/api/malDataApi';
+//
+// Phase 8: the actual per-entry PUTs now happen inside the mal-push Edge Function (one call
+// carrying every target, rather than this device firing N concurrent PUTs directly at MAL) — see
+// supabase/functions/mal-push. buildPushTargets (which entries get pushed, and as what) stays
+// client-side domain logic, unchanged.
+import { callMalPush } from '@/api/edgeFunctions';
 import { buildPushTargets, type PushStatus } from '@/domain/malPush';
 import { getAllSeriesOnce } from './AnimeRepository';
 
-// Same order-of-magnitude as Import/Discover/Recommendations' concurrency — a user-triggered,
-// one-shot batch, not a tight loop, so this stays within CLAUDE.md guardrail #3.
-const PUSH_CONCURRENCY = 6;
-
-const STATUS_TO_MAL: Record<PushStatus, MalListStatusValue> = {
+const STATUS_TO_MAL: Record<PushStatus, 'plan_to_watch' | 'watching' | 'completed'> = {
   PLAN_TO_WATCH: 'plan_to_watch',
   WATCHING: 'watching',
   COMPLETED: 'completed',
@@ -22,9 +22,9 @@ export type PushProgress =
   | { kind: 'DONE'; updated: number; failed: number };
 
 /**
- * Runs the push across the whole library, reporting progress as it goes. Best-effort per entry —
- * one failed PUT (a since-deleted anime, a transient MAL error) doesn't abort the batch, same
- * pattern as every other multi-request flow in this app.
+ * Runs the push across the whole library. Reports one 'PUSHING' progress tick before the (single)
+ * network call, since the server does the per-entry batching now and there's no client-visible
+ * incremental progress to report anymore.
  */
 export async function pushStatusesToMal(onProgress: (p: PushProgress) => void): Promise<void> {
   const allSeries = await getAllSeriesOnce();
@@ -35,18 +35,9 @@ export async function pushStatusesToMal(onProgress: (p: PushProgress) => void): 
     return;
   }
 
-  let completed = 0;
-  let failed = 0;
   onProgress({ kind: 'PUSHING', completed: 0, total: targets.length });
-  await mapWithConcurrency(targets, PUSH_CONCURRENCY, async (target) => {
-    try {
-      await updateMyListStatus(target.malId, STATUS_TO_MAL[target.status]);
-    } catch {
-      failed++;
-    }
-    completed++;
-    onProgress({ kind: 'PUSHING', completed, total: targets.length });
-  });
-
-  onProgress({ kind: 'DONE', updated: targets.length - failed, failed });
+  const { updated, failed } = await callMalPush(
+    targets.map((t) => ({ malId: t.malId, status: STATUS_TO_MAL[t.status] })),
+  );
+  onProgress({ kind: 'DONE', updated, failed });
 }

@@ -40,6 +40,9 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
+# Supabase CLI local cache — machine-specific, not meant to be shared
+supabase/.temp/
+
 # generated native folders
 /ios
 /android

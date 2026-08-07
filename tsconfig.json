@@ -8,5 +8,8 @@
     "paths": {
       "@/*": ["./src/*"]
     }
-  }
+  },
+  // supabase/functions/ is Deno code (Edge Functions), a separate runtime with its own globals
+  // and remote-URL import style — not part of the Expo/RN app this tsconfig type-checks.
+  "exclude": ["node_modules", "supabase/functions"]
 }

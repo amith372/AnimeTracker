@@ -14,7 +14,9 @@ import { useMemo, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ActivityIndicator, Button, Chip, Dialog, IconButton, Portal, Searchbar, Snackbar, Text } from 'react-native-paper';
-import { useIsGuest, useIsLoggedIn, logout } from '@/auth/authRepository';
+import { useIsGuest } from '@/account/guestMode';
+import { useAccountSession } from '@/account/accountRepository';
+import { useMalLinkStatus } from '@/account/malLinkRepository';
 import { useAllSeries, useHasCompletedInitialImport } from '@/repositories/AnimeRepository';
 import { runMonthlySync } from '@/repositories/SyncRepository';
 import { pushStatusesToMal } from '@/repositories/MalPushRepository';
@@ -37,8 +39,9 @@ const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
 ];
 
 export default function LibraryScreen() {
-  const [loggedIn, refreshLoginState] = useIsLoggedIn();
+  const { session, loading: sessionLoading } = useAccountSession();
   const [isGuest] = useIsGuest();
+  const [malLinked] = useMalLinkStatus();
   const hasImported = useHasCompletedInitialImport();
   const seriesList = useAllSeries();
   const router = useRouter();
@@ -105,19 +108,23 @@ export default function LibraryScreen() {
     }
   }
 
-  if (loggedIn === null || isGuest === null) {
+  if (sessionLoading || isGuest === null || malLinked === null) {
     return (
       <View style={styles.empty}>
         <ActivityIndicator size="large" />
       </View>
     );
   }
-  // A guest never has a MAL list to import, so they skip straight to the (possibly empty) library
-  // instead of onboarding/reconcile — only a real login needs that gate.
-  if (!loggedIn && !isGuest) {
+  // No session at all and not an explicit guest -> straight to login/account choices. Having *any*
+  // Supabase session (even one with no MAL linked yet, e.g. an email/password-only account) is
+  // enough to skip this — same as guest mode always was.
+  if (!session && !isGuest) {
     return <Redirect href="/onboarding/login" />;
   }
-  if (loggedIn) {
+  // A guest, or an account with no MAL linked, never has a MAL list to import, so they skip
+  // straight to the (possibly empty) library instead of onboarding/reconcile — only a MAL-linked
+  // account needs that gate.
+  if (malLinked) {
     if (hasImported === null) {
       return (
         <View style={styles.empty}>
@@ -183,18 +190,18 @@ export default function LibraryScreen() {
       <Portal>
         <Dialog visible={moreMenuVisible} onDismiss={() => setMoreMenuVisible(false)}>
           <Dialog.Content style={styles.moreMenuContent}>
-            {/* Nothing to sync without a MAL account, so the refresh action is meaningless (and
-                runMonthlySync itself is a no-op) for a guest — hidden rather than shown-but-dead. */}
-            {loggedIn && (
+            {/* Nothing to sync without MyAnimeList linked, so the refresh action is meaningless
+                (and runMonthlySync itself is a no-op) otherwise — hidden rather than shown-but-dead. */}
+            {malLinked && (
               <Pressable style={styles.moreMenuRow} onPress={handleSync}>
                 <MaterialCommunityIcons name="refresh" size={22} color={colors.textPrimary} />
                 <Text variant="bodyLarge">Sync now</Text>
               </Pressable>
             )}
-            {/* The one write path in the app (CLAUDE.md §8) — never shown to a guest, since
-                there's no MAL account to push to. Gated behind a confirm dialog, not a direct
-                tap: this edits the user's real MyAnimeList list. */}
-            {loggedIn && (
+            {/* The one write path in the app (CLAUDE.md §8) — never shown without MyAnimeList
+                linked, since there's nowhere to push to. Gated behind a confirm dialog, not a
+                direct tap: this edits the user's real MyAnimeList list. */}
+            {malLinked && (
               <Pressable
                 style={styles.moreMenuRow}
                 onPress={() => {
@@ -206,9 +213,9 @@ export default function LibraryScreen() {
                 <Text variant="bodyLarge">Update MyAnimeList</Text>
               </Pressable>
             )}
-            {/* Phase 7's app-account system (separate from MAL login above) — see
-                app/onboarding/account.tsx. Shown regardless of MAL login/guest state, since an app
-                account is an independent, optional thing to have. */}
+            {/* Phase 7's app-account system — see app/onboarding/account.tsx, which is also where
+                signing out and linking MyAnimeList (if not already linked) both live now. Shown
+                regardless of session/guest state, since an app account is independent/optional. */}
             <Pressable
               style={styles.moreMenuRow}
               onPress={() => {
@@ -219,7 +226,7 @@ export default function LibraryScreen() {
               <MaterialCommunityIcons name="account-circle-outline" size={22} color={colors.textPrimary} />
               <Text variant="bodyLarge">Account</Text>
             </Pressable>
-            {isGuest ? (
+            {!session && (
               <Pressable
                 style={styles.moreMenuRow}
                 onPress={() => {
@@ -229,17 +236,6 @@ export default function LibraryScreen() {
               >
                 <MaterialCommunityIcons name="login" size={22} color={colors.textPrimary} />
                 <Text variant="bodyLarge">Log in</Text>
-              </Pressable>
-            ) : (
-              <Pressable
-                style={styles.moreMenuRow}
-                onPress={() => {
-                  setMoreMenuVisible(false);
-                  logout().then(refreshLoginState);
-                }}
-              >
-                <MaterialCommunityIcons name="logout" size={22} color={colors.textPrimary} />
-                <Text variant="bodyLarge">Log out</Text>
               </Pressable>
             )}
           </Dialog.Content>

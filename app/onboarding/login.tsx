@@ -1,10 +1,16 @@
-// Login screen — the RN equivalent of the old LoginScreen.kt. Shown whenever index.tsx's auth
-// gate finds no stored access token; on success it navigates back to the Library.
-import { useRouter } from 'expo-router';
+// Login screen — the RN equivalent of the old LoginScreen.kt. Shown whenever index.tsx's gate
+// finds no Supabase session and no guest flag; on success it navigates back to the Library.
+//
+// Phase 8: "Log in with MyAnimeList" is now the sign-in-with-MAL flow (signInWithMal) — it creates
+// or finds a Supabase account automatically from the MAL identity, so it both logs in *and* links
+// MAL in one step (see src/account/malLinkRepository.ts and CLAUDE.md's account model). Someone who
+// wants an account with no MAL data at all still has the separate email/password path below.
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Button, Text } from 'react-native-paper';
-import { continueAsGuest, login } from '@/auth/authRepository';
+import { signInWithMal } from '@/account/malLinkRepository';
+import { setGuestMode } from '@/account/guestMode';
 import { AtLogoMark } from '@/components/AtLogoMark';
 import { MalAttribution } from '@/components/MalAttribution';
 import { colors, radii } from '@/theme/colors';
@@ -12,26 +18,31 @@ import { fontFamilies } from '@/theme/fonts';
 
 export default function LoginScreen() {
   const router = useRouter();
+  // app/auth.tsx lands the user back here (a fresh mount) with `error` set when the MAL OAuth
+  // redirect it received couldn't be turned into a session — see its header comment for why that
+  // screen, not this one's own signInWithMal() await, owns reporting the outcome.
+  const { error: routedError } = useLocalSearchParams<{ error?: string }>();
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(routedError ?? null);
 
   async function handleLogin() {
     setLoading(true);
     setError(null);
-    const result = await login();
+    const result = await signInWithMal();
     setLoading(false);
-    if (result.success) {
-      router.replace('/');
-    } else {
+    // On success, app/auth.tsx already exchanged the handoff and navigated to '/' — it beats this
+    // await back every time, so there's nothing left to do here.
+    if (!result.success) {
       setError(result.message);
     }
   }
 
-  // Skips MAL entirely — index.tsx's gate routes a guest straight to an empty library instead of
-  // onboarding/reconcile, which needs a MAL list to import. Discover still works (MAL's browse/
-  // search endpoints don't require a signed-in user), so a guest can build a library by hand.
+  // Skips both MAL and an app account entirely — index.tsx's gate routes a guest straight to an
+  // empty local library instead of onboarding/reconcile, which needs a linked MAL account to
+  // import from. Discover still works (its Edge Functions don't require a signed-in user), so a
+  // guest can build a library by hand.
   async function handleContinueAsGuest() {
-    await continueAsGuest();
+    await setGuestMode(true);
     router.replace('/');
   }
 
@@ -57,13 +68,13 @@ export default function LoginScreen() {
         style={styles.loginButton}
         buttonColor={colors.primary}
       >
-        Log in with MyAnimeList
+        Continue with MyAnimeList
       </Button>
       <Button mode="text" onPress={handleContinueAsGuest} disabled={loading}>
         Continue without an account
       </Button>
-      {/* Separate from MAL login — see app/onboarding/account.tsx. Doesn't require or import a
-          MAL list; MyAnimeList can be linked to it later. */}
+      {/* Separate from MAL sign-in above — see app/onboarding/account.tsx. Doesn't require or
+          import a MAL list; MyAnimeList can be linked to it later from that screen. */}
       <Button mode="text" onPress={() => router.push('/onboarding/account')} disabled={loading}>
         Or create/log into an account
       </Button>

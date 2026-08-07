@@ -1,18 +1,23 @@
 // Email/password account screen — Phase 7's "Create account" path (see CLAUDE.md's account
 // model). Reachable from the login screen and, once signed in, from the Library's more-menu.
-// Doesn't gate anything yet: an app account has no functional effect until Phase 8 (optional MAL
-// link) and Phase 9/10 (sync) land, so this screen intentionally stays outside index.tsx's
-// login/import redirect chain — creating or logging into one is a side action, not a replacement
-// for MAL login or guest mode.
+//
+// Phase 8 adds "Link MyAnimeList" here for a signed-in account that doesn't have one yet (an
+// account created via "Continue with MyAnimeList" already does, and this screen doesn't offer to
+// re-link it — see src/account/malLinkRepository.ts's linkMalAccount, the authenticated variant of
+// the same OAuth flow used by the login screen's sign-in variant). Sync itself (Phase 9/10) still
+// isn't wired up — MAL data an account gains here is real (Import/Push work once linked), but
+// doesn't yet follow the account across devices.
 import { useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { Button, Text, TextInput } from 'react-native-paper';
 import { isSupabaseConfigured } from '@/account/supabaseClient';
 import { logInWithEmail, logOutAccount, signUpWithEmail, useAccountSession } from '@/account/accountRepository';
+import { linkMalAccount, useMalLinkStatus } from '@/account/malLinkRepository';
 import { colors, radii, spacing } from '@/theme/colors';
 
 export default function AccountScreen() {
   const { session, loading } = useAccountSession();
+  const [malLinked, refreshMalLinked] = useMalLinkStatus();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -40,6 +45,15 @@ export default function AccountScreen() {
     setBusy(false);
   }
 
+  async function handleLinkMal() {
+    setBusy(true);
+    setMessage(null);
+    const result = await linkMalAccount();
+    setBusy(false);
+    if (result.success) refreshMalLinked();
+    else setMessage(result.message);
+  }
+
   if (!isSupabaseConfigured) {
     return (
       <View style={styles.container}>
@@ -61,12 +75,28 @@ export default function AccountScreen() {
         <Text variant="bodyLarge" style={styles.emailText}>
           {session.user.email}
         </Text>
-        {/* MAL linking (Phase 8) and sync (Phase 9/10) aren't wired up yet — for now this screen
-            only proves the account itself works end to end. */}
-        <Text variant="bodySmall" style={styles.hint}>
-          Syncing your library across devices and linking MyAnimeList to this account are coming in a later
-          update — for now this just keeps you signed in.
-        </Text>
+        {message && (
+          <Text variant="bodyMedium" style={styles.message}>
+            {message}
+          </Text>
+        )}
+        {malLinked === false && (
+          <>
+            <Text variant="bodySmall" style={styles.hint}>
+              Link MyAnimeList to import your list and update it from here.
+            </Text>
+            <Button mode="contained" onPress={handleLinkMal} loading={busy} disabled={busy} buttonColor={colors.primary} style={styles.button}>
+              Link MyAnimeList
+            </Button>
+          </>
+        )}
+        {malLinked === true && (
+          <Text variant="bodySmall" style={styles.hint}>
+            MyAnimeList is linked to this account.
+          </Text>
+        )}
+        {/* Syncing your library across devices (Phase 9/10) isn't wired up yet — MAL data this
+            account gains (once linked) is real, it just doesn't follow you across devices yet. */}
         <Button mode="outlined" onPress={handleLogOut} loading={busy} disabled={busy} style={styles.button}>
           Log out
         </Button>

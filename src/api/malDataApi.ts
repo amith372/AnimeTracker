@@ -1,30 +1,16 @@
-// Typed wrappers for MAL's list/detail read endpoints — the RN equivalent of the old
-// MalDataApi.kt Retrofit interface. DTOs mirror MAL's JSON exactly (snake_case, as it arrives
-// over the wire); repositories map these down to domain types explicitly, never using a raw DTO
-// past the repository boundary.
-import { malGet, malGetUrl, malPut } from './authFetch';
+// Typed wrappers for MAL's read endpoints — Phase 8: these now call Supabase Edge Functions
+// (src/api/edgeFunctions.ts) instead of hitting MAL directly (the old authFetch.ts's malGet/malPut
+// are gone; MAL token custody lives server-side, see supabase/functions/). Signatures are
+// unchanged from the pre-Phase-8 version deliberately, so DiscoverRepository/RecommendationRepository
+// needed no changes at all — only the implementation moved. `getAnimeList`/`getAnimeListPage`
+// (onboarding import) and `updateMyListStatus` (the push write) are gone from here: mal-import and
+// mal-push now do that whole job server-side in one call each — see ImportRepository.ts and
+// MalPushRepository.ts.
+import { callMalAnimeDetail, callMalDiscover, callMalRecommendations } from './edgeFunctions';
 
 export interface AnimeNodeDto {
   id: number;
   title: string;
-}
-
-export interface ListStatusDto {
-  status: string;
-}
-
-export interface AnimeListEntryDto {
-  node: AnimeNodeDto;
-  list_status: ListStatusDto;
-}
-
-export interface PagingDto {
-  next?: string | null;
-}
-
-export interface AnimeListResponseDto {
-  data: AnimeListEntryDto[];
-  paging: PagingDto;
 }
 
 export interface GenreDto {
@@ -86,44 +72,33 @@ export interface AnimeBrowseEntryDto {
   node: AnimeBrowseNodeDto;
 }
 
+export interface PagingDto {
+  next?: string | null;
+}
+
 export interface AnimeBrowseResponseDto {
   data: AnimeBrowseEntryDto[];
   paging: PagingDto;
 }
 
-/** The user's full MAL list, first page — paginate further via `paging.next` and getAnimeListPage. */
-export function getAnimeList(): Promise<AnimeListResponseDto> {
-  return malGet('users/@me/animelist', { fields: 'list_status,num_episodes,media_type', limit: 1000 });
-}
-
-/** `pageUrl` is the full URL from a previous response's `paging.next`. */
-export function getAnimeListPage(pageUrl: string): Promise<AnimeListResponseDto> {
-  return malGetUrl(pageUrl);
-}
-
 export function getAnimeDetail(id: number): Promise<AnimeDetailDto> {
-  return malGet(`anime/${id}`, {
-    fields:
-      'related_anime,media_type,num_episodes,genres,main_picture,title,alternative_titles,status,start_season,mean,synopsis',
-  });
+  return callMalAnimeDetail<AnimeDetailDto>(id);
 }
-
-const BROWSE_FIELDS = 'media_type,genres,main_picture,num_episodes,start_season,status,alternative_titles';
 
 /** How many results one browse page asks for. Exported so callers can tell a full page (there may
  * be more) from a short one (that was the end) without hardcoding the number twice. */
 export const BROWSE_PAGE_SIZE = 25;
 
 export function searchAnime(query: string, offset = 0): Promise<AnimeBrowseResponseDto> {
-  return malGet('anime', { q: query, fields: BROWSE_FIELDS, limit: BROWSE_PAGE_SIZE, offset });
+  return callMalDiscover<AnimeBrowseResponseDto>({ type: 'search', query, offset });
 }
 
 export function getRanking(rankingType: string, offset = 0): Promise<AnimeBrowseResponseDto> {
-  return malGet('anime/ranking', { ranking_type: rankingType, fields: BROWSE_FIELDS, limit: BROWSE_PAGE_SIZE, offset });
+  return callMalDiscover<AnimeBrowseResponseDto>({ type: 'ranking', rankingType, offset });
 }
 
 export function getSeasonal(year: number, season: string, offset = 0): Promise<AnimeBrowseResponseDto> {
-  return malGet(`anime/season/${year}/${season}`, { fields: BROWSE_FIELDS, limit: BROWSE_PAGE_SIZE, offset });
+  return callMalDiscover<AnimeBrowseResponseDto>({ type: 'season', year, season, offset });
 }
 
 export interface RecommendationNodeDto {
@@ -140,20 +115,5 @@ export interface AnimeRecommendationsDto {
  * MAL-based half of Phase 6's recommendation tally. A separate, lighter call from getAnimeDetail
  * since `recommendations` is only ever needed for the user's own watched series, not candidates. */
 export function getAnimeRecommendations(id: number): Promise<AnimeRecommendationsDto> {
-  return malGet(`anime/${id}`, { fields: 'recommendations' });
-}
-
-/** The subset of MAL's own list-status enum this app ever writes — see CLAUDE.md §8 for why only
- * these three (never `on_hold`/`dropped`, which have no unambiguous local equivalent to push). */
-export type MalListStatusValue = 'plan_to_watch' | 'watching' | 'completed';
-
-export interface UpdateMyListStatusResponseDto {
-  status: string;
-}
-
-/** `PUT /anime/{id}/my_list_status` — CLAUDE.md §8's one write path. Sends only `status`; every
- * other field (score, dates, episode count, tags, comments) is left exactly as the user has it on
- * MAL, since an omitted field is untouched rather than reset. */
-export function updateMyListStatus(animeId: number, status: MalListStatusValue): Promise<UpdateMyListStatusResponseDto> {
-  return malPut(`anime/${animeId}/my_list_status`, { status });
+  return callMalRecommendations<AnimeRecommendationsDto>(id);
 }
