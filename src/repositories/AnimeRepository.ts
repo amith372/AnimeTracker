@@ -12,7 +12,8 @@ import { asc, eq } from 'drizzle-orm';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { useMemo } from 'react';
 import { db } from '@/db/client';
-import { series, seriesEntries, syncMeta } from '@/db/schema';
+import { series, seriesEntries, syncMeta, syncOutbox } from '@/db/schema';
+import { requestOutboxDrain } from '@/sync/outbox';
 import type { AiringStatus, EntryKind, ManualStatus, WatchState } from '@/domain/types';
 import { allArcsWatched, type Series, type SeriesEntry } from '@/domain/series';
 import { arcsForMalId } from '@/domain/arcs';
@@ -23,6 +24,24 @@ type SeriesRow = typeof series.$inferSelect;
 type SeriesEntryRow = typeof seriesEntries.$inferSelect;
 /** The transaction handle Drizzle's sync expo-sqlite driver hands to a `db.transaction()` body. */
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Marks one local row as needing a push to Supabase (Phase 9) — called inside the same
+ * transaction as the real write it accompanies, so an interrupted app never has a write that
+ * "happened" locally without an outbox row to eventually carry it up. `onConflictDoUpdate` on the
+ * (entity, localId) unique index collapses repeated writes to the same row into one pending push
+ * rather than growing the table — see schema.ts's syncOutbox comment for why this stores no
+ * payload snapshot, only the pointer to re-read at drain time.
+ */
+function queueOutbox(tx: Transaction, entity: 'series' | 'series_entries', localId: number): void {
+  tx.insert(syncOutbox)
+    .values({ entity, localId, createdAtEpochMillis: Date.now() })
+    .onConflictDoUpdate({
+      target: [syncOutbox.entity, syncOutbox.localId],
+      set: { createdAtEpochMillis: Date.now() },
+    })
+    .run();
+}
 
 /** Raw DB row (with its nested entries) -> the UI-ready Series, deriving its watch status. */
 function toDomainSeries(row: SeriesRow & { entries: SeriesEntryRow[] }): Series {
@@ -111,7 +130,11 @@ export async function getAllSeriesOnce(): Promise<Series[]> {
 
 /** Sets one entry's watch state — what tap-to-mark and the "won't watch" toggle both write. */
 export async function setEntryWatchState(entryId: number, watchState: WatchState): Promise<void> {
-  await db.update(seriesEntries).set({ watchState }).where(eq(seriesEntries.id, entryId));
+  db.transaction((tx) => {
+    tx.update(seriesEntries).set({ watchState }).where(eq(seriesEntries.id, entryId)).run();
+    queueOutbox(tx, 'series_entries', entryId);
+  });
+  requestOutboxDrain();
 }
 
 /**
@@ -132,15 +155,23 @@ export async function setArcWatched(entryId: number, arcKey: string, watched: bo
   else current.delete(arcKey);
   const nextKeys = Array.from(current);
   const nextWatchState: WatchState = allArcsWatched(arcsForMalId(row.malId) ?? [], nextKeys) ? 'WATCHED' : 'UNWATCHED';
-  await db
-    .update(seriesEntries)
-    .set({ watchedArcKeys: nextKeys, watchState: nextWatchState })
-    .where(eq(seriesEntries.id, entryId));
+  db.transaction((tx) => {
+    tx.update(seriesEntries)
+      .set({ watchedArcKeys: nextKeys, watchState: nextWatchState })
+      .where(eq(seriesEntries.id, entryId))
+      .run();
+    queueOutbox(tx, 'series_entries', entryId);
+  });
+  requestOutboxDrain();
 }
 
 /** Flips a series' "liked" flag — feeds into recommendation scoring (Phase 6). */
 export async function setSeriesLiked(seriesId: number, liked: boolean): Promise<void> {
-  await db.update(series).set({ liked }).where(eq(series.id, seriesId));
+  db.transaction((tx) => {
+    tx.update(series).set({ liked }).where(eq(series.id, seriesId)).run();
+    queueOutbox(tx, 'series', seriesId);
+  });
+  requestOutboxDrain();
 }
 
 /**
@@ -151,7 +182,11 @@ export async function setSeriesLiked(seriesId: number, liked: boolean): Promise<
  * Purely local, like every status write in this app: we never PATCH/PUT/DELETE back to MAL.
  */
 export async function setSeriesManualStatus(seriesId: number, manualStatus: ManualStatus): Promise<void> {
-  await db.update(series).set({ manualStatus }).where(eq(series.id, seriesId));
+  db.transaction((tx) => {
+    tx.update(series).set({ manualStatus }).where(eq(series.id, seriesId)).run();
+    queueOutbox(tx, 'series', seriesId);
+  });
+  requestOutboxDrain();
 }
 
 /**
@@ -164,7 +199,12 @@ export async function setSeriesManualStatus(seriesId: number, manualStatus: Manu
  * callback would commit the transaction while the writes were still pending, which is worse than
  * having no transaction at all.
  */
-function insertSeriesTx(tx: Transaction, item: ReconcileSeries): number {
+/**
+ * `queueSync` is false for `replaceAllSeries`'s onboarding-import loop — that path is excluded
+ * from the outbox entirely (see its own doc comment) — and true for `addSeries`, whose one new
+ * series + entries genuinely need to reach Supabase.
+ */
+function insertSeriesTx(tx: Transaction, item: ReconcileSeries, queueSync: boolean): number {
   const [insertedSeries] = tx
     .insert(series)
     .values({
@@ -177,8 +217,10 @@ function insertSeriesTx(tx: Transaction, item: ReconcileSeries): number {
     })
     .returning({ id: series.id })
     .all();
+  if (queueSync) queueOutbox(tx, 'series', insertedSeries.id);
   if (item.entries.length > 0) {
-    tx.insert(seriesEntries)
+    const insertedEntries = tx
+      .insert(seriesEntries)
       .values(
         item.entries.map((entry) => ({
           seriesId: insertedSeries.id,
@@ -191,7 +233,9 @@ function insertSeriesTx(tx: Transaction, item: ReconcileSeries): number {
           airingStatus: entry.airingStatus,
         })),
       )
-      .run();
+      .returning({ id: seriesEntries.id })
+      .all();
+    if (queueSync) for (const entry of insertedEntries) queueOutbox(tx, 'series_entries', entry.id);
   }
   return insertedSeries.id;
 }
@@ -209,7 +253,7 @@ export async function replaceAllSeries(items: ReconcileSeries[]): Promise<void> 
   db.transaction((tx) => {
     tx.delete(seriesEntries).run();
     tx.delete(series).run();
-    for (const item of items) insertSeriesTx(tx, item);
+    for (const item of items) insertSeriesTx(tx, item, false);
   });
 }
 
@@ -217,7 +261,9 @@ export async function replaceAllSeries(items: ReconcileSeries[]): Promise<void> 
  * library. Returns the new local series id, so a caller navigating straight from a not-yet-
  * tracked preview into the real Detail screen knows which id to push. */
 export async function addSeries(item: ReconcileSeries): Promise<number> {
-  return db.transaction((tx) => insertSeriesTx(tx, item));
+  const id = db.transaction((tx) => insertSeriesTx(tx, item, true));
+  requestOutboxDrain();
+  return id;
 }
 
 /** Reactive set of every MAL id already tracked (any season/movie in any series) — Discover uses
@@ -270,31 +316,47 @@ export interface NewSeriesEntry {
  * and reconcile create whole new series instead, see addSeries/replaceAllSeries). */
 export async function addNewEntries(seriesId: number, entries: NewSeriesEntry[]): Promise<void> {
   if (entries.length === 0) return;
-  await db.insert(seriesEntries).values(
-    entries.map((entry) => ({
-      seriesId,
-      malId: entry.malId,
-      kind: entry.kind,
-      orderIndex: entry.orderIndex,
-      title: entry.title,
-      episodeCount: entry.episodeCount,
-      watchState: 'UNWATCHED' as const,
-      airingStatus: entry.airingStatus,
-    })),
-  );
+  db.transaction((tx) => {
+    const inserted = tx
+      .insert(seriesEntries)
+      .values(
+        entries.map((entry) => ({
+          seriesId,
+          malId: entry.malId,
+          kind: entry.kind,
+          orderIndex: entry.orderIndex,
+          title: entry.title,
+          episodeCount: entry.episodeCount,
+          watchState: 'UNWATCHED' as const,
+          airingStatus: entry.airingStatus,
+        })),
+      )
+      .returning({ id: seriesEntries.id })
+      .all();
+    for (const entry of inserted) queueOutbox(tx, 'series_entries', entry.id);
+  });
+  requestOutboxDrain();
 }
 
 /** Sets the "new season!" flag + when that season airs — cleared when the user opens the Detail
  * screen (see clearNewSeasonAvailable). `airedAtEpochMillis` feeds hasVisibleNewSeasonAlert's
  * "hide once it's over a year old" rule; null if the new season's air date is unknown. */
 export async function setNewSeasonAvailable(seriesId: number, airedAtEpochMillis: number | null): Promise<void> {
-  await db
-    .update(series)
-    .set({ newSeasonAvailable: true, newSeasonAiredAtEpochMillis: airedAtEpochMillis })
-    .where(eq(series.id, seriesId));
+  db.transaction((tx) => {
+    tx.update(series)
+      .set({ newSeasonAvailable: true, newSeasonAiredAtEpochMillis: airedAtEpochMillis })
+      .where(eq(series.id, seriesId))
+      .run();
+    queueOutbox(tx, 'series', seriesId);
+  });
+  requestOutboxDrain();
 }
 
 /** Clears the "new season!" flag — called when the user opens that series' Detail screen. */
 export async function clearNewSeasonAvailable(seriesId: number): Promise<void> {
-  await db.update(series).set({ newSeasonAvailable: false }).where(eq(series.id, seriesId));
+  db.transaction((tx) => {
+    tx.update(series).set({ newSeasonAvailable: false }).where(eq(series.id, seriesId)).run();
+    queueOutbox(tx, 'series', seriesId);
+  });
+  requestOutboxDrain();
 }

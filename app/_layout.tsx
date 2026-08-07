@@ -15,6 +15,7 @@ import { db } from '@/db/client';
 import migrations from '@/db/migrations/migrations';
 import { registerBackgroundSync } from '@/repositories/SyncRepository';
 import { pruneExpiredApiCache } from '@/repositories/apiCache';
+import { startSyncEngine } from '@/sync/outbox';
 import { paperTheme } from '@/theme/theme';
 import { fontsToLoad } from '@/theme/fonts';
 
@@ -35,6 +36,7 @@ export default function RootLayout() {
   // on every launch rather than tracking "have we already registered" state ourselves.
   useEffect(() => {
     registerBackgroundSync();
+    startSyncEngine();
   }, []);
 
   // Expired cache rows are dead weight; clearing them once per launch (after migrations create

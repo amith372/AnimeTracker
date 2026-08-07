@@ -82,6 +82,31 @@ export const apiCache = sqliteTable('api_cache', {
   fetchedAtEpochMillis: integer('fetched_at_epoch_millis').notNull(),
 });
 
+/**
+ * Phase 9 push-only sync: one row per local (entity, localId) still waiting to be pushed to
+ * Supabase. `src/repositories/AnimeRepository.ts`'s 8 non-`replaceAllSeries` write functions each
+ * upsert a row here in the same local transaction as the real write — see queueOutbox there.
+ * `src/sync/outbox.ts` drains this table by re-reading the *current* local row for each entry at
+ * drain time (rather than storing a payload snapshot here) — that way a row that changed again
+ * between being queued and being drained pushes its latest state, not a stale one, and there's
+ * only one place (AnimeRepository's toDomainSeries-adjacent mapping) that knows how a local row
+ * maps to its Postgres shape. The unique index means a row that changes twice before draining
+ * collapses to one outbox entry, not two.
+ */
+export const syncOutbox = sqliteTable(
+  'sync_outbox',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    entity: text('entity').notNull().$type<'series' | 'series_entries'>(),
+    localId: integer('local_id').notNull(),
+    createdAtEpochMillis: integer('created_at_epoch_millis').notNull(),
+    // Bumped by the drain loop on a failed push; not yet used for backoff/dead-lettering, but
+    // cheap to carry from the start rather than adding it once something actually needs it.
+    retryCount: integer('retry_count').notNull().default(0),
+  },
+  (table) => [uniqueIndex('idx_sync_outbox_entity_local_id').on(table.entity, table.localId)],
+);
+
 // Lets Drizzle's query API do `db.query.series.findMany({ with: { entries: true } })` instead
 // of a manual join — the RN equivalent of Room's @Relation-based SeriesWithEntries.
 export const seriesRelations = relations(series, ({ many }) => ({

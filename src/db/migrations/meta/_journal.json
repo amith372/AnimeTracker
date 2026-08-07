@@ -50,6 +50,13 @@
       "when": 1786086593103,
       "tag": "0006_free_princess_powerful",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1786134159365,
+      "tag": "0007_wakeful_sersi",
+      "breakpoints": true
     }
   ]
 }

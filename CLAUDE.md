@@ -85,6 +85,8 @@ src/
 │   ├── malLinkRepository.ts    // signInWithMal / linkMalAccount / useMalLinkStatus (Phase 8+)
 │   └── guestMode.ts             // "continue without an account" flag (moved here from src/auth/, Phase 8)
 ├── components/                // small UI pieces shared by 2+ screens (poster tile, add-status dialog)
+├── sync/                      // push-only outbox sync engine (Phase 9+) — see outbox.ts's header comment
+│   └── outbox.ts                // drainOutbox/requestOutboxDrain/startSyncEngine
 └── context/
 __tests__/                   // Jest — mirrors src/domain/ 1:1
 supabase/
@@ -124,13 +126,25 @@ Each MAL "anime" is a single season/movie entry. We group related entries into a
 
 **SyncMeta** — `lastSyncEpoch`, per-series `newSeasonAvailable: Boolean`
 
+**SyncOutbox (Phase 9+)** — `entity` (`series` | `series_entries`), `localId`, `createdAtEpochMillis`,
+`retryCount`. One row per local row still waiting to be pushed to Supabase; `src/repositories/AnimeRepository.ts`'s
+8 non-`replaceAllSeries` write functions each upsert a row here (unique on `entity, localId`, so
+repeated writes to the same row collapse into one pending push) in the same local transaction as
+the real write. `src/sync/outbox.ts` drains it by re-reading the *current* local row at drain time
+rather than storing a payload snapshot — see that file's header comment. Local-only; has no
+Postgres mirror of its own.
+
 **Account/sync pivot (Phase 7+, in progress):** the app is gaining an optional Supabase-backed
 account system so the same library can be used on phone and web and stay in sync — see the "Build
 phases" section below for the phased rollout and the standing plan doc for full design detail.
-Phase 7 only adds the account layer itself (`src/account/`, `supabase/migrations/`) — local SQLite
-stays the sole source of truth for everything the UI reads/writes; nothing syncs yet, and creating
-an account has no effect on the local library. `sync_meta` and `api_cache` are and remain
-local-only, unrelated to this — they're not part of what eventually syncs.
+Phase 7 added the account layer itself (`src/account/`, `supabase/migrations/`); Phase 9 added
+push-only sync (`src/sync/outbox.ts`) — local SQLite stays the sole source of truth for everything
+the UI *reads*, but a signed-in account's writes now also push to Supabase's `series`/
+`series_entries` tables (mirroring the local schema 1:1, keyed by `(user_id, root_mal_id)` /
+`(series_id, mal_id)` rather than client-generated ids — see that migration's comment for why).
+Nothing pulls back down yet (Phase 10) — a second device doesn't see these changes until then.
+`sync_meta` and `api_cache` are and remain local-only, unrelated to this — they're not part of
+what syncs.
 
 ### Status derivation (the tricky part)
 
@@ -285,8 +299,8 @@ duplicated here. Each phase leaves the app installable and working with zero beh
 anyone not opting in, same bar as Phases 1–6:
 
 7. **Accounts, no sync** *(done)* — Supabase project + `series`/`series_entries` schema + RLS (`supabase/migrations/`); email/password sign-up/login (`src/account/`) alongside MAL login and guest mode. An account has no MAL data and nothing syncs yet — it's scaffolding for Phase 8+.
-8. **MAL custody moves server-side** *(code complete, not yet live-verified — no Deno/Supabase CLI in this dev environment; needs a real deploy + device run before calling it done)* — Edge Functions (`supabase/functions/mal-*`) take over the MAL OAuth exchange/refresh and all MAL API calls; "Continue with MyAnimeList" is now a second way to get an account (auto-created from the MAL identity, via a one-time handoff-code session exchange — see Feature specs §1); the MAL Client ID left the client entirely. Import/Push are gated on whether MAL is linked to the current account (`mal_link_status`); Discover-add stays ungated since it never needed a MAL account. `src/auth/` (the old per-device MAL token store) is gone — replaced by `src/account/malLinkRepository.ts` + `src/account/guestMode.ts`.
-9. **Push-only sync** — local writes queue in an outbox and push to Supabase; no pull yet.
+8. **MAL custody moves server-side** *(done, live-verified on-device)* — Edge Functions (`supabase/functions/mal-*`) take over the MAL OAuth exchange/refresh and all MAL API calls; "Continue with MyAnimeList" is now a second way to get an account (auto-created from the MAL identity, via a one-time handoff-code session exchange — see Feature specs §1); the MAL Client ID left the client entirely. Import/Push are gated on whether MAL is linked to the current account (`mal_link_status`); Discover-add stays ungated since it never needed a MAL account. `src/auth/` (the old per-device MAL token store) is gone — replaced by `src/account/malLinkRepository.ts` + `src/account/guestMode.ts`. Verified end-to-end on the Android emulator: sign-in-with-MAL, import, Library, Discover, Recommendations, and the Push confirmation dialog. Two bugs found and fixed during that verification: `mal-session-exchange` was calling Supabase's `verifyOtp` with an invalid `token_hash` + `email` combination (GoTrue rejects it — only `token_hash` + `type` is valid); and `app/auth.tsx`'s redirect raced the caller's own `WebBrowser.openAuthSessionAsync` await, so it now owns finishing the OAuth handoff itself (reads the redirect params, exchanges the handoff code, calls `setSession`, and navigates) since expo-router reliably lands there before the original caller's promise resolves.
+9. **Push-only sync** *(done, live-verified on-device)* — a local `sync_outbox` table (`src/db/schema.ts`) queues every write from `AnimeRepository.ts`'s 8 non-`replaceAllSeries` functions; `src/sync/outbox.ts` drains it into Supabase's `series`/`series_entries` (debounced after writes, on foreground, and on a periodic timer — see `startSyncEngine()` in `app/_layout.tsx`). A first drain for a given account also does a one-time "initial adoption" bulk push of the whole existing local library (additive, never a wipe), since `replaceAllSeries`'s onboarding-import path is itself excluded from the outbox — without that seed step, entry-level edits to an already-imported show would retry forever with no parent series ever pushed. Still no pull: a second device's changes don't come back down until Phase 10.
 10. **Full bidirectional sync** — remote changes pull/merge back into local SQLite (poll + Realtime), making the app genuinely multi-device.
 11. **Monthly sync moves server-side** — a scheduled Edge Function replaces the per-device `expo-background-task` job.
 12. **Web build** — the existing Expo Router app also builds for web (react-native-web), hosted on Vercel.
