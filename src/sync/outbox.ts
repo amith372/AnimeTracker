@@ -1,9 +1,10 @@
-// Phase 9 push-only sync: drains src/db/schema.ts's `syncOutbox` table into Supabase's `series`/
-// `series_entries` (see supabase/migrations/20260807000000_series_schema.sql). No pull yet — a
-// second device's changes don't come back down until Phase 10 wires up pull/merge/Realtime on top
-// of this. Guest mode and an account with no session both just accumulate outbox rows that never
-// drain, which is fine: nothing here assumes the outbox empties promptly, only that it eventually
-// does once a session exists.
+// Push half of sync: drains src/db/schema.ts's `syncOutbox` table into Supabase's `series`/
+// `series_entries` (see supabase/migrations/20260807000000_series_schema.sql). The pull half
+// (another device's changes coming back down) is src/sync/pull.ts — the two are independent
+// directions that both feed the same tables, wired together by src/sync/index.ts. Guest mode and
+// an account with no session both just accumulate outbox rows that never drain, which is fine:
+// nothing here assumes the outbox empties promptly, only that it eventually does once a session
+// exists.
 //
 // Identity: Postgres `series` rows are keyed by (user_id, root_mal_id), `series_entries` by
 // (series_id, mal_id) — see that migration's comment for why (idempotent across devices with no
@@ -18,6 +19,7 @@ import { AppState } from 'react-native';
 import { supabase } from '@/account/supabaseClient';
 import { db } from '@/db/client';
 import { series, seriesEntries, syncOutbox } from '@/db/schema';
+import { getDeviceId } from './deviceId';
 
 const BATCH_SIZE = 50;
 const DEBOUNCE_MS = 2000;
@@ -129,6 +131,7 @@ async function drainBatch(userId: string, pending: OutboxRow[]): Promise<number[
   const succeededIds: number[] = [];
   const seriesOutbox = pending.filter((r) => r.entity === 'series');
   const entryOutbox = pending.filter((r) => r.entity === 'series_entries');
+  const deviceId = await getDeviceId();
 
   for (const row of seriesOutbox) {
     const [local] = await db.select().from(series).where(eq(series.id, row.localId));
@@ -150,6 +153,9 @@ async function drainBatch(userId: string, pending: OutboxRow[]): Promise<number[
           ? new Date(local.newSeasonAiredAtEpochMillis).toISOString()
           : null,
         liked: local.liked,
+        // Stamped so src/sync/merge.ts can recognize a pull that's just echoing this exact write
+        // back and skip re-applying it — see that file's header comment.
+        updated_by_device_id: deviceId,
       },
       { onConflict: 'user_id,root_mal_id' },
     );
@@ -158,13 +164,13 @@ async function drainBatch(userId: string, pending: OutboxRow[]): Promise<number[
   }
 
   if (entryOutbox.length > 0) {
-    succeededIds.push(...(await drainEntryBatch(userId, entryOutbox)));
+    succeededIds.push(...(await drainEntryBatch(userId, deviceId, entryOutbox)));
   }
 
   return succeededIds;
 }
 
-async function drainEntryBatch(userId: string, entryOutbox: OutboxRow[]): Promise<number[]> {
+async function drainEntryBatch(userId: string, deviceId: string, entryOutbox: OutboxRow[]): Promise<number[]> {
   const succeededIds: number[] = [];
   const localEntries = await db
     .select()
@@ -217,6 +223,7 @@ async function drainEntryBatch(userId: string, entryOutbox: OutboxRow[]): Promis
         watch_state: local.watchState,
         airing_status: local.airingStatus,
         watched_arc_keys: local.watchedArcKeys,
+        updated_by_device_id: deviceId,
       },
       { onConflict: 'series_id,mal_id' },
     );
@@ -231,10 +238,10 @@ async function bumpRetry(outboxRowId: number): Promise<void> {
   if (row) await db.update(syncOutbox).set({ retryCount: row.retryCount + 1 }).where(eq(syncOutbox.id, outboxRowId));
 }
 
-/** Called once from app/_layout.tsx — mirrors registerBackgroundSync()'s "safe to call on every
- * launch" shape. Drains on launch, on every foreground transition, and on a periodic timer while
- * foregrounded (backgrounding the app doesn't need its own handling: RN just stops running JS). */
-export function startSyncEngine(): void {
+/** Called once from src/sync/index.ts's startSyncEngine(). Drains on launch, on every foreground
+ * transition, and on a periodic timer while foregrounded (backgrounding the app doesn't need its
+ * own handling: RN just stops running JS). */
+export function registerOutboxTriggers(): void {
   requestOutboxDrain();
   AppState.addEventListener('change', (state) => {
     if (state === 'active') requestOutboxDrain();

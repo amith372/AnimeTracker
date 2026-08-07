@@ -47,7 +47,7 @@ The MAL API License & Developer Agreement binds us. These are hard rules — nev
 - **Navigation:** Expo Router (file-based — the file tree under `app/` *is* the navigation map)
 - **Local DB:** expo-sqlite + Drizzle ORM (single source of truth for the UI). `SQLite.openDatabaseSync` **must** pass `{ enableChangeListener: true }` — without it, `useLiveQuery` never fires on writes; the DB updates but the screen silently doesn't (a real bug hit and fixed in Phase 1). Schema lives in `src/db/schema.ts`; migrations generated via `npm run db:generate` (`drizzle-kit`).
 - **Networking:** `fetch` + hand-written TypeScript interfaces mirroring the MAL DTOs (no extra HTTP/schema-validation library). Phase 8+: the client never calls MAL directly at all — every MAL read/write goes through a Supabase Edge Function (`src/api/edgeFunctions.ts` → `supabase/functions/`), which is what actually holds the MAL bearer token and calls `api.myanimelist.net`.
-- **Accounts + backend:** Supabase (`@supabase/supabase-js`) — Postgres + RLS for the account/sync data model, Supabase Auth for the app's own account system, Edge Functions (Deno) for MAL OAuth/token custody and MAL API proxying. See `src/account/` (client) and `supabase/` (schema + functions).
+- **Accounts + backend:** Supabase (`@supabase/supabase-js`) — Postgres + RLS for the account/sync data model, Supabase Auth for the app's own account system, Edge Functions (Deno) for MAL OAuth/token custody and MAL API proxying, Realtime (`postgres_changes`) for near-instant pull triggers (Phase 10+). See `src/account/` (client), `src/sync/` (outbox push + poll/Realtime pull), and `supabase/` (schema + functions).
 - **Auth:** two layers now — Supabase Auth (email/password, or "Continue with MyAnimeList" which auto-creates/finds a Supabase account from a MAL OAuth login) for the app account itself, and a separate one-time "link MyAnimeList" OAuth step per account. Both share the same server-terminated PKCE flow (`CodeChallengeMethod.Plain` — see the MAL PKCE quirk below); the device only ever gets a Supabase session back, never a MAL token. `expo-web-browser`'s `openAuthSessionAsync` + `expo-linking` still catch the `animetracker://auth` redirect, same as before — see `src/account/malLinkRepository.ts`.
 - **Session storage:** Supabase session in `@react-native-async-storage/async-storage` (see `src/account/supabaseClient.ts` for why, over `expo-secure-store`); MAL tokens no longer touch the device at all (server-side custody, Phase 8).
 - **Background work:** `expo-background-task` (monthly sync) — still per-device through Phase 10; moves server-side in Phase 11.
@@ -85,8 +85,12 @@ src/
 │   ├── malLinkRepository.ts    // signInWithMal / linkMalAccount / useMalLinkStatus (Phase 8+)
 │   └── guestMode.ts             // "continue without an account" flag (moved here from src/auth/, Phase 8)
 ├── components/                // small UI pieces shared by 2+ screens (poster tile, add-status dialog)
-├── sync/                      // push-only outbox sync engine (Phase 9+) — see outbox.ts's header comment
-│   └── outbox.ts                // drainOutbox/requestOutboxDrain/startSyncEngine
+├── sync/                      // bidirectional sync engine (Phase 9+/10+) — see each file's header comment
+│   ├── index.ts                 // startSyncEngine() — wires outbox.ts + pull.ts together, called from app/_layout.tsx
+│   ├── outbox.ts                // push: drainOutbox/requestOutboxDrain/registerOutboxTriggers
+│   ├── pull.ts                  // pull: pullRemoteChanges/requestPull/registerPullTriggers, poll + Realtime
+│   ├── merge.ts                  // applies a pulled remote row into local SQLite
+│   └── deviceId.ts               // per-install id stamped on pushed rows, used to skip a pull echoing this device's own write
 └── context/
 __tests__/                   // Jest — mirrors src/domain/ 1:1
 supabase/
@@ -133,6 +137,11 @@ repeated writes to the same row collapse into one pending push) in the same loca
 the real write. `src/sync/outbox.ts` drains it by re-reading the *current* local row at drain time
 rather than storing a payload snapshot — see that file's header comment. Local-only; has no
 Postgres mirror of its own.
+
+**RemoteSyncState (Phase 10+)** — singleton row, `lastPulledAtEpochMillis`. The watermark
+`src/sync/pull.ts` polls `WHERE updated_at > watermark` against; a missing/null value means "never
+pulled", so the first pull fetches this account's entire remote history — exactly what a second
+device signing in for the first time needs to catch up. Local-only.
 
 **Account/sync pivot (Phase 7+, in progress):** the app is gaining an optional Supabase-backed
 account system so the same library can be used on phone and web and stay in sync — see the "Build
@@ -301,7 +310,7 @@ anyone not opting in, same bar as Phases 1–6:
 7. **Accounts, no sync** *(done)* — Supabase project + `series`/`series_entries` schema + RLS (`supabase/migrations/`); email/password sign-up/login (`src/account/`) alongside MAL login and guest mode. An account has no MAL data and nothing syncs yet — it's scaffolding for Phase 8+.
 8. **MAL custody moves server-side** *(done, live-verified on-device)* — Edge Functions (`supabase/functions/mal-*`) take over the MAL OAuth exchange/refresh and all MAL API calls; "Continue with MyAnimeList" is now a second way to get an account (auto-created from the MAL identity, via a one-time handoff-code session exchange — see Feature specs §1); the MAL Client ID left the client entirely. Import/Push are gated on whether MAL is linked to the current account (`mal_link_status`); Discover-add stays ungated since it never needed a MAL account. `src/auth/` (the old per-device MAL token store) is gone — replaced by `src/account/malLinkRepository.ts` + `src/account/guestMode.ts`. Verified end-to-end on the Android emulator: sign-in-with-MAL, import, Library, Discover, Recommendations, and the Push confirmation dialog. Two bugs found and fixed during that verification: `mal-session-exchange` was calling Supabase's `verifyOtp` with an invalid `token_hash` + `email` combination (GoTrue rejects it — only `token_hash` + `type` is valid); and `app/auth.tsx`'s redirect raced the caller's own `WebBrowser.openAuthSessionAsync` await, so it now owns finishing the OAuth handoff itself (reads the redirect params, exchanges the handoff code, calls `setSession`, and navigates) since expo-router reliably lands there before the original caller's promise resolves.
 9. **Push-only sync** *(done, live-verified on-device)* — a local `sync_outbox` table (`src/db/schema.ts`) queues every write from `AnimeRepository.ts`'s 8 non-`replaceAllSeries` functions; `src/sync/outbox.ts` drains it into Supabase's `series`/`series_entries` (debounced after writes, on foreground, and on a periodic timer — see `startSyncEngine()` in `app/_layout.tsx`). A first drain for a given account also does a one-time "initial adoption" bulk push of the whole existing local library (additive, never a wipe), since `replaceAllSeries`'s onboarding-import path is itself excluded from the outbox — without that seed step, entry-level edits to an already-imported show would retry forever with no parent series ever pushed. Still no pull: a second device's changes don't come back down until Phase 10.
-10. **Full bidirectional sync** — remote changes pull/merge back into local SQLite (poll + Realtime), making the app genuinely multi-device.
+10. **Full bidirectional sync** *(done, live-verified on-device)* — `src/sync/pull.ts` polls Supabase's `series`/`series_entries` for rows changed since a local watermark (`remote_sync_state`, Phase 10's schema addition) on launch/foreground/a periodic timer, plus a Realtime `postgres_changes` subscription for near-instant updates while foregrounded; `src/sync/merge.ts` applies each pulled row into local SQLite, skipping any row with a pending `sync_outbox` entry (an in-flight local edit wins until it pushes) or whose `updated_by_device_id` matches this device's own id (a pull echoing back this device's own just-pushed write). `replaceAllSeries` (onboarding import) now also calls a `replace_library` Postgres RPC — a single-round-trip, single-transaction bulk seed, kept separate from the outbox because an N-row outbox burst would look like "delete everything" to a concurrently-pulling second device. Verified live: a change made directly in Postgres (simulating a second device) landed locally via both a foreground trigger and, isolated separately, via the Realtime subscription alone with no app interaction at all; a local edit still pushed and drained cleanly afterward with no regression.
 11. **Monthly sync moves server-side** — a scheduled Edge Function replaces the per-device `expo-background-task` job.
 12. **Web build** — the existing Expo Router app also builds for web (react-native-web), hosted on Vercel.
 

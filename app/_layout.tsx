@@ -15,7 +15,7 @@ import { db } from '@/db/client';
 import migrations from '@/db/migrations/migrations';
 import { registerBackgroundSync } from '@/repositories/SyncRepository';
 import { pruneExpiredApiCache } from '@/repositories/apiCache';
-import { startSyncEngine } from '@/sync/outbox';
+import { startSyncEngine } from '@/sync';
 import { paperTheme } from '@/theme/theme';
 import { fontsToLoad } from '@/theme/fonts';
 

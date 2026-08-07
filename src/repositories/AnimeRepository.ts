@@ -11,8 +11,10 @@
 import { asc, eq } from 'drizzle-orm';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { useMemo } from 'react';
+import { supabase } from '@/account/supabaseClient';
 import { db } from '@/db/client';
 import { series, seriesEntries, syncMeta, syncOutbox } from '@/db/schema';
+import { getDeviceId } from '@/sync/deviceId';
 import { requestOutboxDrain } from '@/sync/outbox';
 import type { AiringStatus, EntryKind, ManualStatus, WatchState } from '@/domain/types';
 import { allArcsWatched, type Series, type SeriesEntry } from '@/domain/series';
@@ -255,6 +257,44 @@ export async function replaceAllSeries(items: ReconcileSeries[]): Promise<void> 
     tx.delete(series).run();
     for (const item of items) insertSeriesTx(tx, item, false);
   });
+  void replaceRemoteLibrary(items);
+}
+
+/**
+ * Phase 10's counterpart to the local wipe-and-reinsert above — this is the only write path that
+ * bypasses the outbox (see insertSeriesTx's `queueSync` doc comment for why: an N-row outbox burst
+ * would look like a full delete to a concurrently-pulling second device, and is far slower than
+ * one round trip). Best-effort and fire-and-forget: this only ever runs once, right after
+ * onboarding import, and must never block or fail the local import that already succeeded above —
+ * a signed-out/guest import, or a network failure here, just means this device's library reaches
+ * Supabase later (e.g. once Phase 9's initial-adoption sweep picks it up after this device gets a
+ * session, or once the user retries some future "sync now" affordance).
+ */
+async function replaceRemoteLibrary(items: ReconcileSeries[]): Promise<void> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session) return;
+  const deviceId = await getDeviceId();
+  const payload = items.map((item) => ({
+    title: item.title,
+    cover_url: item.coverUrl,
+    genres: item.genres,
+    root_mal_id: item.rootMalId,
+    type: item.type,
+    manual_status: item.manualStatus,
+    updated_by_device_id: deviceId,
+    entries: item.entries.map((entry) => ({
+      mal_id: entry.malId,
+      kind: entry.kind,
+      order_index: entry.orderIndex,
+      title: entry.title,
+      episode_count: entry.episodeCount,
+      watch_state: entry.watchState,
+      airing_status: entry.airingStatus,
+    })),
+  }));
+  await supabase.rpc('replace_library', { payload });
 }
 
 /** Adds a single new series (from Discover/Recommendations) without touching the rest of the

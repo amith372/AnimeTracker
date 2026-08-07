@@ -107,6 +107,18 @@ export const syncOutbox = sqliteTable(
   (table) => [uniqueIndex('idx_sync_outbox_entity_local_id').on(table.entity, table.localId)],
 );
 
+/**
+ * Phase 10 pull: singleton row tracking the high-water mark for `src/sync/pull.ts`'s incremental
+ * `WHERE updated_at > watermark` polls against Supabase's `series`/`series_entries`. Deliberately
+ * separate from `syncMeta` (MAL-new-season-sync-only, unrelated to accounts) — a null/missing row
+ * means "never pulled", so the next pull fetches this account's entire remote history, which is
+ * exactly what a second device signing in for the first time needs.
+ */
+export const remoteSyncState = sqliteTable('remote_sync_state', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  lastPulledAtEpochMillis: integer('last_pulled_at_epoch_millis'),
+});
+
 // Lets Drizzle's query API do `db.query.series.findMany({ with: { entries: true } })` instead
 // of a manual join — the RN equivalent of Room's @Relation-based SeriesWithEntries.
 export const seriesRelations = relations(series, ({ many }) => ({
