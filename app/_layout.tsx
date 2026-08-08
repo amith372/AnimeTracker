@@ -13,7 +13,6 @@ import { ActivityIndicator, View } from 'react-native';
 import { PaperProvider, Text } from 'react-native-paper';
 import { db } from '@/db/client';
 import migrations from '@/db/migrations/migrations';
-import { registerBackgroundSync } from '@/repositories/SyncRepository';
 import { pruneExpiredApiCache } from '@/repositories/apiCache';
 import { startSyncEngine } from '@/sync';
 import { paperTheme } from '@/theme/theme';
@@ -32,10 +31,10 @@ export default function RootLayout() {
   // never showing the app at all if a font fails to load.
   const [fontsLoaded, fontError] = useFonts(fontsToLoad);
 
-  // Registration is idempotent (see registerBackgroundSync) and cheap, so it's safe to just call
-  // on every launch rather than tracking "have we already registered" state ourselves.
+  // Idempotent and cheap, so it's safe to just call on every launch rather than tracking "have we
+  // already started" state ourselves. Monthly MAL sync no longer registers anything here at all —
+  // it's a scheduled server-side job as of Phase 11 (see SyncRepository.ts).
   useEffect(() => {
-    registerBackgroundSync();
     startSyncEngine();
   }, []);
 
