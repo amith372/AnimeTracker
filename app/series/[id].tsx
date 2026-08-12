@@ -25,10 +25,12 @@ import { arcsForMalId, type Arc } from '@/domain/arcs';
 import { SeriesTitleText } from '@/components/SeriesTitleText';
 import { SquareCheckbox } from '@/components/SquareCheckbox';
 import { EntryImageDialog } from '@/components/EntryImageDialog';
+import { DetailHeroCard } from '@/components/web/DetailHeroCard';
 import { colors, radii, spacing } from '@/theme/colors';
 import { statusDotColor } from '@/theme/statusColors';
 import { MANUAL_STATUS_CHIP_LABELS } from '@/theme/statusChipLabels';
 import { fontFamilies } from '@/theme/fonts';
+import { useIsWideWeb } from '@/hooks/useWebLayout';
 import type { ManualStatus } from '@/domain/types';
 
 // "Liked" only makes sense once there's something to have an opinion on — shown for any status
@@ -46,6 +48,7 @@ export default function SeriesDetailScreen() {
   const series = useSeries(id);
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const isWideWeb = useIsWideWeb();
   const [imagePopupEntry, setImagePopupEntry] = useState<SeriesEntry | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -75,6 +78,87 @@ export default function SeriesDetailScreen() {
 
   const canLike = LIKEABLE_STATUS_KINDS.includes(series.status.kind);
   const progress = seasonProgress(series.entries);
+
+  if (isWideWeb) {
+    return (
+      <>
+      <DetailHeroCard
+        coverUrl={series.coverUrl}
+        title={series.title}
+        statusText={statusLabel(series.status)}
+        genres={series.genres.join(' · ')}
+        onBack={() => router.back()}
+        topRight={
+          canLike ? (
+            <IconButton
+              icon={series.liked ? 'heart' : 'heart-outline'}
+              iconColor="#fff"
+              onPress={() => runWrite(() => setSeriesLiked(series.id, !series.liked))}
+            />
+          ) : undefined
+        }
+      >
+        <View style={styles.webEntriesColumn}>
+          <View style={styles.webSectionLabelRow}>
+            <Text style={styles.webSectionLabel}>SEASONS &amp; MOVIES</Text>
+            {progress.total > 0 && (
+              <Text style={styles.webSectionCount}>
+                {progress.watched} of {progress.total} {progress.total === 1 ? 'season' : 'seasons'}
+              </Text>
+            )}
+          </View>
+          <View style={styles.webEntriesList}>
+            {numberEntriesByKind(series.entries).map((item) => {
+              const arcs = arcsForMalId(item.entry.malId);
+              return arcs ? (
+                <ArcListRow
+                  key={item.entry.id}
+                  entry={item.entry}
+                  arcs={arcs}
+                  kindNumber={item.kindNumber}
+                  onOpenInfo={() => setImagePopupEntry(item.entry)}
+                  runWrite={runWrite}
+                />
+              ) : (
+                <EntryRow
+                  key={item.entry.id}
+                  entry={item.entry}
+                  kindNumber={item.kindNumber}
+                  onOpenInfo={() => setImagePopupEntry(item.entry)}
+                  runWrite={runWrite}
+                />
+              );
+            })}
+          </View>
+        </View>
+        <View style={styles.webStatusColumn}>
+          <Text style={styles.webSectionLabel}>STATUS</Text>
+          <View style={styles.webStatusChipList}>
+            {EDITABLE_STATUS_CHOICES.map((choice) => {
+              const active = series.manualStatus === choice;
+              return (
+                <Pressable
+                  key={choice}
+                  onPress={() => runWrite(() => setSeriesManualStatus(series.id, choice))}
+                  style={[styles.webStatusChip, active && styles.webStatusChipActive]}
+                >
+                  <Text style={[styles.webStatusChipText, active && styles.webStatusChipTextActive]}>
+                    {MANUAL_STATUS_CHIP_LABELS[choice]}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={styles.webStatusFootnote}>Data from MyAnimeList · watch marks stay in your account</Text>
+        </View>
+      </DetailHeroCard>
+      <EntryImageDialog entry={imagePopupEntry} onDismiss={() => setImagePopupEntry(null)} />
+      <Snackbar visible={errorMessage !== null} onDismiss={() => setErrorMessage(null)} duration={4000} style={styles.webToast}>
+        {errorMessage}
+      </Snackbar>
+      </>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -310,4 +394,19 @@ const styles = StyleSheet.create({
   airingBadge: { backgroundColor: 'rgba(59,110,165,0.12)', height: 24 },
   airingBadgeText: { fontFamily: fontFamilies.bodyBold, color: colors.primary, fontSize: 9.5, letterSpacing: 0.5, lineHeight: 12 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+
+  // --- Wide web ---
+  webEntriesColumn: { flex: 1, minWidth: 0 },
+  webSectionLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 },
+  webSectionLabel: { fontFamily: fontFamilies.bodySemiBold, fontSize: 11.5, letterSpacing: 1.4, color: colors.textFaint },
+  webSectionCount: { fontFamily: fontFamilies.bodyMedium, fontSize: 12.5, color: colors.textFaint },
+  webEntriesList: { borderWidth: 1, borderColor: colors.border, borderRadius: radii.lg, overflow: 'hidden' },
+  webStatusColumn: { width: 240, flexShrink: 0 },
+  webStatusChipList: { gap: 7, marginTop: 12 },
+  webStatusChip: { minHeight: 42, justifyContent: 'center', paddingHorizontal: 16, borderRadius: radii.md - 1, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  webStatusChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  webStatusChipText: { fontFamily: fontFamilies.bodySemiBold, fontSize: 13.5, color: colors.textMuted },
+  webStatusChipTextActive: { color: '#fff' },
+  webStatusFootnote: { fontFamily: fontFamilies.bodyRegular, fontSize: 11, lineHeight: 17.6, color: colors.textFaint, marginTop: 20 },
+  webToast: { alignSelf: 'center', borderRadius: radii.lg, backgroundColor: colors.primaryDark },
 });

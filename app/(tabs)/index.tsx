@@ -8,6 +8,11 @@
 // then check import state and redirect to onboarding/reconcile if the user hasn't imported their
 // MAL list yet — mirroring how AnimeTrackerApp.kt's top-level `if (!isLoggedIn)` /
 // `if (!hasCompletedInitialImport)` branches worked.
+//
+// Wide web (see useWebLayout.ts) swaps the row-list for the "AnimeTracker Web" design doc's
+// poster-card grid + a vertical status-filter column, both driven by the exact same
+// filteredList/filterCounts/statusFilter/searchQuery state and handlers as the mobile branch below
+// — see LibraryScreen's isWideWeb branch near the bottom of the render.
 import { Image } from 'expo-image';
 import { Redirect, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
@@ -29,6 +34,7 @@ import { buildPushTargets } from '@/domain/malPush';
 import { statusDotColor } from '@/theme/statusColors';
 import { colors, radii, spacing } from '@/theme/colors';
 import { fontFamilies } from '@/theme/fonts';
+import { useIsWideWeb } from '@/hooks/useWebLayout';
 import type { SeriesStatus } from '@/domain/seriesStatus';
 
 type StatusFilter = SeriesStatus['kind'] | 'ALL';
@@ -45,6 +51,7 @@ export default function LibraryScreen() {
   const hasImported = useHasCompletedInitialImport();
   const { series: seriesList, isLoading: libraryLoading } = useLibrary();
   const router = useRouter();
+  const isWideWeb = useIsWideWeb();
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -146,6 +153,142 @@ export default function LibraryScreen() {
     );
   }
 
+  const moreMenu = (
+    <Portal>
+      <Dialog visible={moreMenuVisible} onDismiss={() => setMoreMenuVisible(false)}>
+        <Dialog.Content style={styles.moreMenuContent}>
+          {/* Nothing to sync without MyAnimeList linked, so the refresh action is meaningless
+              (and runMonthlySync itself is a no-op) otherwise — hidden rather than shown-but-dead. */}
+          {malLinked && (
+            <Pressable style={styles.moreMenuRow} onPress={handleSync}>
+              <MaterialCommunityIcons name="refresh" size={22} color={colors.textPrimary} />
+              <Text variant="bodyLarge">Sync now</Text>
+            </Pressable>
+          )}
+          {/* The one write path in the app (CLAUDE.md §8) — never shown without MyAnimeList
+              linked, since there's nowhere to push to. Gated behind a confirm dialog, not a
+              direct tap: this edits the user's real MyAnimeList list. */}
+          {malLinked && (
+            <Pressable
+              style={styles.moreMenuRow}
+              onPress={() => {
+                setMoreMenuVisible(false);
+                setPushConfirmVisible(true);
+              }}
+            >
+              <MaterialCommunityIcons name="cloud-upload-outline" size={22} color={colors.textPrimary} />
+              <Text variant="bodyLarge">Update MyAnimeList</Text>
+            </Pressable>
+          )}
+          {/* Phase 7's app-account system — see app/onboarding/account.tsx, which is also where
+              signing out, converting a guest session to a real account, and linking MyAnimeList
+              (if not already linked) all live now. Reachable at every session state — a guest is
+              always signed in now (anonymous auth, see guestMode.ts), so there's no separate
+              "Log in" item to show only when signed out; Account itself branches on isGuest. */}
+          <Pressable
+            style={styles.moreMenuRow}
+            onPress={() => {
+              setMoreMenuVisible(false);
+              router.push('/onboarding/account');
+            }}
+          >
+            <MaterialCommunityIcons name="account-circle-outline" size={22} color={colors.textPrimary} />
+            <Text variant="bodyLarge">{isGuest ? 'Create account' : 'Account'}</Text>
+          </Pressable>
+        </Dialog.Content>
+      </Dialog>
+    </Portal>
+  );
+
+  const pushConfirmDialog = (
+    <Portal>
+      <Dialog visible={pushConfirmVisible} onDismiss={() => setPushConfirmVisible(false)}>
+        <Dialog.Title>Update MyAnimeList?</Dialog.Title>
+        <Dialog.Content>
+          <Text variant="bodyMedium">
+            {pushTargetCount === 0
+              ? 'Nothing to update — no Plan to watch, Watched, or Currently watching shows to push.'
+              : `This will update ${pushTargetCount} entr${pushTargetCount === 1 ? 'y' : 'ies'} on your real MyAnimeList account, to match your Plan to watch, Watched, and Currently watching shows here. Dropped and Watched-forgot shows are left alone.`}
+          </Text>
+        </Dialog.Content>
+        <Dialog.Actions>
+          <Button onPress={() => setPushConfirmVisible(false)}>Cancel</Button>
+          <Button onPress={handlePushToMal} disabled={pushTargetCount === 0}>
+            Update
+          </Button>
+        </Dialog.Actions>
+      </Dialog>
+    </Portal>
+  );
+
+  if (isWideWeb) {
+    return (
+      <View style={styles.webContainer}>
+        <View style={styles.webHeader}>
+          <AtLogoMark size={34} />
+          <Text style={styles.webHeaderTitle}>Library</Text>
+          <Searchbar
+            placeholder="Search your library"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            style={styles.webSearchbar}
+            inputStyle={styles.searchbarInput}
+          />
+          {(syncing || pushing) && <ActivityIndicator style={styles.headerSpinner} />}
+          <Text style={styles.webHeaderCount}>
+            {seriesList.length} series · {seriesList.reduce((n, s) => n + s.entries.filter((e) => e.watchState === 'WATCHED').length, 0)} entries watched
+          </Text>
+          <IconButton icon="dots-vertical" onPress={() => setMoreMenuVisible(true)} />
+        </View>
+        <View style={styles.webBody}>
+          <ScrollView style={styles.webFilterColumn} contentContainerStyle={styles.webFilterColumnContent}>
+            <Text style={styles.webFilterHeading}>STATUS</Text>
+            {STATUS_FILTERS.map((f) => {
+              const active = statusFilter === f.value;
+              return (
+                <Pressable
+                  key={f.value}
+                  onPress={() => setStatusFilter(f.value)}
+                  style={[styles.webFilterRow, active && styles.webFilterRowActive]}
+                >
+                  <View
+                    style={[
+                      styles.webFilterDot,
+                      { backgroundColor: f.value === 'ALL' ? colors.checkboxUnchecked : statusDotColor(f.value as SeriesStatus['kind']) },
+                    ]}
+                  />
+                  <Text style={[styles.webFilterLabel, { color: active ? colors.textPrimary : colors.textMuted }]}>{f.label}</Text>
+                  <Text style={styles.webFilterCount}>{filterCounts[f.value] ?? 0}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+          <ScrollView style={styles.webGrid} contentContainerStyle={styles.webGridContent}>
+            {filteredList.length === 0 ? (
+              <View style={styles.empty}>
+                <Text variant="bodyLarge">
+                  {seriesList.length === 0 ? 'Nothing here yet' : 'No series match your search/filter'}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.webGridRow}>
+                {filteredList.map((item) => (
+                  <LibraryGridCard key={item.id} series={item} onPress={() => router.push(`/series/${item.id}`)} />
+                ))}
+              </View>
+            )}
+          </ScrollView>
+        </View>
+        {moreMenu}
+        {pushConfirmDialog}
+        <MalAttribution />
+        <Snackbar visible={syncMessage !== null} onDismiss={() => setSyncMessage(null)} duration={4000} style={styles.webToast}>
+          {syncMessage}
+        </Snackbar>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -212,68 +355,8 @@ export default function LibraryScreen() {
               </View>
             }
           />
-      <Portal>
-        <Dialog visible={moreMenuVisible} onDismiss={() => setMoreMenuVisible(false)}>
-          <Dialog.Content style={styles.moreMenuContent}>
-            {/* Nothing to sync without MyAnimeList linked, so the refresh action is meaningless
-                (and runMonthlySync itself is a no-op) otherwise — hidden rather than shown-but-dead. */}
-            {malLinked && (
-              <Pressable style={styles.moreMenuRow} onPress={handleSync}>
-                <MaterialCommunityIcons name="refresh" size={22} color={colors.textPrimary} />
-                <Text variant="bodyLarge">Sync now</Text>
-              </Pressable>
-            )}
-            {/* The one write path in the app (CLAUDE.md §8) — never shown without MyAnimeList
-                linked, since there's nowhere to push to. Gated behind a confirm dialog, not a
-                direct tap: this edits the user's real MyAnimeList list. */}
-            {malLinked && (
-              <Pressable
-                style={styles.moreMenuRow}
-                onPress={() => {
-                  setMoreMenuVisible(false);
-                  setPushConfirmVisible(true);
-                }}
-              >
-                <MaterialCommunityIcons name="cloud-upload-outline" size={22} color={colors.textPrimary} />
-                <Text variant="bodyLarge">Update MyAnimeList</Text>
-              </Pressable>
-            )}
-            {/* Phase 7's app-account system — see app/onboarding/account.tsx, which is also where
-                signing out, converting a guest session to a real account, and linking MyAnimeList
-                (if not already linked) all live now. Reachable at every session state — a guest is
-                always signed in now (anonymous auth, see guestMode.ts), so there's no separate
-                "Log in" item to show only when signed out; Account itself branches on isGuest. */}
-            <Pressable
-              style={styles.moreMenuRow}
-              onPress={() => {
-                setMoreMenuVisible(false);
-                router.push('/onboarding/account');
-              }}
-            >
-              <MaterialCommunityIcons name="account-circle-outline" size={22} color={colors.textPrimary} />
-              <Text variant="bodyLarge">{isGuest ? 'Create account' : 'Account'}</Text>
-            </Pressable>
-          </Dialog.Content>
-        </Dialog>
-      </Portal>
-      <Portal>
-        <Dialog visible={pushConfirmVisible} onDismiss={() => setPushConfirmVisible(false)}>
-          <Dialog.Title>Update MyAnimeList?</Dialog.Title>
-          <Dialog.Content>
-            <Text variant="bodyMedium">
-              {pushTargetCount === 0
-                ? 'Nothing to update — no Plan to watch, Watched, or Currently watching shows to push.'
-                : `This will update ${pushTargetCount} entr${pushTargetCount === 1 ? 'y' : 'ies'} on your real MyAnimeList account, to match your Plan to watch, Watched, and Currently watching shows here. Dropped and Watched-forgot shows are left alone.`}
-            </Text>
-          </Dialog.Content>
-          <Dialog.Actions>
-            <Button onPress={() => setPushConfirmVisible(false)}>Cancel</Button>
-            <Button onPress={handlePushToMal} disabled={pushTargetCount === 0}>
-              Update
-            </Button>
-          </Dialog.Actions>
-        </Dialog>
-      </Portal>
+      {moreMenu}
+      {pushConfirmDialog}
       <MalAttribution />
       <Snackbar visible={syncMessage !== null} onDismiss={() => setSyncMessage(null)} duration={4000}>
         {syncMessage}
@@ -304,6 +387,31 @@ function SeriesRow({ series, onPress }: { series: Series; onPress: () => void })
         )}
       </View>
       <MaterialCommunityIcons name="chevron-right" size={22} color={colors.textFaint} />
+    </Pressable>
+  );
+}
+
+/** Wide-web poster-card grid tile — cover, title, status dot + label, matching the design doc's
+ * Library grid card. Same data/onPress as SeriesRow above, just a different shape. */
+function LibraryGridCard({ series, onPress }: { series: Series; onPress: () => void }) {
+  const isNew = hasVisibleNewSeasonAlert(series);
+  return (
+    <Pressable style={styles.gridCard} onPress={onPress}>
+      <View style={styles.gridCoverWrap}>
+        <Image source={series.coverUrl ?? undefined} style={styles.gridCover} contentFit="cover" />
+        {isNew && (
+          <View style={styles.gridNewBadge}>
+            <Text style={styles.gridNewBadgeText}>NEW SEASON</Text>
+          </View>
+        )}
+      </View>
+      <SeriesTitleText numberOfLines={1} style={styles.gridCardTitle}>
+        {series.title}
+      </SeriesTitleText>
+      <View style={styles.statusRow}>
+        <View style={[styles.statusDot, { backgroundColor: statusDotColor(series.status.kind) }]} />
+        <Text style={styles.gridCardStatus}>{statusLabel(series.status)}</Text>
+      </View>
     </Pressable>
   );
 }
@@ -343,4 +451,31 @@ const styles = StyleSheet.create({
   newBadge: { alignSelf: 'flex-start', backgroundColor: colors.amberTint, height: 24 },
   newBadgeText: { fontFamily: fontFamilies.bodySemiBold, color: colors.amber, fontSize: 11, lineHeight: 14 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80 },
+
+  // --- Wide web ---
+  webContainer: { flex: 1, backgroundColor: colors.background },
+  webHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: 32, paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: colors.border },
+  webHeaderTitle: { fontFamily: fontFamilies.webSerifBold, fontSize: 24, color: colors.textPrimary },
+  webSearchbar: { flex: 1, maxWidth: 440, borderRadius: radii.pill, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, elevation: 0, height: 42 },
+  webHeaderCount: { fontFamily: fontFamilies.bodyMedium, fontSize: 13, color: colors.textMuted },
+  webBody: { flex: 1, flexDirection: 'row' },
+  webFilterColumn: { width: 200, flexShrink: 0, borderRightWidth: 1, borderRightColor: colors.border },
+  webFilterColumnContent: { padding: spacing.lg, gap: 2 },
+  webFilterHeading: { fontFamily: fontFamilies.bodySemiBold, fontSize: 11, letterSpacing: 1.4, color: colors.textFaint, marginBottom: spacing.sm },
+  webFilterRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 36, paddingHorizontal: 10, borderRadius: radii.sm },
+  webFilterRowActive: { backgroundColor: '#EEF3F8' },
+  webFilterDot: { width: 7, height: 7, borderRadius: 4, flexShrink: 0 },
+  webFilterLabel: { flex: 1, fontFamily: fontFamilies.bodyMedium, fontSize: 13.5 },
+  webFilterCount: { fontFamily: fontFamilies.bodySemiBold, fontSize: 12, color: colors.textFaint },
+  webGrid: { flex: 1 },
+  webGridContent: { padding: 28 },
+  webGridRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 22 },
+  gridCard: { width: 184 },
+  gridCoverWrap: { aspectRatio: 3 / 4, borderRadius: radii.lg, backgroundColor: colors.border, overflow: 'hidden' },
+  gridCover: { width: '100%', height: '100%' },
+  gridNewBadge: { position: 'absolute', top: 10, left: 10, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 6, backgroundColor: colors.primary },
+  gridNewBadgeText: { fontFamily: fontFamilies.bodyBold, fontSize: 10, letterSpacing: 0.4, color: '#fff' },
+  gridCardTitle: { fontSize: 14.5, marginTop: 11, color: colors.textPrimary },
+  gridCardStatus: { fontFamily: fontFamilies.bodySemiBold, fontSize: 12.5, color: colors.textMuted },
+  webToast: { alignSelf: 'center', borderRadius: radii.lg, backgroundColor: colors.primaryDark },
 });

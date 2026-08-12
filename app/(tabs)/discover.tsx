@@ -19,6 +19,7 @@ import {
 import { currentSeason, nextSeason } from '@/domain/seasonTiming';
 import { colors, spacing } from '@/theme/colors';
 import { fontFamilies } from '@/theme/fonts';
+import { useIsWideWeb } from '@/hooks/useWebLayout';
 import type { ManualStatus } from '@/domain/types';
 import type { ReconcileSeries } from '@/domain/reconcileSeries';
 
@@ -33,6 +34,7 @@ type Section = { key: string; label: string; query: DiscoverQuery };
 
 export default function DiscoverScreen() {
   const router = useRouter();
+  const isWideWeb = useIsWideWeb();
   const [searchText, setSearchText] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState('');
   const [expanded, setExpanded] = useState<Section | null>(null);
@@ -63,12 +65,12 @@ export default function DiscoverScreen() {
   const showingSearch = submittedQuery.length > 0;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, isWideWeb && styles.webContainer]}>
       {/* Tabs.Screen (see app/(tabs)/_layout.tsx) has headerShown:false, so — unlike the old
           Stack-nested version of this screen — there's no native header to set a title on
           anymore; this row replaces it. */}
-      <View style={styles.header}>
-        <Text variant="headlineSmall" style={styles.headerTitle}>
+      <View style={[styles.header, isWideWeb && styles.webHeader]}>
+        <Text variant="headlineSmall" style={[styles.headerTitle, isWideWeb && styles.webHeaderTitle]}>
           Discover
         </Text>
       </View>
@@ -78,7 +80,7 @@ export default function DiscoverScreen() {
         onChangeText={setSearchText}
         onSubmitEditing={() => setSubmittedQuery(searchText.trim())}
         onClearIconPress={() => setSubmittedQuery('')}
-        style={styles.searchbar}
+        style={[styles.searchbar, isWideWeb && styles.webSearchbar]}
       />
 
       {showingSearch ? (
@@ -107,6 +109,7 @@ export default function DiscoverScreen() {
         <FlatList
           data={sections}
           keyExtractor={(s) => s.key}
+          contentContainerStyle={isWideWeb ? styles.webSectionList : undefined}
           renderItem={({ item }) => <SectionRow section={item} onViewAll={() => setExpanded(item)} onAdd={setPendingAdd} />}
         />
       )}
@@ -118,13 +121,16 @@ export default function DiscoverScreen() {
 }
 
 function SectionRow({ section, onViewAll, onAdd }: { section: Section; onViewAll: () => void; onAdd: (s: ReconcileSeries) => void }) {
+  const isWideWeb = useIsWideWeb();
   const [state, retry] = useDiscoverResults(section.query, PREVIEW_FETCH_COUNT);
   const preview = state.kind === 'READY' ? state.series.slice(0, PREVIEW_COUNT) : [];
 
   return (
-    <View style={styles.section}>
-      <View style={styles.sectionHeader}>
-        <Text variant="titleMedium">{section.label}</Text>
+    <View style={[styles.section, isWideWeb && styles.webSection]}>
+      <View style={[styles.sectionHeader, isWideWeb && styles.webSectionHeader]}>
+        <Text variant="titleMedium" style={[isWideWeb && styles.webSectionTitle]}>
+          {section.label}
+        </Text>
         <Pressable onPress={onViewAll}>
           <Text variant="labelLarge" style={styles.viewAll}>
             View All
@@ -143,7 +149,7 @@ function SectionRow({ section, onViewAll, onAdd }: { section: Section; onViewAll
           data={preview}
           horizontal
           keyExtractor={(s) => String(s.rootMalId)}
-          contentContainerStyle={styles.sectionList}
+          contentContainerStyle={[styles.sectionList, isWideWeb && styles.webSectionList2]}
           renderItem={({ item }) => <PosterTile series={item} onPress={() => onAdd(item)} />}
         />
       )}
@@ -167,6 +173,7 @@ function ResultsGrid({
   onEndReached?: () => void;
   loadingMore?: boolean;
 }) {
+  const isWideWeb = useIsWideWeb();
   if (state.kind === 'LOADING') {
     return (
       <View style={styles.center}>
@@ -194,12 +201,17 @@ function ResultsGrid({
       </View>
     );
   }
+  // Wide web gets a denser grid to match the design doc's bigger canvas — same data/paging, just
+  // more columns. numColumns must stay a fixed number (FlatList requirement), so this is a coarse
+  // step rather than true CSS auto-fill, but it tracks the isWideWeb breakpoint closely enough.
+  const numColumns = isWideWeb ? 6 : 3;
   return (
     <FlatList
       data={state.series}
-      numColumns={3}
+      numColumns={numColumns}
+      key={numColumns}
       keyExtractor={(s) => String(s.rootMalId)}
-      contentContainerStyle={styles.grid}
+      contentContainerStyle={[styles.grid, isWideWeb && styles.webGrid]}
       renderItem={({ item }) => <PosterTile series={item} onPress={() => onAdd(item)} />}
       onEndReached={onEndReached}
       // Default is 2 screens ahead, which fires almost immediately on a short grid and pulls
@@ -226,4 +238,16 @@ const styles = StyleSheet.create({
   viewAll: { color: colors.primary },
   grid: { padding: 8 },
   footerLoading: { paddingVertical: 16 },
+
+  // --- Wide web ---
+  webContainer: { paddingHorizontal: 24 },
+  webHeader: { paddingTop: 22 },
+  webHeaderTitle: { fontFamily: fontFamilies.webSerifBold, fontSize: 26, color: colors.textPrimary },
+  webSearchbar: { maxWidth: 480, marginLeft: 0, height: 44 },
+  webSectionList: { paddingTop: 8 },
+  webSection: { paddingBottom: 22 },
+  webSectionHeader: { paddingHorizontal: 4 },
+  webSectionTitle: { fontFamily: fontFamilies.bodyBold, fontSize: 17 },
+  webSectionList2: { paddingHorizontal: 4, gap: 18 },
+  webGrid: { padding: 4, gap: 18 },
 });

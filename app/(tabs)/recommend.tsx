@@ -11,6 +11,11 @@
 // scroll: with a large library the catch-up list runs long enough that the recommendations below
 // it were effectively hidden, and conflating "seasons you skipped" with "shows you've never seen"
 // blurs the distinction the two lists exist to draw in the first place.
+//
+// Wide web (see useWebLayout.ts) reshapes both lists from vertical rows into horizontal card rows
+// (Catch up inside a tinted band) to match the "AnimeTracker Web" design doc — same
+// catchUpSections/ForYouList data and handlers as the mobile branch, just a different scroll
+// direction and card shape. See the isWideWeb branches below.
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
@@ -35,6 +40,7 @@ import { splitCatchUpByKind, splitRecommendationsByType, type CatchUpItem } from
 import type { ReconcileSeries } from '@/domain/reconcileSeries';
 import { colors, spacing } from '@/theme/colors';
 import { fontFamilies } from '@/theme/fonts';
+import { useIsWideWeb } from '@/hooks/useWebLayout';
 
 type ScreenState =
   | { kind: 'LOADING'; message: string }
@@ -62,6 +68,7 @@ export default function RecommendScreen() {
   // The screen paints its own background so the sticky section headers below can match it exactly.
   // Left to the navigator's default, the header band reads as a lighter stripe over a greyer page.
   const theme = useTheme();
+  const isWideWeb = useIsWideWeb();
   const catchUp = useCatchUp();
   const [state, setState] = useState<ScreenState>({ kind: 'LOADING', message: 'Loading...' });
   const [tab, setTab] = useState<Tab>('CATCH_UP');
@@ -169,12 +176,12 @@ export default function RecommendScreen() {
   ]);
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <View style={[styles.container, { backgroundColor: theme.colors.background }, isWideWeb && styles.webContainer]}>
       {/* Tabs.Screen (see app/(tabs)/_layout.tsx) has headerShown:false, so — unlike the old
           Stack-nested version of this screen — there's no native header to hang the refresh
           action on anymore; this row replaces it. */}
-      <View style={styles.header}>
-        <Text variant="headlineSmall" style={styles.headerTitle}>
+      <View style={[styles.header, isWideWeb && styles.webHeader]}>
+        <Text variant="headlineSmall" style={[styles.headerTitle, isWideWeb && styles.webHeaderTitle]}>
           For you
         </Text>
         {state.kind === 'LOADING' ? (
@@ -257,26 +264,34 @@ export default function RecommendScreen() {
       </Portal>
 
       {tab === 'CATCH_UP' ? (
-        <SectionList
-          sections={catchUpSections}
-          keyExtractor={(item) => String(item.entry.id)}
-          contentContainerStyle={styles.list}
-          // Not RN's default on Android. Without it the group heading scrolls away and a long
-          // backlog gives no way to tell which section you're looking at — which would defeat the
-          // point of splitting the list at all.
-          stickySectionHeadersEnabled
-          renderSectionHeader={({ section }) => <SectionHeader title={section.title} />}
-          renderItem={({ item }) => <CatchUpCard item={item} onPress={() => router.push(`/series/${item.series.id}`)} />}
-          ListEmptyComponent={
-            <View style={styles.center}>
-              <Text variant="bodyLarge">
-                {catchUp.length === 0
-                  ? "Nothing to catch up on — you're all caught up!"
-                  : 'Nothing to catch up on in this genre'}
-              </Text>
-            </View>
-          }
-        />
+        isWideWeb ? (
+          <WebCatchUpSections
+            sections={catchUpSections}
+            empty={catchUp.length === 0}
+            onPress={(item) => router.push(`/series/${item.series.id}`)}
+          />
+        ) : (
+          <SectionList
+            sections={catchUpSections}
+            keyExtractor={(item) => String(item.entry.id)}
+            contentContainerStyle={styles.list}
+            // Not RN's default on Android. Without it the group heading scrolls away and a long
+            // backlog gives no way to tell which section you're looking at — which would defeat the
+            // point of splitting the list at all.
+            stickySectionHeadersEnabled
+            renderSectionHeader={({ section }) => <SectionHeader title={section.title} />}
+            renderItem={({ item }) => <CatchUpCard item={item} onPress={() => router.push(`/series/${item.series.id}`)} />}
+            ListEmptyComponent={
+              <View style={styles.center}>
+                <Text variant="bodyLarge">
+                  {catchUp.length === 0
+                    ? "Nothing to catch up on — you're all caught up!"
+                    : 'Nothing to catch up on in this genre'}
+                </Text>
+              </View>
+            }
+          />
+        )
       ) : (
         <ForYouList
           state={state}
@@ -284,6 +299,7 @@ export default function RecommendScreen() {
           genreFiltered={recommended.length > 0 && filteredRecommended.length === 0}
           onRetry={load}
           onPressCard={openPreview}
+          isWideWeb={isWideWeb}
         />
       )}
 
@@ -378,18 +394,115 @@ function RecommendationCard({ series, onPress }: { series: ReconcileSeries; onPr
   );
 }
 
+/** Wide-web Catch up band — same catchUpSections data as the mobile SectionList, reshaped into the
+ * design doc's tinted band + horizontal card rows (one row per non-empty Seasons/Movies section). */
+function WebCatchUpSections({
+  sections,
+  empty,
+  onPress,
+}: {
+  sections: { title: string; data: CatchUpItem[] }[];
+  empty: boolean;
+  onPress: (item: CatchUpItem) => void;
+}) {
+  if (sections.length === 0) {
+    return (
+      <View style={styles.center}>
+        <Text variant="bodyLarge">{empty ? "Nothing to catch up on — you're all caught up!" : 'Nothing to catch up on in this genre'}</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.webCatchUpBand}>
+      <Text style={styles.webBandTitle}>Catch up</Text>
+      <Text style={styles.webBandSubtitle}>Seasons and movies waiting in shows you've already started.</Text>
+      {sections.map((section) => (
+        <View key={section.title} style={styles.webBandSection}>
+          <Text style={styles.webBandSectionLabel}>{section.title}</Text>
+          <FlatList
+            data={section.data}
+            horizontal
+            keyExtractor={(item) => String(item.entry.id)}
+            contentContainerStyle={styles.webCardRowContent}
+            renderItem={({ item }) => (
+              <WebRecCard
+                coverUrl={item.series.coverUrl}
+                title={item.series.title}
+                meta={item.entry.title}
+                onPress={() => onPress(item)}
+              />
+            )}
+          />
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** Wide-web "For you" sections — same Series/Movies split as ForYouList's SectionList, reshaped
+ * into horizontal card rows per section, matching the design doc's recommendation rows. */
+function WebForYouSections({ series, onPress }: { series: ReconcileSeries[]; onPress: (s: ReconcileSeries) => void }) {
+  const split = splitRecommendationsByType(series);
+  const sections = nonEmptySections([
+    { title: 'Series', data: split.shows },
+    { title: 'Movies', data: split.movies },
+  ]);
+  return (
+    <View style={styles.webForYouSections}>
+      {sections.map((section) => (
+        <View key={section.title} style={styles.webBandSection}>
+          <Text style={styles.webBandSectionLabel}>{section.title}</Text>
+          <FlatList
+            data={section.data}
+            horizontal
+            keyExtractor={(s) => String(s.rootMalId)}
+            contentContainerStyle={styles.webCardRowContent}
+            renderItem={({ item }) => (
+              <WebRecCard
+                coverUrl={item.coverUrl}
+                title={item.title}
+                meta={item.rating != null ? `★ ${item.rating.toFixed(2)}` : undefined}
+                onPress={() => onPress(item)}
+              />
+            )}
+          />
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** Shared wide-web poster card for both Catch up and For you rows — cover, title, one meta line. */
+function WebRecCard({ coverUrl, title, meta, onPress }: { coverUrl: string | null; title: string; meta?: string; onPress: () => void }) {
+  return (
+    <Card style={styles.webCard} onPress={onPress}>
+      <Image source={coverUrl ?? undefined} style={styles.webCardCover} contentFit="cover" />
+      <SeriesTitleText numberOfLines={2} style={styles.webCardTitle}>
+        {title}
+      </SeriesTitleText>
+      {meta != null && (
+        <Text numberOfLines={1} style={styles.muted}>
+          {meta}
+        </Text>
+      )}
+    </Card>
+  );
+}
+
 function ForYouList({
   state,
   series,
   genreFiltered,
   onRetry,
   onPressCard,
+  isWideWeb,
 }: {
   state: ScreenState;
   series: ReconcileSeries[];
   genreFiltered: boolean;
   onRetry: () => void;
   onPressCard: (s: ReconcileSeries) => void;
+  isWideWeb: boolean;
 }) {
   if (state.kind === 'LOADING') {
     return (
@@ -410,6 +523,18 @@ function ForYouList({
         </Button>
       </View>
     );
+  }
+  if (isWideWeb) {
+    if (series.length === 0) {
+      return (
+        <View style={styles.center}>
+          <Text variant="bodyLarge" style={styles.error}>
+            {genreFiltered ? 'No recommendations in this genre' : 'Watch (and like) a few more shows to get recommendations'}
+          </Text>
+        </View>
+      );
+    }
+    return <WebForYouSections series={series} onPress={onPressCard} />;
   }
   const split = splitRecommendationsByType(series);
   const sections = nonEmptySections([
@@ -459,4 +584,26 @@ const styles = StyleSheet.create({
   center: { alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
   headerSpinner: { marginHorizontal: 12 },
   error: { textAlign: 'center' },
+
+  // --- Wide web ---
+  webContainer: { paddingHorizontal: 24 },
+  webHeader: { paddingTop: 22 },
+  webHeaderTitle: { fontFamily: fontFamilies.webSerifBold, fontSize: 26, color: colors.textPrimary },
+  webCatchUpBand: {
+    marginTop: 20,
+    padding: 22,
+    borderRadius: 18,
+    backgroundColor: 'rgba(59,110,165,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(59,110,165,0.18)',
+  },
+  webBandTitle: { fontFamily: fontFamilies.bodyBold, fontSize: 16, color: colors.textPrimary },
+  webBandSubtitle: { fontFamily: fontFamilies.bodyRegular, fontSize: 13, color: colors.textMuted, marginTop: 4 },
+  webBandSection: { marginTop: 14 },
+  webBandSectionLabel: { fontFamily: fontFamilies.bodySemiBold, fontSize: 12, letterSpacing: 1, color: colors.textFaint, marginBottom: 8 },
+  webForYouSections: { marginTop: 8, paddingBottom: 12 },
+  webCardRowContent: { gap: 16, paddingBottom: 4 },
+  webCard: { width: 158, backgroundColor: 'transparent', elevation: 0, shadowOpacity: 0 },
+  webCardCover: { width: 158, height: 222, borderRadius: 14, backgroundColor: colors.border },
+  webCardTitle: { fontSize: 14, marginTop: 10 },
 });

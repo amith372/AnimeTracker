@@ -2,7 +2,11 @@
 // SeriesTitleText, src/components/SeriesTitleText.tsx), Plus Jakarta Sans for body/label/UI text.
 // A third font, Shippori Mincho (a Japanese mincho serif), was tried for titles per the original
 // design doc but its thin Latin companion glyphs read as hard to read on English titles, so it was
-// dropped in favor of a bolder Zen Kaku Gothic New weight instead — see SeriesTitleText.
+// dropped in favor of a bolder Zen Kaku Gothic New weight instead — see SeriesTitleText. It's back
+// as of the web-only design-doc reskin (see useWebLayout.ts), but only for web chrome-level
+// headlines (sidebar wordmark, page titles, Series Detail hero title on wide web) — never for
+// SeriesTitleText or anything native, so the legibility call above still stands there.
+import { Platform } from 'react-native';
 import {
   ZenKakuGothicNew_500Medium,
   ZenKakuGothicNew_700Bold,
@@ -14,6 +18,7 @@ import {
   PlusJakartaSans_600SemiBold,
   PlusJakartaSans_700Bold,
 } from '@expo-google-fonts/plus-jakarta-sans';
+import { ShipporiMincho_700Bold, ShipporiMincho_800ExtraBold } from '@expo-google-fonts/shippori-mincho';
 
 /** Passed straight to expo-font's useFonts() in app/_layout.tsx. */
 export const fontsToLoad = {
@@ -24,6 +29,9 @@ export const fontsToLoad = {
   PlusJakartaSans_500Medium,
   PlusJakartaSans_600SemiBold,
   PlusJakartaSans_700Bold,
+  // Web-only — keeps this out of the native bundle, matching "reskin web, don't touch the phone
+  // app" (see useWebLayout.ts).
+  ...(Platform.OS === 'web' ? { ShipporiMincho_700Bold, ShipporiMincho_800ExtraBold } : {}),
 };
 
 // Once loaded, a Google Font's family name (usable in a fontFamily style) is exactly its export
@@ -36,6 +44,9 @@ export const fontFamilies = {
   bodyMedium: 'PlusJakartaSans_500Medium',
   bodySemiBold: 'PlusJakartaSans_600SemiBold',
   bodyBold: 'PlusJakartaSans_700Bold',
+  // Web-only chrome headlines (see the import comment above) — do not use on native.
+  webSerifBold: 'ShipporiMincho_700Bold',
+  webSerifExtraBold: 'ShipporiMincho_800ExtraBold',
 } as const;
 
 /** react-native-paper's configureFonts({ config }) shape — one entry per MD3 typescale variant. */

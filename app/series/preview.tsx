@@ -19,9 +19,11 @@ import { MANUAL_STATUS_CHOICES } from '@/domain/statusLabel';
 import { numberEntriesByKind } from '@/domain/series';
 import { SeriesTitleText } from '@/components/SeriesTitleText';
 import { EntryImageDialog, type EntryImageTarget } from '@/components/EntryImageDialog';
+import { DetailHeroCard } from '@/components/web/DetailHeroCard';
 import { colors, radii, spacing } from '@/theme/colors';
 import { MANUAL_STATUS_CHIP_LABELS } from '@/theme/statusChipLabels';
 import { fontFamilies } from '@/theme/fonts';
+import { useIsWideWeb } from '@/hooks/useWebLayout';
 import type { ManualStatus } from '@/domain/types';
 import type { ReconcileEntry, ReconcileSeries } from '@/domain/reconcileSeries';
 
@@ -29,6 +31,7 @@ export default function SeriesPreviewScreen() {
   const { data } = useLocalSearchParams<{ data: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const isWideWeb = useIsWideWeb();
   // Handed the whole already-fetched ReconcileSeries as a route param rather than re-fetching by
   // id — the caller (Recommendations) already has it in memory from building the "For you" list.
   const series: ReconcileSeries = useMemo(() => JSON.parse(data), [data]);
@@ -64,6 +67,62 @@ export default function SeriesPreviewScreen() {
       setAdding(false);
       setAddError(e instanceof Error ? e.message : 'Could not add this show. Please try again.');
     }
+  }
+
+  if (isWideWeb) {
+    return (
+      <>
+      <DetailHeroCard
+        coverUrl={series.coverUrl}
+        title={series.title}
+        statusText={series.rating != null ? `★ ${series.rating.toFixed(2)}` : undefined}
+        genres={series.genres.join(' · ')}
+        onBack={() => router.back()}
+        topRight={<IconButton icon="information-outline" iconColor="#fff" accessibilityLabel="Show summary" onPress={openInfo} />}
+      >
+        <View style={styles.webEntriesColumn}>
+          {series.entries.length > 0 && <Text style={styles.webSectionLabel}>SEASONS &amp; MOVIES</Text>}
+          <View style={styles.webEntriesList}>
+            {numberEntriesByKind(series.entries).map((item) => (
+              <PreviewEntryRow
+                key={item.entry.malId}
+                entry={item.entry}
+                kindNumber={item.kindNumber}
+                onOpenInfo={() => setImagePopupEntry(item.entry)}
+              />
+            ))}
+          </View>
+        </View>
+        <View style={styles.webStatusColumn}>
+          <Text style={styles.webSectionLabel}>ADD AS</Text>
+          <View style={styles.webStatusChipList}>
+            {MANUAL_STATUS_CHOICES.map((choice) => (
+              <Pressable key={choice} disabled={adding} onPress={() => pickStatus(choice)} style={styles.webStatusChip}>
+                <Text style={styles.webStatusChipText}>{MANUAL_STATUS_CHIP_LABELS[choice]}</Text>
+              </Pressable>
+            ))}
+          </View>
+          {adding && <ActivityIndicator style={styles.webAddingSpinner} />}
+        </View>
+      </DetailHeroCard>
+      <EntryImageDialog entry={imagePopupEntry} onDismiss={() => setImagePopupEntry(null)} />
+      <Portal>
+        <Dialog visible={infoVisible} onDismiss={() => setInfoVisible(false)}>
+          <Dialog.Title>
+            <SeriesTitleText variant="titleLarge">{series.title}</SeriesTitleText>
+          </Dialog.Title>
+          <Dialog.ScrollArea style={styles.synopsisScrollArea}>
+            <ScrollView contentContainerStyle={styles.synopsisContent}>
+              {synopsisLoading ? <ActivityIndicator /> : <Text variant="bodyMedium">{synopsis}</Text>}
+            </ScrollView>
+          </Dialog.ScrollArea>
+        </Dialog>
+      </Portal>
+      <Snackbar visible={addError !== null} onDismiss={() => setAddError(null)} duration={4000} style={styles.webToast}>
+        {addError}
+      </Snackbar>
+      </>
+    );
   }
 
   return (
@@ -209,4 +268,15 @@ const styles = StyleSheet.create({
   airingBadgeText: { fontFamily: fontFamilies.bodyBold, color: colors.primary, fontSize: 9.5, letterSpacing: 0.5, lineHeight: 12 },
   synopsisScrollArea: { maxHeight: 360 },
   synopsisContent: { paddingVertical: spacing.sm },
+
+  // --- Wide web ---
+  webEntriesColumn: { flex: 1, minWidth: 0 },
+  webSectionLabel: { fontFamily: fontFamilies.bodySemiBold, fontSize: 11.5, letterSpacing: 1.4, color: colors.textFaint, marginBottom: 12 },
+  webEntriesList: { borderWidth: 1, borderColor: colors.border, borderRadius: radii.lg, overflow: 'hidden' },
+  webStatusColumn: { width: 240, flexShrink: 0 },
+  webStatusChipList: { gap: 7, marginTop: 12 },
+  webStatusChip: { minHeight: 42, justifyContent: 'center', paddingHorizontal: 16, borderRadius: radii.md - 1, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  webStatusChipText: { fontFamily: fontFamilies.bodySemiBold, fontSize: 13.5, color: colors.textMuted },
+  webAddingSpinner: { marginTop: 12 },
+  webToast: { alignSelf: 'center', borderRadius: radii.lg, backgroundColor: colors.primaryDark },
 });
