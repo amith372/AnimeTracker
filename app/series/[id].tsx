@@ -10,16 +10,19 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button, Chip, Dialog, IconButton, Portal, Snackbar, Text } from 'react-native-paper';
+import { ActivityIndicator, Button, Chip, Dialog, IconButton, Portal, Snackbar, Text } from 'react-native-paper';
 import {
   useSeries,
   deleteSeries,
+  refetchLibrary,
   setEntryWatchState,
   setArcWatched,
   setSeriesLiked,
   setSeriesManualStatus,
   clearNewSeasonAvailable,
 } from '@/repositories/AnimeRepository';
+import { userFacingMessage } from '@/repositories/errorMessage';
+import { LoadFailure } from '@/components/LoadFailure';
 import { MANUAL_STATUS_CHOICES, statusLabel } from '@/domain/statusLabel';
 import { hasVisibleNewSeasonAlert, numberEntriesByKind, seasonProgress, type Series, type SeriesEntry } from '@/domain/series';
 import { arcsForMalId, type Arc } from '@/domain/arcs';
@@ -29,6 +32,7 @@ import { SeriesTitleText } from '@/components/SeriesTitleText';
 import { SquareCheckbox } from '@/components/SquareCheckbox';
 import { EntryImageDialog } from '@/components/EntryImageDialog';
 import { DetailHeroCard } from '@/components/web/DetailHeroCard';
+import { WebShell } from '@/components/web/WebShell';
 import { colors, radii, spacing } from '@/theme/colors';
 import { dialogStyle } from '@/theme/dialog';
 import { statusDotColor } from '@/theme/statusColors';
@@ -50,7 +54,7 @@ const EDITABLE_STATUS_CHOICES: ManualStatus[] = [...MANUAL_STATUS_CHOICES, 'NONE
 
 export default function SeriesDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const series = useSeries(id);
+  const { series, isLoading: libraryLoading, error: libraryError } = useSeries(id);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const isWideWeb = useIsWideWeb();
@@ -83,7 +87,7 @@ export default function SeriesDetailScreen() {
   // so it rolls back on its own, but the user still needs to be told why their tap didn't stick).
   // Wraps the fire-and-forget writes below rather than making every onPress an async handler.
   function runWrite(write: () => Promise<void>) {
-    write().catch((e) => setErrorMessage(e instanceof Error ? e.message : 'Something went wrong'));
+    write().catch((e) => setErrorMessage(userFacingMessage(e, "That didn't save — your change was undone.")));
   }
 
   // "New season!" is a nudge to come look, not a persistent status — opening the series it's
@@ -95,10 +99,34 @@ export default function SeriesDetailScreen() {
     if (series?.newSeasonAvailable) clearNewSeasonAvailable(series.id).catch(() => {});
   }, [series?.id, series?.newSeasonAvailable]);
 
+  // Three genuinely different reasons there's no series to show, which all used to render the same
+  // "Not found" dead end — with no back button, on a screen that has no tab bar of its own.
+  if (libraryLoading) {
+    return (
+      <View style={styles.empty}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
+  if (libraryError) {
+    return (
+      <LoadFailure
+        message={userFacingMessage(libraryError, "Couldn't load this show.")}
+        onRetry={() => refetchLibrary()}
+        secondaryLabel="Back to library"
+        onSecondary={() => router.back()}
+      />
+    );
+  }
   if (!series) {
     return (
       <View style={styles.empty}>
-        <Text variant="bodyLarge">Not found</Text>
+        <Text variant="bodyLarge" style={styles.emptyText}>
+          This show isn&apos;t in your library.
+        </Text>
+        <Button mode="contained" buttonColor={colors.primary} onPress={() => router.back()}>
+          Back to library
+        </Button>
       </View>
     );
   }
@@ -155,7 +183,7 @@ export default function SeriesDetailScreen() {
 
   if (isWideWeb) {
     return (
-      <>
+      <WebShell>
       <DetailHeroCard
         coverUrl={series.coverUrl}
         title={series.title}
@@ -234,7 +262,7 @@ export default function SeriesDetailScreen() {
       <Snackbar visible={errorMessage !== null} onDismiss={() => setErrorMessage(null)} duration={4000} style={styles.webToast}>
         {errorMessage}
       </Snackbar>
-      </>
+      </WebShell>
     );
   }
 
@@ -491,7 +519,8 @@ const styles = StyleSheet.create({
   // Struck through rather than hidden — a skipped season still belongs in the list, it just
   // shouldn't read as something outstanding.
   wontWatchTitle: { textDecorationLine: 'line-through', color: colors.textFaint },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.lg, padding: spacing.xl, backgroundColor: colors.background },
+  emptyText: { textAlign: 'center', color: colors.textPrimary },
 
   // --- Wide web ---
   webEntriesColumn: { flex: 1, minWidth: 0 },

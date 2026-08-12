@@ -17,6 +17,7 @@ import type { ManualStatus, WatchState } from '@/domain/types';
 import type { Series } from '@/domain/series';
 import type { ReconcileSeries } from '@/domain/reconcileSeries';
 import { libraryKeys, queryClient } from './queryClient';
+import { UserFacingError } from './errorMessage';
 import {
   ENTRY_COLUMNS,
   SERIES_COLUMNS,
@@ -43,7 +44,7 @@ async function currentUserId(): Promise<string | null> {
  * guest's normal "nothing to show" state. Defense-in-depth behind the UI's own sign-in gates. */
 async function requireUserId(): Promise<string> {
   const userId = await currentUserId();
-  if (!userId) throw new Error('Sign in to track shows.');
+  if (!userId) throw new UserFacingError('Sign in to track shows.');
   return userId;
 }
 
@@ -77,16 +78,31 @@ export function useLibrary(): { series: Series[]; isLoading: boolean; error: Err
 }
 
 /** Reactive whole-library read for callers that don't need to distinguish "loading" from "empty"
- * (Catch up, tracked-id filtering) — see useLibrary for the one screen that does need to. */
+ * (tracked-id filtering) — see useLibrary for the screens that do need to. */
 export function useAllSeries(): Series[] {
   return useLibrary().series;
 }
 
-/** Reactive read of one series by id, for the Detail screen — selects out of the same cached
- * library query useLibrary/useAllSeries use, rather than a separate network round trip. */
-export function useSeries(id: string): Series | null {
-  const series = useAllSeries();
-  return series.find((s) => s.id === id) ?? null;
+/**
+ * Reactive read of one series by id, for the Detail screen — selects out of the same cached
+ * library query useLibrary/useAllSeries use, rather than a separate network round trip.
+ *
+ * Reports loading and error alongside the series rather than collapsing all three into `null`:
+ * a failed library read made this return null, which the screen rendered as "Not found" — telling
+ * the user the show had been deleted when the network had merely dropped.
+ */
+export function useSeries(id: string): { series: Series | null; isLoading: boolean; error: Error | null } {
+  const { series, isLoading, error } = useLibrary();
+  return { series: series.find((s) => s.id === id) ?? null, isLoading, error };
+}
+
+/** Forces a fresh read of the library — what the retry affordance on a failed read calls. Exported
+ * rather than having screens reach into queryClient/libraryKeys themselves, so the key stays owned
+ * by this module. */
+export async function refetchLibrary(): Promise<void> {
+  const userId = await currentUserId();
+  if (!userId) return;
+  await queryClient.invalidateQueries({ queryKey: libraryKeys.library(userId) });
 }
 
 /** One-shot read for non-component contexts (Recommendations, Push to MAL). Reuses the cached
@@ -284,7 +300,7 @@ export async function addSeries(item: ReconcileSeries): Promise<string> {
   if (error) {
     // unique(user_id, root_mal_id) — the show is already tracked. Surface a message worth showing
     // rather than a raw Postgres error code.
-    if (error.code === '23505') throw new Error('This show is already in your library.');
+    if (error.code === '23505') throw new UserFacingError('This show is already in your library.');
     throw error;
   }
   await queryClient.invalidateQueries({ queryKey: libraryKeys.library(userId) });

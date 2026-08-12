@@ -3,8 +3,8 @@
 // sectioned home view, a single expanded "View All" grid, or search results — switching between
 // them is just local state, so the poster tile and Add dialog only need to exist once.
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { BackHandler, FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Button, IconButton, Searchbar, Text } from 'react-native-paper';
 import { AddSeriesDialog } from '@/components/AddSeriesDialog';
 import { MalAttribution } from '@/components/MalAttribution';
@@ -63,6 +63,25 @@ export default function DiscoverScreen() {
   }
 
   const showingSearch = submittedQuery.length > 0;
+
+  // Search results and the expanded "View All" grid are local state, not routes (see this file's
+  // header comment) — so Android's system Back had nothing to pop and exited the whole tab from
+  // what looks and behaves like a sub-screen. This makes Back mean what the on-screen back
+  // affordance means, one layer at a time, and only while there's a layer to leave: returning
+  // false lets the event fall through to the navigator as usual.
+  useEffect(() => {
+    if (!showingSearch && !expanded) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (showingSearch) {
+        setSubmittedQuery('');
+        setSearchText('');
+        return true;
+      }
+      setExpanded(null);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [showingSearch, expanded]);
 
   return (
     <View style={[styles.container, isWideWeb && styles.webContainer]}>

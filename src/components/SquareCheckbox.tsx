@@ -20,6 +20,12 @@ export function SquareCheckbox({
       accessibilityRole="checkbox"
       accessibilityState={{ checked }}
       accessibilityLabel={accessibilityLabel}
+      // The 24px box is a visual spec, not a target size: on its own it's about a quarter of the
+      // area Material (48dp) and the HIG (44pt) require, for what is the app's primary verb — and
+      // this is the control a reconcile pass taps hundreds of times. hitSlop grows the touch area
+      // to 48x48 without touching the drawn box. It lives here rather than at each call site so
+      // Series Detail, the arc rows, and Reconcile all inherit it.
+      hitSlop={12}
       style={{
         width: 24,
         height: 24,

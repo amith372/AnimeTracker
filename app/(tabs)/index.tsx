@@ -22,7 +22,9 @@ import { ActivityIndicator, Button, Chip, Dialog, IconButton, Portal, Searchbar,
 import { useIsGuest } from '@/account/guestMode';
 import { useAccountSession } from '@/account/accountRepository';
 import { useMalLinkStatus } from '@/account/malLinkRepository';
-import { deleteSeries, useHasCompletedInitialImport, useLibrary } from '@/repositories/AnimeRepository';
+import { deleteSeries, refetchLibrary, useHasCompletedInitialImport, useLibrary } from '@/repositories/AnimeRepository';
+import { userFacingMessage } from '@/repositories/errorMessage';
+import { LoadFailure } from '@/components/LoadFailure';
 import { runMonthlySync } from '@/repositories/SyncRepository';
 import { pushStatusesToMal } from '@/repositories/MalPushRepository';
 import { MalAttribution } from '@/components/MalAttribution';
@@ -65,7 +67,7 @@ export default function LibraryScreen() {
   const isGuest = useIsGuest();
   const [malLinked] = useMalLinkStatus();
   const hasImported = useHasCompletedInitialImport();
-  const { series: seriesList, isLoading: libraryLoading } = useLibrary();
+  const { series: seriesList, isLoading: libraryLoading, error: libraryError } = useLibrary();
   const router = useRouter();
   const isWideWeb = useIsWideWeb();
   const [syncing, setSyncing] = useState(false);
@@ -132,7 +134,7 @@ export default function LibraryScreen() {
       const count = await runMonthlySync();
       setSyncMessage(count > 0 ? `${count} series have new seasons` : 'No new seasons found');
     } catch (e) {
-      setSyncMessage(e instanceof Error ? e.message : 'Sync failed');
+      setSyncMessage(userFacingMessage(e, "Couldn't check for new seasons. Try again."));
     } finally {
       setSyncing(false);
     }
@@ -153,7 +155,7 @@ export default function LibraryScreen() {
         );
       });
     } catch (e) {
-      setSyncMessage(e instanceof Error ? e.message : 'Failed to update MyAnimeList');
+      setSyncMessage(userFacingMessage(e, "Couldn't update MyAnimeList. Your list wasn't changed."));
     } finally {
       setPushing(false);
     }
@@ -196,6 +198,19 @@ export default function LibraryScreen() {
       </View>
     );
   }
+  // Before the empty state, not after it: a failed read leaves `seriesList` empty, so without this
+  // branch the screen renders "Nothing here yet" to someone with a full library — the single most
+  // alarming way to report a dropped connection (see the impeccable critique this came from).
+  if (libraryError) {
+    return (
+      <View style={styles.container}>
+        <LoadFailure
+          message={userFacingMessage(libraryError, "Couldn't load your library.")}
+          onRetry={() => refetchLibrary()}
+        />
+      </View>
+    );
+  }
 
   const moreMenu = (
     <Portal>
@@ -216,7 +231,7 @@ export default function LibraryScreen() {
               }}
             >
               <MaterialCommunityIcons name="playlist-plus" size={22} color={colors.textPrimary} />
-              <Text variant="bodyLarge">Check MyAnimeList for new shows</Text>
+              <Text variant="bodyLarge">Check for new shows</Text>
             </Pressable>
           )}
           {/* Nothing to sync without MyAnimeList linked, so the refresh action is meaningless
@@ -275,7 +290,7 @@ export default function LibraryScreen() {
       await deleteSeries(target.id);
       setSyncMessage(`Removed "${target.title}"`);
     } catch (e) {
-      setSyncMessage(e instanceof Error ? e.message : 'Could not remove that show');
+      setSyncMessage(userFacingMessage(e, `Couldn't remove "${target.title}". It's still in your library.`));
     }
   }
 

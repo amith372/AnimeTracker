@@ -198,6 +198,37 @@ describe('splitCatchUpByKind / splitRecommendationsByType', () => {
     expect(split.futureReleases.map((i) => i.entry.malId)).toEqual([2]);
   });
 
+  test('airingStatus alone marks a future release, even with an episode count published', () => {
+    // The real signal is MAL's own status field, not the zero-episode proxy this used to key off:
+    // MAL does publish a planned episode count for some announced-but-unaired entries, and those
+    // were landing in the backlog as if the user had skipped them.
+    const series = makeSeries({
+      status: PARTIAL,
+      entries: [
+        makeEntry({ id: '1', malId: 1, kind: 'TV_SEASON', watchState: 'WATCHED' }),
+        makeEntry({ id: '2', malId: 2, kind: 'TV_SEASON', orderIndex: 1, episodeCount: 12, airingStatus: 'NOT_YET_AIRED' }),
+      ],
+    });
+    const split = splitCatchUpByKind(getCatchUpEntries([series]));
+    expect(split.seasons).toHaveLength(0);
+    expect(split.futureReleases.map((i) => i.entry.malId)).toEqual([2]);
+  });
+
+  test('a currently-airing season with episodes out stays a backlog row', () => {
+    // The guard is NOT_YET_AIRED specifically, not "anything unfinished" — a season airing weekly
+    // has episodes to watch right now and belongs in Seasons.
+    const series = makeSeries({
+      status: PARTIAL,
+      entries: [
+        makeEntry({ id: '1', malId: 1, kind: 'TV_SEASON', watchState: 'WATCHED' }),
+        makeEntry({ id: '2', malId: 2, kind: 'TV_SEASON', orderIndex: 1, episodeCount: 6, airingStatus: 'AIRING' }),
+      ],
+    });
+    const split = splitCatchUpByKind(getCatchUpEntries([series]));
+    expect(split.seasons.map((i) => i.entry.malId)).toEqual([2]);
+    expect(split.futureReleases).toHaveLength(0);
+  });
+
   test('recommendations separate standalone movies from series', () => {
     const recommended = [
       { title: 'A Show', type: 'SERIES' },

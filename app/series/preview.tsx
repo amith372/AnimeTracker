@@ -21,6 +21,7 @@ import { AiringBadge } from '@/components/AiringBadge';
 import { SeriesTitleText } from '@/components/SeriesTitleText';
 import { EntryImageDialog, type EntryImageTarget } from '@/components/EntryImageDialog';
 import { DetailHeroCard } from '@/components/web/DetailHeroCard';
+import { WebShell } from '@/components/web/WebShell';
 import { colors, radii, spacing } from '@/theme/colors';
 import { ADD_CHOICE_CHIP_LABELS } from '@/theme/statusChipLabels';
 import { dialogStyle } from '@/theme/dialog';
@@ -72,7 +73,7 @@ export default function SeriesPreviewScreen() {
 
   if (isWideWeb) {
     return (
-      <>
+      <WebShell>
       <DetailHeroCard
         coverUrl={series.coverUrl}
         title={series.title}
@@ -122,7 +123,7 @@ export default function SeriesPreviewScreen() {
       <Snackbar visible={addError !== null} onDismiss={() => setAddError(null)} duration={4000} style={styles.webToast}>
         {addError}
       </Snackbar>
-      </>
+      </WebShell>
     );
   }
 

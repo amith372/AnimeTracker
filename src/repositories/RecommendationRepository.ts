@@ -20,7 +20,7 @@ import {
 } from '@/domain/recommendations';
 import type { ReconcileSeries } from '@/domain/reconcileSeries';
 import { fetchDetailsAndGroup, type DiscoverProgress } from './DiscoverRepository';
-import { getAllSeriesOnce, useAllSeries } from './AnimeRepository';
+import { getAllSeriesOnce, useLibrary } from './AnimeRepository';
 
 export type RecommendProgress =
   | { kind: 'FETCHING_SOURCES'; completed: number; total: number }
@@ -55,11 +55,18 @@ const MAX_RECOMMENDATIONS = 60;
 // repeat runs, but a cold one really does make ~80 calls.
 const MAX_CANDIDATE_DETAILS = 80;
 
-/** Reactive "Catch up" list — unwatched TV seasons inside Watched/Watched X/Y series. Purely
- * local, so unlike fetchRecommendations below this needs no progress reporting at all. */
-export function useCatchUp(): CatchUpItem[] {
-  const allSeries = useAllSeries();
-  return getCatchUpEntries(allSeries);
+/**
+ * Reactive "Catch up" list — unwatched TV seasons inside Watched/Watched X/Y series. Purely local
+ * (no MAL calls), so unlike fetchRecommendations below it needs no progress reporting.
+ *
+ * Passes the underlying library read's loading/error state through rather than just the items:
+ * derived from an empty list, "nothing to catch up on" and "the library read failed" are the same
+ * value, and the screen was rendering the failure as "you're all caught up!" — the most misleading
+ * possible reading of a network error.
+ */
+export function useCatchUp(): { items: CatchUpItem[]; isLoading: boolean; error: Error | null } {
+  const { series, isLoading, error } = useLibrary();
+  return { items: getCatchUpEntries(series), isLoading, error };
 }
 
 /** Runs the full MAL-based + genre-based recommendation pipeline and reports progress as it goes.

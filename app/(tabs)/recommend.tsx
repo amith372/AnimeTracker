@@ -35,11 +35,13 @@ import {
 } from 'react-native-paper';
 import { MalAttribution } from '@/components/MalAttribution';
 import { SeriesTitleText } from '@/components/SeriesTitleText';
-import { useTrackedMalIds } from '@/repositories/AnimeRepository';
+import { LoadFailure } from '@/components/LoadFailure';
+import { refetchLibrary, useTrackedMalIds } from '@/repositories/AnimeRepository';
+import { userFacingMessage } from '@/repositories/errorMessage';
 import { fetchRecommendations, useCatchUp, type RecommendProgress } from '@/repositories/RecommendationRepository';
 import { splitCatchUpByKind, splitRecommendationsByType, type CatchUpItem } from '@/domain/recommendations';
 import type { ReconcileSeries } from '@/domain/reconcileSeries';
-import { colors, spacing } from '@/theme/colors';
+import { colors, radii, spacing } from '@/theme/colors';
 import { dialogStyle } from '@/theme/dialog';
 import { fontFamilies } from '@/theme/fonts';
 import { useIsWideWeb } from '@/hooks/useWebLayout';
@@ -81,7 +83,7 @@ export default function RecommendScreen() {
   // Left to the navigator's default, the header band reads as a lighter stripe over a greyer page.
   const theme = useTheme();
   const isWideWeb = useIsWideWeb();
-  const catchUp = useCatchUp();
+  const { items: catchUp, isLoading: catchUpLoading, error: catchUpError } = useCatchUp();
   const [state, setState] = useState<ScreenState>({ kind: 'LOADING', message: 'Loading...' });
   const [tab, setTab] = useState<Tab>('CATCH_UP');
   // Empty selection means "no filter" (every genre matches) rather than "match nothing" — a
@@ -319,7 +321,19 @@ export default function RecommendScreen() {
         </Dialog>
       </Portal>
 
-      {tab === 'CATCH_UP' ? (
+      {/* Catch up is derived entirely from the library query, so it inherits that read's failure —
+          and an empty derived list would otherwise render as "you're all caught up!", which is a
+          cheerful lie about the user's own data when the real answer is a dropped connection. */}
+      {tab === 'CATCH_UP' && catchUpError ? (
+        <LoadFailure
+          message={userFacingMessage(catchUpError, "Couldn't load your library.")}
+          onRetry={() => refetchLibrary()}
+        />
+      ) : tab === 'CATCH_UP' && catchUpLoading ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" />
+        </View>
+      ) : tab === 'CATCH_UP' ? (
         isWideWeb ? (
           <WebCatchUpSections
             sections={catchUpSections}
@@ -456,8 +470,18 @@ function RecommendationCard({ series, onPress }: { series: ReconcileSeries; onPr
   );
 }
 
-/** Wide-web Catch up band — same catchUpSections data as the mobile SectionList, reshaped into the
- * design doc's tinted band + horizontal card rows (one row per non-empty Seasons/Movies section). */
+/**
+ * Wide-web Catch up band — same catchUpSections data as the mobile SectionList, reshaped into the
+ * design doc's tinted band, one wrapping card grid per non-empty Seasons/Movies section.
+ *
+ * These were horizontal rows on the theory that Catch up is always short enough to fit on one
+ * screen (at most two entries per series). A real library disproves that: the Movies row ran well
+ * past the window, cutting the last visible card in half and hiding the rest behind a sideways
+ * scroll gesture nobody makes on a desktop page — and react-native-web gives a horizontal FlatList
+ * no visible scrollbar to hint otherwise. Same reasoning, and now the same shape, as
+ * WebForYouSections below; the band scrolls vertically instead, which is the gesture the page
+ * already uses.
+ */
 function WebCatchUpSections({
   sections,
   empty,
@@ -475,29 +499,28 @@ function WebCatchUpSections({
     );
   }
   return (
-    <View style={styles.webCatchUpBand}>
-      <Text style={styles.webBandTitle}>Catch up</Text>
-      <Text style={styles.webBandSubtitle}>Seasons and movies waiting in shows you've already started.</Text>
-      {sections.map((section) => (
-        <View key={section.title} style={styles.webBandSection}>
-          <Text style={styles.webBandSectionLabel}>{section.title}</Text>
-          <FlatList
-            data={section.data}
-            horizontal
-            keyExtractor={(item) => String(item.entry.id)}
-            contentContainerStyle={styles.webCardRowContent}
-            renderItem={({ item }) => (
-              <WebRecCard
-                coverUrl={item.series.coverUrl}
-                title={item.series.title}
-                meta={item.entry.title}
-                onPress={() => onPress(item)}
-              />
-            )}
-          />
-        </View>
-      ))}
-    </View>
+    <ScrollView style={styles.webCatchUpScroll} contentContainerStyle={styles.webCatchUpScrollContent}>
+      <View style={styles.webCatchUpBand}>
+        <Text style={styles.webBandTitle}>Catch up</Text>
+        <Text style={styles.webBandSubtitle}>Seasons and movies waiting in shows you've already started.</Text>
+        {sections.map((section) => (
+          <View key={section.title} style={styles.webBandSection}>
+            <Text style={styles.webBandSectionLabel}>{section.title}</Text>
+            <View style={styles.webCardGrid}>
+              {section.data.map((item) => (
+                <WebRecCard
+                  key={String(item.entry.id)}
+                  coverUrl={item.series.coverUrl}
+                  title={item.series.title}
+                  meta={item.entry.title}
+                  onPress={() => onPress(item)}
+                />
+              ))}
+            </View>
+          </View>
+        ))}
+      </View>
+    </ScrollView>
   );
 }
 
@@ -660,6 +683,10 @@ const styles = StyleSheet.create({
   webContainer: { paddingHorizontal: 24 },
   webHeader: { paddingTop: 22 },
   webHeaderTitle: { fontFamily: fontFamilies.webSerifBold, fontSize: 26, color: colors.textPrimary },
+  webCatchUpScroll: { flex: 1 },
+  // The band used to sit flush against the bottom of the window with its last row half-cut. The
+  // padding is the same 24px breathing room webForYouSections already leaves below its own grid.
+  webCatchUpScrollContent: { paddingBottom: 24 },
   webCatchUpBand: {
     marginTop: 20,
     padding: 22,
@@ -677,10 +704,21 @@ const styles = StyleSheet.create({
   // Wraps to as many 158px cards as the window fits, rather than running off the right edge — see
   // WebForYouSections for why this list scrolls down and Catch up's still scrolls sideways.
   webCardGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
-  webCardRowContent: { gap: 16, paddingBottom: 4 },
-  // overflow:hidden + a self-width on the title keep a long show name inside the 158px column
-  // instead of spilling into the next card in the row.
-  webCard: { width: 158, backgroundColor: 'transparent', elevation: 0, shadowOpacity: 0, overflow: 'hidden' },
-  webCardCover: { width: 158, height: 222, borderRadius: 14, backgroundColor: colors.coverPlaceholder },
+  // overflow:hidden + a self-width on the title keep a long show name inside the column instead of
+  // spilling into the next card in the row.
+  //
+  // The 10px padding is what gives the title the same gutter the cover already had: the cover was
+  // inset by the card surface while the title sat flush against its left and right edges, so every
+  // show name read as clipped by the card it was in. Card width is the 158px cover column plus that
+  // gutter on both sides, so the cover keeps its exact size.
+  webCard: {
+    width: 158 + 20,
+    padding: 10,
+    backgroundColor: 'transparent',
+    elevation: 0,
+    shadowOpacity: 0,
+    overflow: 'hidden',
+  },
+  webCardCover: { width: '100%', height: 222, borderRadius: radii.md, backgroundColor: colors.coverPlaceholder },
   webCardTitle: { fontSize: 14, marginTop: 10, width: '100%' },
 });

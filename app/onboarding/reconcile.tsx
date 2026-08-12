@@ -9,13 +9,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { ActivityIndicator, Button, Snackbar, Text } from 'react-native-paper';
+import { ActivityIndicator, Button, Dialog, Portal, Snackbar, Text } from 'react-native-paper';
 import {
   addImportedSeries,
   markInitialImportComplete,
   markLastSync,
   replaceAllSeries,
+  useLibrary,
 } from '@/repositories/AnimeRepository';
+import { userFacingMessage } from '@/repositories/errorMessage';
 import { runAdditiveSync, runImport } from '@/repositories/ImportRepository';
 import { deriveSeriesStatus } from '@/domain/seriesStatus';
 import { statusLabel } from '@/domain/statusLabel';
@@ -23,6 +25,7 @@ import { SeriesTitleText } from '@/components/SeriesTitleText';
 import { SquareCheckbox } from '@/components/SquareCheckbox';
 import { GradientProgressBar } from '@/components/GradientProgressBar';
 import { colors, radii, spacing } from '@/theme/colors';
+import { dialogStyle } from '@/theme/dialog';
 import type { ReconcileEntry, ReconcileSeries } from '@/domain/reconcileSeries';
 
 type ScreenState =
@@ -35,6 +38,9 @@ type ScreenState =
 export default function ReconcileScreen() {
   const [state, setState] = useState<ScreenState>({ kind: 'FETCHING_LIST' });
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Confirming a *replace* — see replaceConfirmDialog. Only ever shown when there's an existing
+  // library to lose; a first-time import goes straight through.
+  const [replaceConfirmVisible, setReplaceConfirmVisible] = useState(false);
   const router = useRouter();
   // 'import' (onboarding, the default) fetches the whole MAL list and saves it as a full replace;
   // 'additive' fetches only shows added to MAL since, and inserts them alongside the existing
@@ -42,6 +48,10 @@ export default function ReconcileScreen() {
   // branch — is identical, which is why this is a mode rather than a second screen.
   const { mode } = useLocalSearchParams<{ mode?: string }>();
   const isAdditive = mode === 'additive';
+  // What's already in the library, purely so the confirm step can say what a replace would cost.
+  // Only meaningful in 'import' mode — the additive path never deletes anything.
+  const { series: existingLibrary } = useLibrary();
+  const replacesExistingLibrary = !isAdditive && existingLibrary.length > 0;
   // Which shows have their season list open. The list is a scan-and-correct task, not a
   // tick-everything one: a real library runs to hundreds of shows, and rendering every season of
   // every one at once buried the show titles in a wall of rows. Collapsed by default, keyed by
@@ -112,7 +122,15 @@ export default function ReconcileScreen() {
     });
   }
 
+  // The Confirm button's handler. Everything except an actual replace commits immediately; a
+  // replace stops for the dialog first — see replaceConfirmDialog for why.
+  function handleConfirmPress() {
+    if (replacesExistingLibrary) setReplaceConfirmVisible(true);
+    else confirm();
+  }
+
   async function confirm() {
+    setReplaceConfirmVisible(false);
     if (state.kind !== 'READY') return;
     const imported = state.series;
     setState({ kind: 'SAVING' });
@@ -140,7 +158,7 @@ export default function ReconcileScreen() {
       // keeps the user's ticks and makes Confirm retryable — replaceAllSeries is transactional, so
       // a failed attempt left the library untouched rather than half-written.
       setState({ kind: 'READY', series: imported });
-      setSaveError(e instanceof Error ? e.message : 'Could not save your library. Please try again.');
+      setSaveError(userFacingMessage(e, 'Could not save your library. Your ticks are still here — try again.'));
     }
   }
 
@@ -189,6 +207,33 @@ export default function ReconcileScreen() {
     );
   }
 
+  // Saving an import is a *replace*: replaceAllSeries wipes the whole library inside one
+  // transaction (see AnimeRepository). Harmless the first time, when there's nothing to lose — but
+  // on a re-run it silently destroys everything MAL can't give back: won't-watch marks, manual
+  // status overrides, and liked flags all live only here. That deserved at least the confirmation
+  // the (reversible, MAL-side) push already has, and had none.
+  const replaceConfirmDialog = (
+    <Portal>
+      <Dialog visible={replaceConfirmVisible} onDismiss={() => setReplaceConfirmVisible(false)} style={dialogStyle}>
+        <Dialog.Title>Replace your library?</Dialog.Title>
+        <Dialog.Content>
+          <Text variant="bodyMedium">
+            This replaces all {existingLibrary.length} shows in your library with the{' '}
+            {state.kind === 'READY' ? state.series.length : 0} above. Anything MyAnimeList doesn&apos;t know
+            about — seasons you marked &quot;won&apos;t watch&quot;, statuses you set yourself, and shows you
+            liked — is lost and can&apos;t be brought back. Your MyAnimeList account isn&apos;t touched.
+          </Text>
+        </Dialog.Content>
+        <Dialog.Actions>
+          <Button onPress={() => setReplaceConfirmVisible(false)}>Cancel</Button>
+          <Button textColor={colors.red} onPress={confirm}>
+            Replace
+          </Button>
+        </Dialog.Actions>
+      </Dialog>
+    </Portal>
+  );
+
   return (
     <View style={styles.container}>
       <View style={styles.countRow}>
@@ -211,9 +256,12 @@ export default function ReconcileScreen() {
           />
         )}
       />
-      <Button mode="contained" onPress={confirm} style={styles.confirmButton} buttonColor={colors.primary}>
-        {isAdditive ? 'Add to library' : 'Confirm & save'}
+      {/* "Replace my library" when that's what the button actually does — "Confirm & save" named
+          the safe first-time case for an action that, on a re-run, deletes everything first. */}
+      <Button mode="contained" onPress={handleConfirmPress} style={styles.confirmButton} buttonColor={colors.primary}>
+        {isAdditive ? 'Add to library' : replacesExistingLibrary ? 'Replace my library' : 'Confirm & save'}
       </Button>
+      {replaceConfirmDialog}
       <Snackbar visible={saveError !== null} onDismiss={() => setSaveError(null)} duration={6000}>
         {saveError}
       </Snackbar>

@@ -54,13 +54,11 @@ function nextUnwatched(series: Series, kind: SeriesEntry['kind']): SeriesEntry |
  * same reason Catch up is separated from For you in the first place: a long list of skipped seasons
  * otherwise buries a couple of films at the bottom where they're never seen.
  *
- * The third section, Future releases, is the entries there's nothing to watch *yet*. MAL reports
- * `num_episodes: 0` for an announced-but-unaired entry (it can't count episodes that don't exist),
- * so a zero episode count is the signal — checked before the kind split, so an unreleased film
- * doesn't sit under Movies either. Without it, a season announced years ahead sat at the top of
- * Catch up as if it were something the user had skipped, which is exactly the nagging the list is
- * supposed to avoid. They stay listed rather than hidden: "coming, nothing to do" is genuinely
- * useful, it just isn't a backlog.
+ * The third section, Future releases, is the entries there's nothing to watch *yet*. Checked before
+ * the kind split, so an unreleased film doesn't sit under Movies either. Without it, a season
+ * announced years ahead sat at the top of Catch up as if it were something the user had skipped,
+ * which is exactly the nagging the list is supposed to avoid. They stay listed rather than hidden:
+ * "coming, nothing to do" is genuinely useful, it just isn't a backlog.
  */
 export function splitCatchUpByKind(items: CatchUpItem[]): {
   seasons: CatchUpItem[];
@@ -75,9 +73,22 @@ export function splitCatchUpByKind(items: CatchUpItem[]): {
   };
 }
 
-/** Nothing to watch yet — MAL has no episode count for it (see splitCatchUpByKind). */
+/**
+ * Nothing to watch yet (see splitCatchUpByKind).
+ *
+ * `airingStatus` is the real signal: it's MAL's own `status` field, mapped at every import/discover
+ * boundary (see mapAiringStatus) and stored per entry, and it's what AiringBadge already reads on
+ * Series Detail. This used to key off `episodeCount <= 0` instead — a proxy, on the reasoning that
+ * MAL can't count episodes that don't exist yet. That's usually true but it isn't what the field
+ * means, and it misfiled any entry MAL happened to publish a zero count for.
+ *
+ * The zero-episode case is kept as a fallback rather than dropped, because mapAiringStatus defaults
+ * an absent status to FINISHED: an entry whose status MAL omitted would otherwise land in the
+ * backlog as something the user had skipped, which is the exact nagging this section prevents.
+ * Treating "no episodes yet" as still-unreleased fails in the safer direction.
+ */
 function isUnreleased(entry: SeriesEntry): boolean {
-  return entry.episodeCount <= 0;
+  return entry.airingStatus === 'NOT_YET_AIRED' || entry.episodeCount <= 0;
 }
 
 /**
