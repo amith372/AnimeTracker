@@ -18,7 +18,17 @@ export const isSupabaseConfigured = SUPABASE_URL.length > 0 && SUPABASE_ANON_KEY
 // Supabase's own documented recommendation for React Native. It's a materially lower-value secret
 // than the MAL refresh token anyway — MAL custody moves fully server-side in Phase 8, and Supabase
 // sessions are short-lived and rotate via refresh, same trust level as any other web session token.
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+//
+// createClient throws synchronously ("supabaseUrl is required") on a blank URL — which would
+// crash the whole module graph before app/_layout.tsx's isSupabaseConfigured gate ever gets a
+// chance to render its "backend not configured" screen. A syntactically valid placeholder host
+// keeps construction from throwing; isSupabaseConfigured (above) is what actually gates whether
+// this client is ever called, so the placeholder is never dialed. (Hit for real, 2026-08-12: a
+// Render deploy without EXPO_PUBLIC_SUPABASE_URL/EXPO_PUBLIC_SUPABASE_ANON_KEY set as *build-time*
+// environment variables — not just present in the gitignored local .env — reproduced exactly this
+// crash. Expo bakes EXPO_PUBLIC_ vars into the bundle at build time, so they must be set in
+// Render's own dashboard env config too, not only locally.)
+export const supabase = createClient(SUPABASE_URL || 'https://placeholder.supabase.co', SUPABASE_ANON_KEY || 'placeholder-anon-key', {
   auth: {
     storage: AsyncStorage,
     autoRefreshToken: true,
