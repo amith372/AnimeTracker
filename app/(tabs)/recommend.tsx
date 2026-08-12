@@ -88,6 +88,10 @@ export default function RecommendScreen() {
   const { items: catchUp, isLoading: catchUpLoading, error: catchUpError } = useCatchUp();
   const [state, setState] = useState<ScreenState>({ kind: 'LOADING', message: 'Loading...' });
   const [tab, setTab] = useState<Tab>('CATCH_UP');
+  // Which Catch up kind is showing — Seasons / Movies / Future releases. Held by title rather than
+  // an enum because the tab list is built from the sections themselves, so there's one source of
+  // truth for what the three are called.
+  const [catchUpKind, setCatchUpKind] = useState('Seasons');
   // Empty selection means "no filter" (every genre matches) rather than "match nothing" — a
   // dedicated ALL_GENRES sentinel would need constant special-casing everywhere this is read.
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
@@ -208,6 +212,20 @@ export default function RecommendScreen() {
     { title: 'Movies', data: catchUpSplit.movies },
     { title: 'Future releases', data: catchUpSplit.futureReleases },
   ]);
+  // Which of the three the user is looking at. Stacked sections meant a long Seasons backlog buried
+  // Movies and Future releases below the fold entirely — the same burying that split Catch up from
+  // Recommended in the first place, one level down. Only non-empty kinds get a tab (same rule as
+  // the sections had), so this collapses to a single tab, or none, without special-casing.
+  const activeCatchUpSection =
+    catchUpSections.find((s) => s.title === catchUpKind) ?? catchUpSections[0];
+  // The selected kind can vanish under you — tick the last unwatched movie, or pick a genre no
+  // film has — so fall back to whatever's left rather than rendering a tab that no longer exists.
+  // Guarded so the no-op case doesn't loop: catchUpSections is a fresh array every render.
+  useEffect(() => {
+    if (activeCatchUpSection && activeCatchUpSection.title !== catchUpKind) {
+      setCatchUpKind(activeCatchUpSection.title);
+    }
+  }, [activeCatchUpSection, catchUpKind]);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }, isWideWeb && styles.webContainer]}>
@@ -352,30 +370,36 @@ export default function RecommendScreen() {
         isWideWeb ? (
           <WebCatchUpSections
             sections={catchUpSections}
+            active={activeCatchUpSection?.title}
+            onSelectKind={setCatchUpKind}
             empty={catchUp.length === 0}
             onPress={(item) => router.push(`/series/${item.series.id}`)}
           />
         ) : (
-          <SectionList
-            sections={catchUpSections}
-            keyExtractor={(item) => String(item.entry.id)}
-            contentContainerStyle={styles.list}
-            // Not RN's default on Android. Without it the group heading scrolls away and a long
-            // backlog gives no way to tell which section you're looking at — which would defeat the
-            // point of splitting the list at all.
-            stickySectionHeadersEnabled
-            renderSectionHeader={({ section }) => <SectionHeader title={section.title} />}
-            renderItem={({ item }) => <CatchUpCard item={item} onPress={() => router.push(`/series/${item.series.id}`)} />}
-            ListEmptyComponent={
-              <View style={styles.center}>
-                <Text variant="bodyLarge">
-                  {catchUp.length === 0
-                    ? "Nothing to catch up on — you're all caught up!"
-                    : 'Nothing to catch up on in this genre'}
-                </Text>
-              </View>
-            }
-          />
+          <>
+            <CatchUpKindTabs
+              sections={catchUpSections}
+              active={activeCatchUpSection?.title}
+              onSelect={setCatchUpKind}
+            />
+            {/* One flat list of the selected kind — the section headers went with the sections, so
+                there's nothing left to stick to the top. */}
+            <FlatList
+              data={activeCatchUpSection?.data ?? []}
+              keyExtractor={(item) => String(item.entry.id)}
+              contentContainerStyle={styles.list}
+              renderItem={({ item }) => <CatchUpCard item={item} onPress={() => router.push(`/series/${item.series.id}`)} />}
+              ListEmptyComponent={
+                <View style={styles.center}>
+                  <Text variant="bodyLarge">
+                    {catchUp.length === 0
+                      ? "Nothing to catch up on — you're all caught up!"
+                      : 'Nothing to catch up on in this genre'}
+                  </Text>
+                </View>
+              }
+            />
+          </>
         )
       ) : (
         <ForYouList
@@ -392,6 +416,60 @@ export default function RecommendScreen() {
           rendering it here too would duplicate it on every wide-web screen. */}
       {!isWideWeb && <MalAttribution />}
     </View>
+  );
+}
+
+/**
+ * The Seasons / Movies / Future releases selector inside Catch up — one tab per non-empty kind,
+ * scrolling sideways when the three don't fit.
+ *
+ * Tabs rather than the stacked sections these replaced: a real backlog is mostly seasons, so Movies
+ * and Future releases sat below a long grid where they were never seen. That's the same burying
+ * that justified splitting Catch up from Recommended, one level down.
+ *
+ * Chips, matching the Library's status filters, rather than a second SegmentedButtons — a segmented
+ * control directly under another segmented control reads as one broken two-row control. Counts are
+ * carried on the tab because "is there anything in there" is the question the tab has to answer
+ * before you'd think to open it.
+ */
+function CatchUpKindTabs({
+  sections,
+  active,
+  onSelect,
+}: {
+  sections: { title: string; data: CatchUpItem[] }[];
+  active: string | undefined;
+  onSelect: (title: string) => void;
+}) {
+  // One kind is not a choice — a lone tab would just be a label wearing a border.
+  if (sections.length < 2) return null;
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      // flexGrow/flexShrink/minHeight are load-bearing next to a long list: RN's horizontal
+      // ScrollView defaults to flexShrink:1, so a tall sibling list squeezes it to a sliver and
+      // clips the chips. Same guard, same reason, as the Library's filter row.
+      style={styles.kindTabs}
+      contentContainerStyle={styles.kindTabsContent}
+    >
+      {sections.map((section) => {
+        const isActive = section.title === active;
+        return (
+          <Pressable
+            key={section.title}
+            onPress={() => onSelect(section.title)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: isActive }}
+            style={[styles.kindTab, isActive && styles.kindTabActive]}
+          >
+            <Text style={[styles.kindTabText, isActive && styles.kindTabTextActive]}>
+              {section.title} ({section.data.length})
+            </Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
   );
 }
 
@@ -499,13 +577,18 @@ function RecommendationCard({ series, onPress }: { series: ReconcileSeries; onPr
  */
 function WebCatchUpSections({
   sections,
+  active,
+  onSelectKind,
   empty,
   onPress,
 }: {
   sections: { title: string; data: CatchUpItem[] }[];
+  active: string | undefined;
+  onSelectKind: (title: string) => void;
   empty: boolean;
   onPress: (item: CatchUpItem) => void;
 }) {
+  const activeSection = sections.find((s) => s.title === active) ?? sections[0];
   if (sections.length === 0) {
     return (
       <View style={styles.center}>
@@ -526,22 +609,18 @@ function WebCatchUpSections({
             16px repeat sat *below* that control while claiming to head the section — the inverted
             step the whole stack-collapse was about. The tinted band is what marks the grouping now,
             which is the job a band is actually good at. */}
-        {sections.map((section) => (
-          <View key={section.title} style={styles.webBandSection}>
-            <Text style={styles.webBandSectionLabel}>{section.title}</Text>
-            <View style={styles.webCardGrid}>
-              {section.data.map((item) => (
-                <WebRecCard
-                  key={String(item.entry.id)}
-                  coverUrl={item.series.coverUrl}
-                  title={item.series.title}
-                  meta={item.entry.title}
-                  onPress={() => onPress(item)}
-                />
-              ))}
-            </View>
-          </View>
-        ))}
+        <CatchUpKindTabs sections={sections} active={activeSection?.title} onSelect={onSelectKind} />
+        <View style={styles.webCardGrid}>
+          {(activeSection?.data ?? []).map((item) => (
+            <WebRecCard
+              key={String(item.entry.id)}
+              coverUrl={item.series.coverUrl}
+              title={item.series.title}
+              meta={item.entry.title}
+              onPress={() => onPress(item)}
+            />
+          ))}
+        </View>
       </View>
     </ScrollView>
   );
@@ -715,6 +794,21 @@ const styles = StyleSheet.create({
   headerTitle: { fontFamily: fontFamilies.displayBold, color: colors.textPrimary },
   headerSubtitle: { fontFamily: fontFamilies.bodyRegular, fontSize: 13, color: colors.textMuted, marginTop: 2 },
   tabs: { marginHorizontal: 12, marginTop: 12 },
+  // See CatchUpKindTabs for why the three flex properties are load-bearing rather than decorative.
+  kindTabs: { flexGrow: 0, flexShrink: 0, minHeight: 40, marginTop: spacing.sm },
+  kindTabsContent: { paddingHorizontal: 12, gap: spacing.sm, alignItems: 'center' },
+  kindTab: {
+    minHeight: 34,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  kindTabActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  kindTabText: { fontFamily: fontFamilies.bodySemiBold, fontSize: 13, color: colors.textMuted },
+  kindTabTextActive: { color: '#fff' },
   filterButtonsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8, paddingHorizontal: 12 },
   dialogScrollArea: { maxHeight: 400, paddingHorizontal: 0 },
   list: { padding: 12, gap: 8 },
