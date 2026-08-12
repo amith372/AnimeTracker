@@ -22,7 +22,8 @@ import {
 } from '@/api/malDataApi';
 import { getAnimeDetailCached } from './apiCache';
 import { addSeries as addSeriesToLibrary, useTrackedMalIds } from './AnimeRepository';
-import type { ManualStatus } from '@/domain/types';
+import { applyAddChoice } from '@/domain/addChoice';
+import type { AddChoice } from '@/domain/statusLabel';
 import { mapAiringStatus, type ReconcileEntry, type ReconcileSeries } from '@/domain/reconcileSeries';
 import { groupIntoSeries, missingSequelPrequelIds, type AnimeRelationInput, type GroupedSeries } from '@/domain/seriesGrouping';
 import { displayTitle } from '@/domain/title';
@@ -119,9 +120,10 @@ function limitNodes(nodes: AnimeBrowseNodeDto[], nodeLimit?: number): AnimeBrows
 }
 
 /** Adds one Discover/Recommendations result to the library with the status the user picked, as a
- * whole grouped series. Returns the new series id. */
-export async function addDiscoveredSeries(series: ReconcileSeries, manualStatus: ManualStatus): Promise<string> {
-  return addSeriesToLibrary({ ...series, manualStatus });
+ * whole grouped series. `applyAddChoice` is what handles the "Watched" pick, which marks season 1
+ * rather than setting a manual status — see src/domain/addChoice.ts. Returns the new series id. */
+export async function addDiscoveredSeries(series: ReconcileSeries, choice: AddChoice): Promise<string> {
+  return addSeriesToLibrary(applyAddChoice(series, choice));
 }
 
 /** A minimal MAL node reference — just enough to fetch + group into a whole series. */

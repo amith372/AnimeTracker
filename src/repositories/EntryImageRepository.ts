@@ -15,3 +15,25 @@ export async function getEntryImageUrl(malId: number): Promise<string | null> {
     return null;
   }
 }
+
+/** Cover art *and* summary for one season/movie, for the title-tap popup. Both fields come from the
+ * same cached detail response, so this is deliberately one call rather than getEntryImageUrl +
+ * getSynopsis back to back — those would be two round trips to the shared api_cache table for data
+ * that arrives together. Each half is independently nullable: MAL genuinely omits a synopsis for
+ * many individual seasons. */
+export interface EntryPreview {
+  imageUrl: string | null;
+  synopsis: string | null;
+}
+
+export async function getEntryPreview(malId: number): Promise<EntryPreview> {
+  try {
+    const detail = await getAnimeDetailCached(malId);
+    return {
+      imageUrl: detail.main_picture?.large ?? detail.main_picture?.medium ?? null,
+      synopsis: detail.synopsis?.trim() || null,
+    };
+  } catch {
+    return { imageUrl: null, synopsis: null };
+  }
+}

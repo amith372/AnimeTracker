@@ -170,6 +170,32 @@ describe('splitCatchUpByKind / splitRecommendationsByType', () => {
     const split = splitCatchUpByKind(getCatchUpEntries([series]));
     expect(split.seasons.map((i) => i.entry.malId)).toEqual([1]);
     expect(split.movies.map((i) => i.entry.malId)).toEqual([2]);
+    expect(split.futureReleases).toHaveLength(0);
+  });
+
+  test('an entry with no episode count yet is a future release, not a skipped season', () => {
+    // MAL reports num_episodes: 0 for an announced-but-unaired entry — there's nothing to watch,
+    // so it must not sit in the backlog sections.
+    const series = makeSeries({
+      status: PARTIAL,
+      entries: [
+        makeEntry({ id: '1', malId: 1, kind: 'TV_SEASON', watchState: 'WATCHED' }),
+        makeEntry({ id: '2', malId: 2, kind: 'TV_SEASON', orderIndex: 1, episodeCount: 0, airingStatus: 'NOT_YET_AIRED' }),
+      ],
+    });
+    const split = splitCatchUpByKind(getCatchUpEntries([series]));
+    expect(split.seasons).toHaveLength(0);
+    expect(split.futureReleases.map((i) => i.entry.malId)).toEqual([2]);
+  });
+
+  test('an unreleased film is a future release too, not a Movies row', () => {
+    const series = makeSeries({
+      status: PARTIAL,
+      entries: [makeEntry({ id: '2', malId: 2, kind: 'MOVIE', episodeCount: 0 })],
+    });
+    const split = splitCatchUpByKind(getCatchUpEntries([series]));
+    expect(split.movies).toHaveLength(0);
+    expect(split.futureReleases.map((i) => i.entry.malId)).toEqual([2]);
   });
 
   test('recommendations separate standalone movies from series', () => {

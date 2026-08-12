@@ -15,16 +15,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ActivityIndicator, Chip, Dialog, IconButton, Portal, Snackbar, Text } from 'react-native-paper';
 import { addDiscoveredSeries } from '@/repositories/DiscoverRepository';
 import { getSynopsis } from '@/repositories/SynopsisRepository';
-import { MANUAL_STATUS_CHOICES } from '@/domain/statusLabel';
+import { ADD_STATUS_CHOICES, type AddChoice } from '@/domain/statusLabel';
 import { numberEntriesByKind } from '@/domain/series';
+import { AiringBadge } from '@/components/AiringBadge';
 import { SeriesTitleText } from '@/components/SeriesTitleText';
 import { EntryImageDialog, type EntryImageTarget } from '@/components/EntryImageDialog';
 import { DetailHeroCard } from '@/components/web/DetailHeroCard';
 import { colors, radii, spacing } from '@/theme/colors';
-import { MANUAL_STATUS_CHIP_LABELS } from '@/theme/statusChipLabels';
+import { ADD_CHOICE_CHIP_LABELS } from '@/theme/statusChipLabels';
+import { dialogStyle } from '@/theme/dialog';
 import { fontFamilies } from '@/theme/fonts';
 import { useIsWideWeb } from '@/hooks/useWebLayout';
-import type { ManualStatus } from '@/domain/types';
 import type { ReconcileEntry, ReconcileSeries } from '@/domain/reconcileSeries';
 
 export default function SeriesPreviewScreen() {
@@ -57,11 +58,11 @@ export default function SeriesPreviewScreen() {
   // Picking a status here doesn't edit anything — it's the moment this show actually joins the
   // library. Once it does, this preview no longer applies (there's a real, trackable series now),
   // so replace (not push) hands off straight to its real Detail screen.
-  async function pickStatus(status: ManualStatus) {
+  async function pickStatus(choice: AddChoice) {
     if (adding) return;
     setAdding(true);
     try {
-      const newId = await addDiscoveredSeries(series, status);
+      const newId = await addDiscoveredSeries(series, choice);
       router.replace(`/series/${newId}`);
     } catch (e) {
       setAdding(false);
@@ -96,9 +97,9 @@ export default function SeriesPreviewScreen() {
         <View style={styles.webStatusColumn}>
           <Text style={styles.webSectionLabel}>ADD AS</Text>
           <View style={styles.webStatusChipList}>
-            {MANUAL_STATUS_CHOICES.map((choice) => (
+            {ADD_STATUS_CHOICES.map((choice) => (
               <Pressable key={choice} disabled={adding} onPress={() => pickStatus(choice)} style={styles.webStatusChip}>
-                <Text style={styles.webStatusChipText}>{MANUAL_STATUS_CHIP_LABELS[choice]}</Text>
+                <Text style={styles.webStatusChipText}>{ADD_CHOICE_CHIP_LABELS[choice]}</Text>
               </Pressable>
             ))}
           </View>
@@ -107,7 +108,7 @@ export default function SeriesPreviewScreen() {
       </DetailHeroCard>
       <EntryImageDialog entry={imagePopupEntry} onDismiss={() => setImagePopupEntry(null)} />
       <Portal>
-        <Dialog visible={infoVisible} onDismiss={() => setInfoVisible(false)}>
+        <Dialog visible={infoVisible} onDismiss={() => setInfoVisible(false)} style={dialogStyle}>
           <Dialog.Title>
             <SeriesTitleText variant="titleLarge">{series.title}</SeriesTitleText>
           </Dialog.Title>
@@ -159,7 +160,7 @@ export default function SeriesPreviewScreen() {
         Not in your library — add it as:
       </Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statusChipRow} contentContainerStyle={styles.statusChipRowContent}>
-        {MANUAL_STATUS_CHOICES.map((choice) => (
+        {ADD_STATUS_CHOICES.map((choice) => (
           <Chip
             key={choice}
             disabled={adding}
@@ -167,7 +168,7 @@ export default function SeriesPreviewScreen() {
             style={styles.statusChip}
             textStyle={styles.statusChipText}
           >
-            {MANUAL_STATUS_CHIP_LABELS[choice]}
+            {ADD_CHOICE_CHIP_LABELS[choice]}
           </Chip>
         ))}
         {adding && <ActivityIndicator style={styles.addingSpinner} />}
@@ -191,7 +192,7 @@ export default function SeriesPreviewScreen() {
       <EntryImageDialog entry={imagePopupEntry} onDismiss={() => setImagePopupEntry(null)} />
 
       <Portal>
-        <Dialog visible={infoVisible} onDismiss={() => setInfoVisible(false)}>
+        <Dialog visible={infoVisible} onDismiss={() => setInfoVisible(false)} style={dialogStyle}>
           <Dialog.Title>
             <SeriesTitleText variant="titleLarge">{series.title}</SeriesTitleText>
           </Dialog.Title>
@@ -231,11 +232,7 @@ function PreviewEntryRow({ entry, kindNumber, onOpenInfo }: { entry: ReconcileEn
           {kindLabel} · {detail}
         </Text>
       </View>
-      {entry.airingStatus === 'AIRING' && (
-        <Chip compact style={styles.airingBadge} textStyle={styles.airingBadgeText}>
-          AIRING
-        </Chip>
-      )}
+      {entry.airingStatus === 'AIRING' && <AiringBadge />}
     </Pressable>
   );
 }
@@ -264,8 +261,6 @@ const styles = StyleSheet.create({
   entryText: { flex: 1 },
   entryTitle: { color: colors.textPrimary },
   entrySubtitle: { color: colors.textFaint, marginTop: 2 },
-  airingBadge: { backgroundColor: 'rgba(59,110,165,0.12)', height: 24 },
-  airingBadgeText: { fontFamily: fontFamilies.bodyBold, color: colors.primary, fontSize: 9.5, letterSpacing: 0.5, lineHeight: 12 },
   synopsisScrollArea: { maxHeight: 360 },
   synopsisContent: { paddingVertical: spacing.sm },
 

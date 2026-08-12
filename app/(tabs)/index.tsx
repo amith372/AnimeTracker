@@ -22,7 +22,7 @@ import { ActivityIndicator, Button, Chip, Dialog, IconButton, Portal, Searchbar,
 import { useIsGuest } from '@/account/guestMode';
 import { useAccountSession } from '@/account/accountRepository';
 import { useMalLinkStatus } from '@/account/malLinkRepository';
-import { useHasCompletedInitialImport, useLibrary } from '@/repositories/AnimeRepository';
+import { deleteSeries, useHasCompletedInitialImport, useLibrary } from '@/repositories/AnimeRepository';
 import { runMonthlySync } from '@/repositories/SyncRepository';
 import { pushStatusesToMal } from '@/repositories/MalPushRepository';
 import { MalAttribution } from '@/components/MalAttribution';
@@ -33,12 +33,21 @@ import { hasVisibleNewSeasonAlert, type Series } from '@/domain/series';
 import { buildPushTargets } from '@/domain/malPush';
 import { statusDotColor } from '@/theme/statusColors';
 import { colors, radii, spacing } from '@/theme/colors';
+import { dialogStyle } from '@/theme/dialog';
 import { fontFamilies } from '@/theme/fonts';
 import { useIsWideWeb } from '@/hooks/useWebLayout';
 import { useHover } from '@/hooks/useHover';
-import type { SeriesStatus } from '@/domain/seriesStatus';
+import { deriveScopedSeriesStatus, type CountScope, type SeriesStatus } from '@/domain/seriesStatus';
 
 type StatusFilter = SeriesStatus['kind'] | 'ALL';
+
+// The Watched X/Y tab's "count what?" lens — see deriveScopedSeriesStatus for why this is a view
+// toggle rather than a stored setting.
+const COUNT_SCOPES: { value: CountScope; label: string }[] = [
+  { value: 'ALL', label: 'Seasons & movies' },
+  { value: 'SEASONS', label: 'Seasons only' },
+  { value: 'MOVIES', label: 'Movies only' },
+];
 
 const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
   { value: 'ALL', label: 'All' },
@@ -63,6 +72,10 @@ export default function LibraryScreen() {
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
+  // Which half of the backlog the "Watched X/Y" tab counts. A view lens only — see
+  // deriveScopedSeriesStatus; nothing about the series is changed, so switching back to All puts
+  // every hidden movie count straight back.
+  const [countScope, setCountScope] = useState<CountScope>('ALL');
   const [moreMenuVisible, setMoreMenuVisible] = useState(false);
   // Measured via onLayout on the grid's wrapping View — drives numColumns below so the wide-web
   // poster grid keeps growing to more columns on a wider window (the fluid "auto-fill" behavior
@@ -70,6 +83,10 @@ export default function LibraryScreen() {
   const [gridWidth, setGridWidth] = useState(0);
   const [pushing, setPushing] = useState(false);
   const [pushConfirmVisible, setPushConfirmVisible] = useState(false);
+  // The series a long-press is offering to remove, or null. Long-press rather than a visible
+  // per-row button: removal is rare next to the tapping this list exists for, and a delete affordance
+  // on every row is one mis-tap away from losing a show's whole watch history.
+  const [pendingRemoval, setPendingRemoval] = useState<Series | null>(null);
 
   // How many 184px cards fit across the measured grid width at the fixed 22px gap/28px padding —
   // same arithmetic a CSS repeat(auto-fill, minmax(184px,1fr)) grid would do, since FlatList only
@@ -81,12 +98,20 @@ export default function LibraryScreen() {
 
   const filteredList = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    return seriesList.filter((s) => {
+    const matching = seriesList.filter((s) => {
       if (statusFilter !== 'ALL' && s.status.kind !== statusFilter) return false;
       if (query && !s.title.toLowerCase().includes(query)) return false;
       return true;
     });
-  }, [seriesList, searchQuery, statusFilter]);
+    if (statusFilter !== 'WATCHED_PARTIAL' || countScope === 'ALL') return matching;
+    // Re-derive each row's status counting only the chosen half, then drop anything that's no
+    // longer partial *through that lens* — a show with every season watched and an unfinished film
+    // reads (and counts as) Watched under "Seasons only", so it leaves this tab. Purely a view:
+    // nothing is written, and switching back to All restores every row and label untouched.
+    return matching
+      .map((s) => ({ ...s, status: deriveScopedSeriesStatus(s.manualStatus, s.entries, countScope) }))
+      .filter((s) => s.status.kind === 'WATCHED_PARTIAL');
+  }, [seriesList, searchQuery, statusFilter, countScope]);
 
   // Per-status counts for the filter chips ("Watching 3") — cheap, same list already loaded.
   const filterCounts = useMemo(() => {
@@ -174,7 +199,7 @@ export default function LibraryScreen() {
 
   const moreMenu = (
     <Portal>
-      <Dialog visible={moreMenuVisible} onDismiss={() => setMoreMenuVisible(false)}>
+      <Dialog visible={moreMenuVisible} onDismiss={() => setMoreMenuVisible(false)} style={styles.moreMenuDialog}>
         <Dialog.Content style={styles.moreMenuContent}>
           {/* Distinct from "Sync now" below, which only re-walks series already in the library
               looking for new seasons and never re-reads the MyAnimeList list itself — so a show
@@ -199,7 +224,10 @@ export default function LibraryScreen() {
           {malLinked && (
             <Pressable style={styles.moreMenuRow} onPress={handleSync}>
               <MaterialCommunityIcons name="refresh" size={22} color={colors.textPrimary} />
-              <Text variant="bodyLarge">Sync now</Text>
+              {/* "Check for new seasons", not "Sync now" — it sat next to "Check MyAnimeList for
+                  new shows" and the two were indistinguishable by name, even though one re-reads
+                  the MAL list and this one only walks existing series for new seasons. */}
+              <Text variant="bodyLarge">Check for new seasons</Text>
             </Pressable>
           )}
           {/* The one write path in the app (CLAUDE.md §8) — never shown without MyAnimeList
@@ -237,9 +265,43 @@ export default function LibraryScreen() {
     </Portal>
   );
 
+  // Removal is optimistic (see AnimeRepository.deleteSeries), so the row disappears on confirm and
+  // reappears if the write fails — the snackbar is what explains why it came back.
+  async function handleRemove() {
+    const target = pendingRemoval;
+    setPendingRemoval(null);
+    if (!target) return;
+    try {
+      await deleteSeries(target.id);
+      setSyncMessage(`Removed "${target.title}"`);
+    } catch (e) {
+      setSyncMessage(e instanceof Error ? e.message : 'Could not remove that show');
+    }
+  }
+
+  const removeConfirmDialog = (
+    <Portal>
+      <Dialog visible={pendingRemoval !== null} onDismiss={() => setPendingRemoval(null)} style={dialogStyle}>
+        <Dialog.Title>Remove from library?</Dialog.Title>
+        <Dialog.Content>
+          <Text variant="bodyMedium">
+            &quot;{pendingRemoval?.title}&quot; and everything you&apos;ve marked watched on it will be removed.
+            Your MyAnimeList account isn&apos;t touched.
+          </Text>
+        </Dialog.Content>
+        <Dialog.Actions>
+          <Button onPress={() => setPendingRemoval(null)}>Cancel</Button>
+          <Button textColor={colors.red} onPress={handleRemove}>
+            Remove
+          </Button>
+        </Dialog.Actions>
+      </Dialog>
+    </Portal>
+  );
+
   const pushConfirmDialog = (
     <Portal>
-      <Dialog visible={pushConfirmVisible} onDismiss={() => setPushConfirmVisible(false)}>
+      <Dialog visible={pushConfirmVisible} onDismiss={() => setPushConfirmVisible(false)} style={dialogStyle}>
         <Dialog.Title>Update MyAnimeList?</Dialog.Title>
         <Dialog.Content>
           <Text variant="bodyMedium">
@@ -291,6 +353,20 @@ export default function LibraryScreen() {
                   onPress={() => setStatusFilter(f.value)}
                 />
               ))}
+              {statusFilter === 'WATCHED_PARTIAL' && (
+                <View style={styles.webScopeBlock}>
+                  <Text style={styles.webFilterHeading}>COUNT</Text>
+                  {COUNT_SCOPES.map((scope) => (
+                    <WebFilterRow
+                      key={scope.value}
+                      label={scope.label}
+                      dotColor={colors.checkboxUnchecked}
+                      active={countScope === scope.value}
+                      onPress={() => setCountScope(scope.value)}
+                    />
+                  ))}
+                </View>
+              )}
             </View>
           </View>
           <View style={styles.webGrid} onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}>
@@ -308,7 +384,13 @@ export default function LibraryScreen() {
                 keyExtractor={(item) => String(item.id)}
                 contentContainerStyle={styles.webGridContent}
                 columnWrapperStyle={gridColumns > 1 ? styles.webGridRow : undefined}
-                renderItem={({ item }) => <LibraryGridCard series={item} onPress={() => router.push(`/series/${item.id}`)} />}
+                renderItem={({ item }) => (
+                  <LibraryGridCard
+                    series={item}
+                    onPress={() => router.push(`/series/${item.id}`)}
+                    onLongPress={() => setPendingRemoval(item)}
+                  />
+                )}
                 // A library this size (a real user's had 200+ series) is exactly what virtualization
                 // is for — only rows near the viewport ever mount an Image, instead of every cover
                 // loading at once on first paint (see the impeccable `optimize` pass this came from).
@@ -320,6 +402,7 @@ export default function LibraryScreen() {
         </View>
         {moreMenu}
         {pushConfirmDialog}
+        {removeConfirmDialog}
         <Snackbar visible={syncMessage !== null} onDismiss={() => setSyncMessage(null)} duration={4000} style={styles.webToast}>
           {syncMessage}
         </Snackbar>
@@ -377,13 +460,42 @@ export default function LibraryScreen() {
           </Chip>
         ))}
       </ScrollView>
+      {/* Only meaningful on the one tab whose rows carry two counts — everywhere else there's
+          nothing to scope. */}
+      {statusFilter === 'WATCHED_PARTIAL' && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.scopeRow}
+          contentContainerStyle={styles.filterRowContent}
+        >
+          <Text variant="labelMedium" style={styles.scopeLabel}>
+            COUNT
+          </Text>
+          {COUNT_SCOPES.map((scope) => (
+            <Chip
+              key={scope.value}
+              selected={countScope === scope.value}
+              onPress={() => setCountScope(scope.value)}
+              style={[styles.filterChip, countScope === scope.value && styles.filterChipActive]}
+              textStyle={countScope === scope.value ? styles.filterChipTextActive : styles.filterChipText}
+            >
+              {scope.label}
+            </Chip>
+          ))}
+        </ScrollView>
+      )}
       <FlatList
             style={styles.list}
             contentContainerStyle={styles.listContent}
             data={filteredList}
             keyExtractor={(item) => String(item.id)}
             renderItem={({ item }) => (
-              <SeriesRow series={item} onPress={() => router.push(`/series/${item.id}`)} />
+              <SeriesRow
+                series={item}
+                onPress={() => router.push(`/series/${item.id}`)}
+                onLongPress={() => setPendingRemoval(item)}
+              />
             )}
             ListEmptyComponent={
               <View style={styles.empty}>
@@ -395,6 +507,7 @@ export default function LibraryScreen() {
           />
       {moreMenu}
       {pushConfirmDialog}
+      {removeConfirmDialog}
       <MalAttribution />
       <Snackbar visible={syncMessage !== null} onDismiss={() => setSyncMessage(null)} duration={4000}>
         {syncMessage}
@@ -403,10 +516,10 @@ export default function LibraryScreen() {
   );
 }
 
-function SeriesRow({ series, onPress }: { series: Series; onPress: () => void }) {
+function SeriesRow({ series, onPress, onLongPress }: { series: Series; onPress: () => void; onLongPress: () => void }) {
   const isNew = hasVisibleNewSeasonAlert(series);
   return (
-    <Pressable style={styles.card} onPress={onPress}>
+    <Pressable style={styles.card} onPress={onPress} onLongPress={onLongPress} delayLongPress={500}>
       <Image source={series.coverUrl ?? undefined} style={styles.cover} contentFit="cover" />
       <View style={styles.cardText}>
         <SeriesTitleText variant="titleMedium" numberOfLines={1}>
@@ -431,11 +544,25 @@ function SeriesRow({ series, onPress }: { series: Series; onPress: () => void })
 
 /** Wide-web poster-card grid tile — cover, title, status dot + label, matching the design doc's
  * Library grid card. Same data/onPress as SeriesRow above, just a different shape. */
-function LibraryGridCard({ series, onPress }: { series: Series; onPress: () => void }) {
+function LibraryGridCard({
+  series,
+  onPress,
+  onLongPress,
+}: {
+  series: Series;
+  onPress: () => void;
+  onLongPress: () => void;
+}) {
   const isNew = hasVisibleNewSeasonAlert(series);
   const [hovered, hoverHandlers] = useHover();
   return (
-    <Pressable style={[styles.gridCard, hovered && styles.gridCardHovered]} onPress={onPress} {...hoverHandlers}>
+    <Pressable
+      style={[styles.gridCard, hovered && styles.gridCardHovered]}
+      onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={500}
+      {...hoverHandlers}
+    >
       <View style={styles.gridCoverWrap}>
         <Image source={series.coverUrl ?? undefined} style={styles.gridCover} contentFit="cover" />
         {isNew && (
@@ -466,7 +593,8 @@ function WebFilterRow({
   onPress,
 }: {
   label: string;
-  count: number;
+  /** Omitted by the COUNT scope rows below the status list — a lens has no tally of its own. */
+  count?: number;
   dotColor: string;
   active: boolean;
   onPress: () => void;
@@ -476,7 +604,7 @@ function WebFilterRow({
     <Pressable onPress={onPress} {...hoverHandlers} style={[styles.webFilterRow, (active || hovered) && styles.webFilterRowActive]}>
       <View style={[styles.webFilterDot, { backgroundColor: dotColor }]} />
       <Text style={[styles.webFilterLabel, { color: active ? colors.textPrimary : colors.textMuted }]}>{label}</Text>
-      <Text style={styles.webFilterCount}>{count}</Text>
+      {count !== undefined && <Text style={styles.webFilterCount}>{count}</Text>}
     </Pressable>
   );
 }
@@ -489,11 +617,19 @@ const styles = StyleSheet.create({
   searchbar: { marginHorizontal: spacing.lg, marginTop: spacing.sm, borderRadius: radii.pill, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, elevation: 0 },
   searchbarInput: { fontFamily: fontFamilies.bodyRegular, minHeight: 0 },
   filterRow: { marginTop: spacing.md, flexGrow: 0, flexShrink: 0, minHeight: 42 },
+  // Same flexGrow/flexShrink/minHeight guards as filterRow above — a horizontal ScrollView next to
+  // a long FlatList gets squeezed to a sliver without them (see filterRow's comment).
+  scopeRow: { flexGrow: 0, flexShrink: 0, minHeight: 42 },
+  scopeLabel: { color: colors.textFaint, letterSpacing: 1, marginRight: spacing.xs },
   filterRowContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, gap: spacing.sm, alignItems: 'center' },
   filterChip: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   filterChipActive: { backgroundColor: colors.primaryDark, borderColor: colors.primaryDark },
   filterChipText: { fontFamily: fontFamilies.bodySemiBold, color: colors.textMuted },
   filterChipTextActive: { fontFamily: fontFamilies.bodySemiBold, color: '#fff' },
+  // Same shape as theme/dialog.ts's shared cap, just tighter: this Dialog stands in for a menu
+  // (Paper's anchored Menu mismeasures on this RN/Fabric version), and a menu of four short rows
+  // reads as mostly empty space at the full dialog width.
+  moreMenuDialog: { alignSelf: 'center', width: '90%', maxWidth: 320, marginHorizontal: 0 },
   moreMenuContent: { gap: spacing.xs },
   moreMenuRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 48, paddingVertical: spacing.sm },
   list: { flex: 1 },
@@ -526,6 +662,7 @@ const styles = StyleSheet.create({
   webBody: { flex: 1, flexDirection: 'row' },
   webFilterColumn: { width: 200, flexShrink: 0, flexDirection: 'column', borderRightWidth: 1, borderRightColor: colors.border },
   webFilterColumnContent: { padding: spacing.lg, gap: 2 },
+  webScopeBlock: { marginTop: spacing.lg },
   webFilterHeading: { fontFamily: fontFamilies.bodySemiBold, fontSize: 11, letterSpacing: 1.4, color: colors.textFaint, marginBottom: spacing.sm },
   webFilterRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 36, paddingHorizontal: 10, borderRadius: radii.sm },
   webFilterRowActive: { backgroundColor: colors.hoverWash },

@@ -89,3 +89,27 @@ export const MANUAL_STATUS_CHOICES: ManualStatus[] = [
   'DROPPED',
   'WATCHED_FORGOT',
 ];
+
+/**
+ * What the *Add* pickers (Discover's dialog, the not-yet-tracked preview screen) offer. It's the
+ * four manual statuses plus a fifth pseudo-choice, `WATCHED`, which isn't a manual status at all:
+ * "Watched" is a *derived* status (CLAUDE.md's status-derivation table), so picking it here means
+ * "leave the status on Auto and mark the show's first season as watched" — see applyAddChoice.
+ * Without it there was no way to add a show you'd already started other than adding it and then
+ * going into its Detail screen to tick season 1.
+ */
+export type AddChoice = ManualStatus | 'WATCHED';
+
+export const ADD_STATUS_CHOICES: AddChoice[] = [
+  'PLAN',
+  'CURRENTLY_WATCHING',
+  'WATCHED',
+  'DROPPED',
+  'WATCHED_FORGOT',
+];
+
+/** Label for an Add picker row — manualStatusLabel plus the derived-status pseudo-choice, whose
+ * text spells out that it only ticks the first season rather than the whole show. */
+export function addChoiceLabel(choice: AddChoice): string {
+  return choice === 'WATCHED' ? 'Watched (marks season 1)' : manualStatusLabel(choice);
+}

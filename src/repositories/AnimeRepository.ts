@@ -234,6 +234,30 @@ export async function clearNewSeasonAvailable(seriesId: string): Promise<void> {
 }
 
 /**
+ * Removes one series from the library entirely — the only per-show delete in the app.
+ *
+ * A hard delete, matching how deletes already work here (`deleted_at` is a leftover column from the
+ * retired sync engine, read by nothing — see CLAUDE.md's Data model). The `series_entries` rows go
+ * with it via the FK's `on delete cascade`, so this is a single round trip.
+ *
+ * Optimistic like every other write, which matters more here than elsewhere: the user is watching
+ * the row they just removed, and waiting on a network round trip before it disappears reads as a
+ * broken tap. A failure puts the whole series back and re-throws for the screen to report.
+ *
+ * Nothing is sent to MyAnimeList — removing a show here never touches the user's real MAL list
+ * (CLAUDE.md §8 scopes the one write path to statuses, deliberately excluding deletes).
+ */
+export async function deleteSeries(seriesId: string): Promise<void> {
+  await optimisticLibraryUpdate(
+    (current) => current.filter((s) => s.id !== seriesId),
+    async () => {
+      const { error } = await supabase.from('series').delete().eq('id', seriesId);
+      if (error) throw error;
+    },
+  );
+}
+
+/**
  * Wipes the whole library and replaces it with a fresh (reconciled) import result — the
  * onboarding-import write path. Delegates the whole delete-then-reinsert to the `replace_library`
  * Postgres RPC (single round trip, single transaction — see that function's migration comment for

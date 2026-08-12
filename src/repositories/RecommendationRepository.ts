@@ -36,7 +36,10 @@ export type RecommendProgress =
 // below are the whole cost, so cutting each stage's wall time is the whole fix.
 const SOURCE_FETCH_CONCURRENCY = 12;
 const CANDIDATE_FETCH_CONCURRENCY = 12;
-const MAX_RECOMMENDATIONS = 30;
+// Raised from 30 at the user's request — the wide-web list now wraps into a vertically scrolling
+// grid rather than a horizontal row, so a longer list is genuinely browsable instead of running off
+// the edge of the window. Costs nothing extra by itself: this trims an already-ranked list.
+const MAX_RECOMMENDATIONS = 60;
 // A watched library can easily tally 200+ unique candidates across all its series'
 // recommendations — fetching detail for every one of them made this take minutes. A candidate
 // that barely shows up in the tally is extremely unlikely to out-rank a popular one purely on
@@ -44,7 +47,13 @@ const MAX_RECOMMENDATIONS = 30;
 // only fetch full detail for the top N by raw tally count before scoring/grouping. Trimmed from 60
 // to 40 for the same reason as the concurrency bump above — fewer detail round-trips, same result
 // quality since anything past the top 40 by raw tally was already vanishingly unlikely to rank.
-const MAX_CANDIDATE_DETAILS = 40;
+//
+// Raised back to 80 to feed the larger MAX_RECOMMENDATIONS below: grouping collapses sequel chains,
+// so 40 candidates couldn't produce 60 distinct series no matter how they ranked. This is the one
+// knob here that genuinely costs MAL requests (one detail call each, plus closure expansion), which
+// is why it's the number to lower first if this ever feels slow — the shared api_cache absorbs
+// repeat runs, but a cold one really does make ~80 calls.
+const MAX_CANDIDATE_DETAILS = 80;
 
 /** Reactive "Catch up" list — unwatched TV seasons inside Watched/Watched X/Y series. Purely
  * local, so unlike fetchRecommendations below this needs no progress reporting at all. */

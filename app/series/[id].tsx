@@ -10,9 +10,10 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Chip, IconButton, Snackbar, Text } from 'react-native-paper';
+import { Button, Chip, Dialog, IconButton, Portal, Snackbar, Text } from 'react-native-paper';
 import {
   useSeries,
+  deleteSeries,
   setEntryWatchState,
   setArcWatched,
   setSeriesLiked,
@@ -22,11 +23,14 @@ import {
 import { MANUAL_STATUS_CHOICES, statusLabel } from '@/domain/statusLabel';
 import { hasVisibleNewSeasonAlert, numberEntriesByKind, seasonProgress, type Series, type SeriesEntry } from '@/domain/series';
 import { arcsForMalId, type Arc } from '@/domain/arcs';
+import { getSynopsis } from '@/repositories/SynopsisRepository';
+import { AiringBadge } from '@/components/AiringBadge';
 import { SeriesTitleText } from '@/components/SeriesTitleText';
 import { SquareCheckbox } from '@/components/SquareCheckbox';
 import { EntryImageDialog } from '@/components/EntryImageDialog';
 import { DetailHeroCard } from '@/components/web/DetailHeroCard';
 import { colors, radii, spacing } from '@/theme/colors';
+import { dialogStyle } from '@/theme/dialog';
 import { statusDotColor } from '@/theme/statusColors';
 import { MANUAL_STATUS_CHIP_LABELS } from '@/theme/statusChipLabels';
 import { fontFamilies } from '@/theme/fonts';
@@ -52,6 +56,28 @@ export default function SeriesDetailScreen() {
   const isWideWeb = useIsWideWeb();
   const [imagePopupEntry, setImagePopupEntry] = useState<SeriesEntry | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [removeConfirmVisible, setRemoveConfirmVisible] = useState(false);
+  const [synopsis, setSynopsis] = useState<string | null>(null);
+  // Collapsed to a few lines by default and expandable on tap: a MAL synopsis regularly runs to
+  // several paragraphs, which would push the season list — the thing this screen is actually for —
+  // off the bottom of the phone screen.
+  const [synopsisExpanded, setSynopsisExpanded] = useState(false);
+
+  // The show's own summary, matching the one the preview screen shows before you add it (a tracked
+  // show shouldn't be the version with *less* information). Same cached detail response the rest of
+  // the app reads, keyed on the series' root MAL id, so this is normally a cache hit rather than a
+  // MAL request. A null result renders nothing at all — a missing summary is not worth an empty box.
+  const rootMalId = series?.rootMalId ?? null;
+  useEffect(() => {
+    if (rootMalId === null) return;
+    let cancelled = false;
+    getSynopsis(rootMalId).then((text) => {
+      if (!cancelled) setSynopsis(text?.trim() || null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [rootMalId]);
 
   // Every write here is now a network call that can fail (optimistic — see AnimeRepository.ts —
   // so it rolls back on its own, but the user still needs to be told why their tap didn't stick).
@@ -80,6 +106,53 @@ export default function SeriesDetailScreen() {
   const canLike = LIKEABLE_STATUS_KINDS.includes(series.status.kind);
   const progress = seasonProgress(series.entries);
 
+  // Navigates away first, then commits: the delete is optimistic, so staying here would leave the
+  // screen rendering a series that's already gone from the cache ("Not found") for a beat. Errors
+  // still surface — the Library screen this returns to shows its own snackbar path... which it
+  // doesn't for this, so the alert is kept simple: a failed delete rolls the row back into the
+  // list, which is itself the visible feedback.
+  function confirmRemove() {
+    setRemoveConfirmVisible(false);
+    router.back();
+    deleteSeries(series!.id).catch(() => {});
+  }
+
+  // Shared by both layouts — same text, same tap-to-expand, just placed differently.
+  const synopsisBlock = synopsis && (
+    <Pressable onPress={() => setSynopsisExpanded((current) => !current)}>
+      <Text
+        variant="bodyMedium"
+        numberOfLines={synopsisExpanded ? undefined : 3}
+        style={styles.synopsis}
+      >
+        {synopsis}
+      </Text>
+      <Text variant="labelSmall" style={styles.synopsisToggle}>
+        {synopsisExpanded ? 'Show less' : 'Read more'}
+      </Text>
+    </Pressable>
+  );
+
+  const removeConfirmDialog = (
+    <Portal>
+      <Dialog visible={removeConfirmVisible} onDismiss={() => setRemoveConfirmVisible(false)} style={dialogStyle}>
+        <Dialog.Title>Remove from library?</Dialog.Title>
+        <Dialog.Content>
+          <Text variant="bodyMedium">
+            &quot;{series.title}&quot; and everything you&apos;ve marked watched on it will be removed from your
+            library. Your MyAnimeList account isn&apos;t touched, and you can add the show again from Discover.
+          </Text>
+        </Dialog.Content>
+        <Dialog.Actions>
+          <Button onPress={() => setRemoveConfirmVisible(false)}>Cancel</Button>
+          <Button textColor={colors.red} onPress={confirmRemove}>
+            Remove
+          </Button>
+        </Dialog.Actions>
+      </Dialog>
+    </Portal>
+  );
+
   if (isWideWeb) {
     return (
       <>
@@ -90,16 +163,25 @@ export default function SeriesDetailScreen() {
         genres={series.genres.join(' · ')}
         onBack={() => router.back()}
         topRight={
-          canLike ? (
+          <View style={styles.heroActions}>
+            {canLike && (
+              <IconButton
+                icon={series.liked ? 'heart' : 'heart-outline'}
+                iconColor="#fff"
+                onPress={() => runWrite(() => setSeriesLiked(series.id, !series.liked))}
+              />
+            )}
             <IconButton
-              icon={series.liked ? 'heart' : 'heart-outline'}
+              icon="trash-can-outline"
               iconColor="#fff"
-              onPress={() => runWrite(() => setSeriesLiked(series.id, !series.liked))}
+              accessibilityLabel="Remove from library"
+              onPress={() => setRemoveConfirmVisible(true)}
             />
-          ) : undefined
+          </View>
         }
       >
         <View style={styles.webEntriesColumn}>
+          {synopsisBlock && <View style={styles.webSynopsisBlock}>{synopsisBlock}</View>}
           <View style={styles.webSectionLabelRow}>
             <Text style={styles.webSectionLabel}>SEASONS &amp; MOVIES</Text>
             {progress.total > 0 && (
@@ -148,6 +230,7 @@ export default function SeriesDetailScreen() {
         </View>
       </DetailHeroCard>
       <EntryImageDialog entry={imagePopupEntry} onDismiss={() => setImagePopupEntry(null)} />
+      {removeConfirmDialog}
       <Snackbar visible={errorMessage !== null} onDismiss={() => setErrorMessage(null)} duration={4000} style={styles.webToast}>
         {errorMessage}
       </Snackbar>
@@ -166,13 +249,21 @@ export default function SeriesDetailScreen() {
       <LinearGradient colors={[colors.primary, colors.heroGradientEnd]} style={[styles.banner, { paddingTop: insets.top }]}>
         <View style={styles.bannerTopRow}>
           <IconButton icon="arrow-left" iconColor="#fff" onPress={() => router.back()} />
-          {canLike && (
+          <View style={styles.heroActions}>
+            {canLike && (
+              <IconButton
+                icon={series.liked ? 'heart' : 'heart-outline'}
+                iconColor={series.liked ? '#fff' : 'rgba(255,255,255,0.85)'}
+                onPress={() => runWrite(() => setSeriesLiked(series.id, !series.liked))}
+              />
+            )}
             <IconButton
-              icon={series.liked ? 'heart' : 'heart-outline'}
-              iconColor={series.liked ? '#fff' : 'rgba(255,255,255,0.85)'}
-              onPress={() => runWrite(() => setSeriesLiked(series.id, !series.liked))}
+              icon="trash-can-outline"
+              iconColor="rgba(255,255,255,0.85)"
+              accessibilityLabel="Remove from library"
+              onPress={() => setRemoveConfirmVisible(true)}
             />
-          )}
+          </View>
         </View>
         <View style={styles.bannerContent}>
           <Image source={series.coverUrl ?? undefined} style={styles.cover} contentFit="cover" />
@@ -212,6 +303,8 @@ export default function SeriesDetailScreen() {
         })}
       </ScrollView>
 
+      {synopsisBlock && <View style={styles.synopsisRow}>{synopsisBlock}</View>}
+
       {progress.total > 0 && (
         <View style={styles.sectionLabelRow}>
           <Text variant="labelLarge" style={styles.sectionLabel}>
@@ -237,6 +330,7 @@ export default function SeriesDetailScreen() {
         }}
       />
       <EntryImageDialog entry={imagePopupEntry} onDismiss={() => setImagePopupEntry(null)} />
+      {removeConfirmDialog}
       <Snackbar visible={errorMessage !== null} onDismiss={() => setErrorMessage(null)} duration={4000}>
         {errorMessage}
       </Snackbar>
@@ -285,11 +379,7 @@ function EntryRow({
           {subtitle}
         </Text>
       </View>
-      {entry.airingStatus === 'AIRING' && (
-        <Chip compact style={styles.airingBadge} textStyle={styles.airingBadgeText}>
-          AIRING
-        </Chip>
-      )}
+      {entry.airingStatus === 'AIRING' && <AiringBadge />}
       <IconButton
         icon={wontWatch ? 'close-circle' : 'close-circle-outline'}
         iconColor={wontWatch ? colors.red : colors.textFaint}
@@ -371,6 +461,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   banner: { paddingBottom: spacing.xl, borderBottomLeftRadius: 30, borderBottomRightRadius: 30 },
   bannerTopRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  heroActions: { flexDirection: 'row', alignItems: 'center' },
   bannerContent: { flexDirection: 'row', gap: spacing.lg, paddingHorizontal: spacing.lg },
   cover: { width: 104, height: 148, borderRadius: radii.lg, backgroundColor: 'rgba(255,255,255,0.15)' },
   bannerText: { flex: 1, gap: spacing.sm, paddingTop: spacing.xs },
@@ -386,6 +477,9 @@ const styles = StyleSheet.create({
   statusChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   statusChipText: { fontFamily: fontFamilies.bodySemiBold, color: colors.textMuted },
   statusChipTextActive: { fontFamily: fontFamilies.bodySemiBold, color: '#fff' },
+  synopsisRow: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg },
+  synopsis: { color: colors.textMuted, lineHeight: 21 },
+  synopsisToggle: { color: colors.primary, marginTop: spacing.xs },
   sectionLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.sm },
   sectionLabel: { color: colors.textFaint, letterSpacing: 1 },
   sectionCount: { color: colors.textFaint },
@@ -397,12 +491,11 @@ const styles = StyleSheet.create({
   // Struck through rather than hidden — a skipped season still belongs in the list, it just
   // shouldn't read as something outstanding.
   wontWatchTitle: { textDecorationLine: 'line-through', color: colors.textFaint },
-  airingBadge: { backgroundColor: 'rgba(59,110,165,0.12)', height: 24 },
-  airingBadgeText: { fontFamily: fontFamilies.bodyBold, color: colors.primary, fontSize: 9.5, letterSpacing: 0.5, lineHeight: 12 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
   // --- Wide web ---
   webEntriesColumn: { flex: 1, minWidth: 0 },
+  webSynopsisBlock: { marginBottom: 20 },
   webSectionLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 },
   webSectionLabel: { fontFamily: fontFamilies.bodySemiBold, fontSize: 11.5, letterSpacing: 1.4, color: colors.textFaint },
   webSectionCount: { fontFamily: fontFamilies.bodyMedium, fontSize: 12.5, color: colors.textFaint },

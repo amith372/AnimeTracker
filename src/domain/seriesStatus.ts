@@ -89,6 +89,37 @@ export function deriveSeriesStatus(
   };
 }
 
+/**
+ * Which half of a series' backlog to count — the Library's "Watched X/Y" view lens.
+ * `ALL` is the real, stored answer; the other two are a way of *looking* at it.
+ */
+export type CountScope = 'ALL' | 'SEASONS' | 'MOVIES';
+
+/**
+ * deriveSeriesStatus with one half of the entries ignored — "count seasons only" / "count movies
+ * only", the toggle on the Library's Watched X/Y filter.
+ *
+ * This is deliberately a pure re-derivation over a filtered entry list, not a stored override:
+ * nothing is written anywhere, so switching the lens back re-counts the hidden half and restores
+ * the original status exactly (a show reading "Watched" under Seasons-only goes straight back to
+ * "Watched 6/6 seasons, 0/6 movies" under All). That reversibility is the whole reason it works
+ * this way rather than as a flag on the series row.
+ *
+ * A manual status still wins, same as ever — the scope only affects derived counts.
+ */
+export function deriveScopedSeriesStatus(
+  manualStatus: ManualStatus,
+  entries: EntryStatusInput[],
+  scope: CountScope,
+): SeriesStatus {
+  if (scope === 'ALL') return deriveSeriesStatus(manualStatus, entries);
+  const wanted: EntryKind = scope === 'SEASONS' ? 'TV_SEASON' : 'MOVIE';
+  return deriveSeriesStatus(
+    manualStatus,
+    entries.filter((e) => e.kind === wanted),
+  );
+}
+
 /** How far the unbroken run of resolved seasons reaches from season 1 — the "X" in X/Y. */
 function leadingResolvedRun(orderedSeasons: EntryStatusInput[]): number {
   let count = 0;

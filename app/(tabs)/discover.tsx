@@ -20,7 +20,7 @@ import { currentSeason, nextSeason } from '@/domain/seasonTiming';
 import { colors, spacing } from '@/theme/colors';
 import { fontFamilies } from '@/theme/fonts';
 import { useIsWideWeb } from '@/hooks/useWebLayout';
-import type { ManualStatus } from '@/domain/types';
+import type { AddChoice } from '@/domain/statusLabel';
 import type { ReconcileSeries } from '@/domain/reconcileSeries';
 
 const PREVIEW_COUNT = 10;
@@ -56,9 +56,9 @@ export default function DiscoverScreen() {
   // that pages through the whole category, so it gets the paginated hook.
   const expandedResults = usePaginatedDiscover(expanded?.query ?? null);
 
-  async function handleAdd(manualStatus: ManualStatus) {
+  async function handleAdd(choice: AddChoice) {
     if (!pendingAdd) return;
-    await addDiscoveredSeries(pendingAdd, manualStatus);
+    await addDiscoveredSeries(pendingAdd, choice);
     setPendingAdd(null);
   }
 

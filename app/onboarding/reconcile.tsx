@@ -7,7 +7,8 @@
 import { Image } from 'expo-image';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { FlatList, StyleSheet, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ActivityIndicator, Button, Snackbar, Text } from 'react-native-paper';
 import {
   addImportedSeries,
@@ -37,10 +38,24 @@ export default function ReconcileScreen() {
   const router = useRouter();
   // 'import' (onboarding, the default) fetches the whole MAL list and saves it as a full replace;
   // 'additive' fetches only shows added to MAL since, and inserts them alongside the existing
-  // library. Everything between those two ends — the state machine, the checklist, select-all,
-  // the error/retry branch — is identical, which is why this is a mode rather than a second screen.
+  // library. Everything between those two ends — the state machine, the checklist, the error/retry
+  // branch — is identical, which is why this is a mode rather than a second screen.
   const { mode } = useLocalSearchParams<{ mode?: string }>();
   const isAdditive = mode === 'additive';
+  // Which shows have their season list open. The list is a scan-and-correct task, not a
+  // tick-everything one: a real library runs to hundreds of shows, and rendering every season of
+  // every one at once buried the show titles in a wall of rows. Collapsed by default, keyed by
+  // rootMalId, and held here rather than inside SeriesGroup so a row that scrolls out of the
+  // FlatList's window and back doesn't silently collapse again.
+  const [expandedRoots, setExpandedRoots] = useState<Set<number>>(new Set());
+
+  function toggleExpanded(rootMalId: number) {
+    setExpandedRoots((current) => {
+      const next = new Set(current);
+      if (!next.delete(rootMalId)) next.add(rootMalId);
+      return next;
+    });
+  }
 
   const startImport = useCallback(() => {
     setState({ kind: 'FETCHING_LIST' });
@@ -93,23 +108,6 @@ export default function ReconcileScreen() {
                 ),
               },
         ),
-      };
-    });
-  }
-
-  // Ticks (or clears) every season/movie across every series at once — MAL users who mark
-  // everything "completed" as they finish it just want the whole checklist pre-filled, not a
-  // series-by-series tap-through. Toggles based on the current all-watched state so the same
-  // button both selects and clears, rather than needing two.
-  function setAllEntries(watched: boolean) {
-    setState((current) => {
-      if (current.kind !== 'READY') return current;
-      return {
-        kind: 'READY',
-        series: current.series.map((s) => ({
-          ...s,
-          entries: s.entries.map((e) => ({ ...e, watchState: watched ? 'WATCHED' : 'UNWATCHED' })),
-        })),
       };
     });
   }
@@ -191,22 +189,27 @@ export default function ReconcileScreen() {
     );
   }
 
-  const allWatched = state.series.every((s) => s.entries.every((e) => e.watchState === 'WATCHED'));
-
   return (
     <View style={styles.container}>
-      <View style={styles.selectAllRow}>
+      <View style={styles.countRow}>
         <Text variant="bodyMedium" style={styles.mutedText}>
           {state.series.length} {isAdditive ? 'new shows found' : 'shows found'}
         </Text>
-        <Button compact onPress={() => setAllEntries(!allWatched)}>
-          {allWatched ? 'Deselect all' : 'Select all'}
-        </Button>
+        <Text variant="bodySmall" style={styles.mutedText}>
+          Tap a show to tick the seasons you&apos;ve watched
+        </Text>
       </View>
       <FlatList
         data={state.series}
         keyExtractor={(s) => String(s.rootMalId)}
-        renderItem={({ item }) => <SeriesGroup series={item} onToggleEntry={toggleEntry} />}
+        renderItem={({ item }) => (
+          <SeriesGroup
+            series={item}
+            expanded={expandedRoots.has(item.rootMalId)}
+            onToggleExpanded={() => toggleExpanded(item.rootMalId)}
+            onToggleEntry={toggleEntry}
+          />
+        )}
       />
       <Button mode="contained" onPress={confirm} style={styles.confirmButton} buttonColor={colors.primary}>
         {isAdditive ? 'Add to library' : 'Confirm & save'}
@@ -233,28 +236,52 @@ function StatusView({ message, progressFraction }: { message: string; progressFr
   );
 }
 
+/** One show on the checklist: a tappable header that expands to reveal its seasons/movies. The
+ * header doubles as the summary — its status line ("Watched 2/5 seasons") is what tells the user
+ * whether a collapsed show still needs correcting, so the list stays scannable without opening
+ * every row. */
 function SeriesGroup({
   series,
+  expanded,
+  onToggleExpanded,
   onToggleEntry,
 }: {
   series: ReconcileSeries;
+  expanded: boolean;
+  onToggleExpanded: () => void;
   onToggleEntry: (seriesRootMalId: number, entryMalId: number) => void;
 }) {
   const status = deriveSeriesStatus(series.manualStatus, series.entries);
+  const entryCount = series.entries.length;
   return (
     <View>
-      <View style={styles.seriesHeader}>
+      <Pressable
+        style={styles.seriesHeader}
+        onPress={onToggleExpanded}
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        accessibilityLabel={series.title}
+      >
         <Image source={series.coverUrl ?? undefined} style={styles.cover} contentFit="cover" />
         <View style={styles.seriesHeaderText}>
           <SeriesTitleText variant="titleMedium">{series.title}</SeriesTitleText>
           <Text variant="bodyMedium" style={styles.mutedText}>
             {statusLabel(status)}
           </Text>
+          <Text variant="bodySmall" style={styles.mutedText}>
+            {entryCount} {entryCount === 1 ? 'season/movie' : 'seasons & movies'}
+          </Text>
         </View>
-      </View>
-      {series.entries.map((entry) => (
-        <EntryRow key={entry.malId} entry={entry} onPress={() => onToggleEntry(series.rootMalId, entry.malId)} />
-      ))}
+        <MaterialCommunityIcons
+          name={expanded ? 'chevron-up' : 'chevron-down'}
+          size={24}
+          color={colors.textMuted}
+        />
+      </Pressable>
+      {expanded &&
+        series.entries.map((entry) => (
+          <EntryRow key={entry.malId} entry={entry} onPress={() => onToggleEntry(series.rootMalId, entry.malId)} />
+        ))}
     </View>
   );
 }
@@ -282,14 +309,16 @@ const styles = StyleSheet.create({
   progressBarWrap: { width: 200 },
   confirmButton: { margin: 16, borderRadius: radii.pill },
   mutedText: { color: colors.textMuted },
-  selectAllRow: {
+  countRow: { paddingHorizontal: 16, paddingVertical: 8, gap: 2 },
+  seriesHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    padding: 16,
+    paddingBottom: 12,
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  seriesHeader: { flexDirection: 'row', alignItems: 'center', padding: 16, paddingBottom: 8, gap: 12 },
   seriesHeaderText: { flex: 1 },
   cover: { width: 48, height: 68, borderRadius: radii.sm, backgroundColor: colors.border },
   entryRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 52, paddingHorizontal: 20, paddingVertical: spacing.xs },

@@ -19,7 +19,7 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { FlatList, SectionList, StyleSheet, View } from 'react-native';
+import { FlatList, ScrollView, SectionList, StyleSheet, View } from 'react-native';
 import {
   ActivityIndicator,
   Button,
@@ -35,10 +35,12 @@ import {
 } from 'react-native-paper';
 import { MalAttribution } from '@/components/MalAttribution';
 import { SeriesTitleText } from '@/components/SeriesTitleText';
+import { useTrackedMalIds } from '@/repositories/AnimeRepository';
 import { fetchRecommendations, useCatchUp, type RecommendProgress } from '@/repositories/RecommendationRepository';
 import { splitCatchUpByKind, splitRecommendationsByType, type CatchUpItem } from '@/domain/recommendations';
 import type { ReconcileSeries } from '@/domain/reconcileSeries';
 import { colors, spacing } from '@/theme/colors';
+import { dialogStyle } from '@/theme/dialog';
 import { fontFamilies } from '@/theme/fonts';
 import { useIsWideWeb } from '@/hooks/useWebLayout';
 
@@ -53,6 +55,16 @@ type Tab = 'CATCH_UP' | 'FOR_YOU';
 // seasons, never fetched with `mean`). RECOMMENDED keeps the repository's own MAL-tally/genre-
 // affinity ranking (see RecommendationRepository), which is lost the instant a rating sort runs.
 type SortMode = 'RECOMMENDED' | 'RATING';
+
+// "Recommended" only — Catch up's own Seasons/Movies split is already the same distinction, and it
+// splits by *entry* kind rather than by what the whole series is.
+type TypeFilter = 'ALL' | 'SERIES' | 'MOVIES';
+
+const TYPE_FILTER_LABELS: Record<TypeFilter, string> = {
+  ALL: 'Series & movies',
+  SERIES: 'Series only',
+  MOVIES: 'Movies only',
+};
 
 // A stable empty array, so the "no recommendations yet" render path doesn't hand a fresh []
 // to the genre-options memo on every render and defeat it.
@@ -78,6 +90,8 @@ export default function RecommendScreen() {
   const [genreDialogVisible, setGenreDialogVisible] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('RECOMMENDED');
   const [sortDialogVisible, setSortDialogVisible] = useState(false);
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('ALL');
+  const [typeDialogVisible, setTypeDialogVisible] = useState(false);
 
   function load(opts?: { bypassCache?: boolean }) {
     setState({ kind: 'LOADING', message: 'Loading...' });
@@ -118,7 +132,17 @@ export default function RecommendScreen() {
     router.push({ pathname: '/series/preview', params: { data: JSON.stringify(series) } });
   }
 
-  const recommended = state.kind === 'READY' ? state.series : EMPTY_SERIES;
+  // Recommendations are computed once per load (they cost a pile of MAL calls), but the library
+  // they're filtered against is live — so a show added from here, or removed from the Library,
+  // re-filters this list on the spot instead of leaving a stale row that's already tracked. Same
+  // guard Discover applies via useDiscoverResults; a *fresh* ranking (which a removal could change)
+  // still needs the refresh button.
+  const trackedMalIds = useTrackedMalIds();
+  const loaded = state.kind === 'READY' ? state.series : EMPTY_SERIES;
+  const recommended = useMemo(
+    () => (trackedMalIds.size === 0 ? loaded : loaded.filter((s) => s.entries.every((e) => !trackedMalIds.has(e.malId)))),
+    [loaded, trackedMalIds],
+  );
 
   // The genre chips are built from whatever is actually on screen rather than from MAL's full
   // genre vocabulary — offering a filter that matches nothing is worse than offering fewer.
@@ -154,7 +178,10 @@ export default function RecommendScreen() {
   const matchesGenre = (genres: string[]) =>
     selectedGenres.length === 0 || genres.some((g) => selectedGenres.includes(g));
   const filteredCatchUp = catchUp.filter((item) => matchesGenre(item.series.genres));
-  const filteredRecommended = recommended.filter((s) => matchesGenre(s.genres));
+  const matchesType = (s: ReconcileSeries) =>
+    typeFilter === 'ALL' ||
+    (typeFilter === 'MOVIES' ? s.type === 'STANDALONE_MOVIE' : s.type !== 'STANDALONE_MOVIE');
+  const filteredRecommended = recommended.filter((s) => matchesGenre(s.genres) && matchesType(s));
   // Rating sort only applies to "For you" — Catch up has no ranking to override in the first place.
   const sortedRecommended =
     sortMode === 'RATING'
@@ -170,9 +197,12 @@ export default function RecommendScreen() {
   // Both tabs separate seasons/shows from movies, for the same reason the two tabs exist at all:
   // a long list of one kind otherwise buries a couple of the other at the bottom, unseen.
   const catchUpSplit = splitCatchUpByKind(filteredCatchUp);
+  // Future releases last, deliberately: it's the section with nothing to actually do, so it sits
+  // below the two that are a backlog rather than competing with them for the top of the screen.
   const catchUpSections = nonEmptySections([
     { title: 'Seasons', data: catchUpSplit.seasons },
     { title: 'Movies', data: catchUpSplit.movies },
+    { title: 'Future releases', data: catchUpSplit.futureReleases },
   ]);
 
   return (
@@ -197,7 +227,9 @@ export default function RecommendScreen() {
         style={styles.tabs}
         buttons={[
           { value: 'CATCH_UP', label: `Catch up${catchUp.length > 0 ? ` (${catchUp.length})` : ''}`, icon: 'play-circle-outline' },
-          { value: 'FOR_YOU', label: 'For you', icon: 'star-outline' },
+          // "Recommended", not "For you" — the screen itself is already titled "For you", and the
+          // same words twice read as a breadcrumb to nowhere rather than a choice between two lists.
+          { value: 'FOR_YOU', label: 'Recommended', icon: 'star-outline' },
         ]}
       />
 
@@ -213,10 +245,16 @@ export default function RecommendScreen() {
               {genreButtonLabel}
             </Button>
           )}
-          {/* Sort has nothing to do with Catch up (it's not ranked, so there's nothing to reorder). */}
+          {/* Sort and the series/movie filter both apply to Recommended only — Catch up isn't
+              ranked (nothing to reorder) and already splits its two kinds into their own sections. */}
           {tab === 'FOR_YOU' && (
             <Button mode="outlined" icon="sort" onPress={() => setSortDialogVisible(true)}>
               {sortMode === 'RATING' ? 'Top rated' : 'Recommended'}
+            </Button>
+          )}
+          {tab === 'FOR_YOU' && (
+            <Button mode="outlined" icon="movie-open-outline" onPress={() => setTypeDialogVisible(true)}>
+              {TYPE_FILTER_LABELS[typeFilter]}
             </Button>
           )}
         </View>
@@ -224,7 +262,7 @@ export default function RecommendScreen() {
       <Portal>
         {/* Multi-select — checkboxes rather than radio buttons, and the dialog stays open across
             taps so picking several genres in a row doesn't mean reopening it each time. */}
-        <Dialog visible={genreDialogVisible} onDismiss={() => setGenreDialogVisible(false)}>
+        <Dialog visible={genreDialogVisible} onDismiss={() => setGenreDialogVisible(false)} style={dialogStyle}>
           <Dialog.Title>Filter by genre</Dialog.Title>
           <Dialog.ScrollArea style={styles.dialogScrollArea}>
             <FlatList
@@ -246,7 +284,7 @@ export default function RecommendScreen() {
         </Dialog>
       </Portal>
       <Portal>
-        <Dialog visible={sortDialogVisible} onDismiss={() => setSortDialogVisible(false)}>
+        <Dialog visible={sortDialogVisible} onDismiss={() => setSortDialogVisible(false)} style={dialogStyle}>
           <Dialog.Title>Sort by</Dialog.Title>
           <Dialog.Content>
             <RadioButton.Group
@@ -258,6 +296,24 @@ export default function RecommendScreen() {
             >
               <RadioButton.Item label="Recommended for you" value="RECOMMENDED" />
               <RadioButton.Item label="Highest rated" value="RATING" />
+            </RadioButton.Group>
+          </Dialog.Content>
+        </Dialog>
+      </Portal>
+      <Portal>
+        <Dialog visible={typeDialogVisible} onDismiss={() => setTypeDialogVisible(false)} style={dialogStyle}>
+          <Dialog.Title>Show</Dialog.Title>
+          <Dialog.Content>
+            <RadioButton.Group
+              value={typeFilter}
+              onValueChange={(v) => {
+                setTypeFilter(v as TypeFilter);
+                setTypeDialogVisible(false);
+              }}
+            >
+              {(Object.keys(TYPE_FILTER_LABELS) as TypeFilter[]).map((value) => (
+                <RadioButton.Item key={value} label={TYPE_FILTER_LABELS[value]} value={value} />
+              ))}
             </RadioButton.Group>
           </Dialog.Content>
         </Dialog>
@@ -332,7 +388,11 @@ function CatchUpCard({ item, onPress }: { item: CatchUpItem; onPress: () => void
       <Card.Content style={styles.cardContent}>
         <Image source={item.series.coverUrl ?? undefined} style={styles.cover} contentFit="cover" />
         <View style={styles.cardText}>
-          <SeriesTitleText variant="titleMedium" numberOfLines={2}>
+          {/* titleText (flex:1 + minWidth:0) is load-bearing, not cosmetic: without it a long
+              series title measured at its full intrinsic width and ran past the card's right edge
+              instead of wrapping to the second line numberOfLines allows. Same guard
+              RecommendationCard's title already carried. */}
+          <SeriesTitleText variant="titleMedium" numberOfLines={2} style={styles.titleText}>
             {item.series.title}
           </SeriesTitleText>
           <Text variant="bodyMedium" numberOfLines={2} style={styles.muted}>
@@ -441,8 +501,15 @@ function WebCatchUpSections({
   );
 }
 
-/** Wide-web "For you" sections — same Series/Movies split as ForYouList's SectionList, reshaped
- * into horizontal card rows per section, matching the design doc's recommendation rows. */
+/**
+ * Wide-web "Recommended" sections — same Series/Movies split as ForYouList's SectionList.
+ *
+ * A wrapping grid inside one vertical scroll, not the horizontal card rows this used to be (and
+ * that Catch up still uses). Two reasons they diverged: this list is long (dozens of results, vs.
+ * Catch up's at-most-two-per-series), and a horizontal row hides everything past the window edge
+ * behind a scroll gesture nobody makes on a desktop page — so most of the recommendations were
+ * effectively invisible. Catch up keeps its rows precisely because it's short enough to fit.
+ */
 function WebForYouSections({ series, onPress }: { series: ReconcileSeries[]; onPress: (s: ReconcileSeries) => void }) {
   const split = splitRecommendationsByType(series);
   const sections = nonEmptySections([
@@ -450,27 +517,26 @@ function WebForYouSections({ series, onPress }: { series: ReconcileSeries[]; onP
     { title: 'Movies', data: split.movies },
   ]);
   return (
-    <View style={styles.webForYouSections}>
+    <ScrollView style={styles.webForYouScroll} contentContainerStyle={styles.webForYouSections}>
       {sections.map((section) => (
         <View key={section.title} style={styles.webBandSection}>
-          <Text style={styles.webBandSectionLabel}>{section.title}</Text>
-          <FlatList
-            data={section.data}
-            horizontal
-            keyExtractor={(s) => String(s.rootMalId)}
-            contentContainerStyle={styles.webCardRowContent}
-            renderItem={({ item }) => (
+          <Text style={styles.webBandSectionLabel}>
+            {section.title} ({section.data.length})
+          </Text>
+          <View style={styles.webCardGrid}>
+            {section.data.map((item) => (
               <WebRecCard
+                key={item.rootMalId}
                 coverUrl={item.coverUrl}
                 title={item.title}
                 meta={item.rating != null ? `★ ${item.rating.toFixed(2)}` : undefined}
                 onPress={() => onPress(item)}
               />
-            )}
-          />
+            ))}
+          </View>
         </View>
       ))}
-    </View>
+    </ScrollView>
   );
 }
 
@@ -577,9 +643,12 @@ const styles = StyleSheet.create({
   card: { marginBottom: 4, borderRadius: 16 },
   cardContent: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   cover: { width: 64, height: 90, borderRadius: 8, backgroundColor: colors.coverPlaceholder },
-  cardText: { flex: 1 },
+  // minWidth:0 lets these columns actually shrink below their content's intrinsic width — a flex
+  // child's min-size defaults to its content, which is what lets a long title push a row wider than
+  // its card rather than wrapping inside it.
+  cardText: { flex: 1, minWidth: 0 },
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  titleText: { flex: 1 },
+  titleText: { flex: 1, minWidth: 0 },
   ratingBadge: { backgroundColor: colors.amberTint, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   ratingText: { color: colors.amber },
   muted: { color: colors.textMuted },
@@ -603,9 +672,15 @@ const styles = StyleSheet.create({
   webBandSubtitle: { fontFamily: fontFamilies.bodyRegular, fontSize: 13, color: colors.textMuted, marginTop: 4 },
   webBandSection: { marginTop: 14 },
   webBandSectionLabel: { fontFamily: fontFamilies.bodySemiBold, fontSize: 12, letterSpacing: 1, color: colors.textFaint, marginBottom: 8 },
-  webForYouSections: { marginTop: 8, paddingBottom: 12 },
+  webForYouScroll: { flex: 1, marginTop: 8 },
+  webForYouSections: { paddingBottom: 24 },
+  // Wraps to as many 158px cards as the window fits, rather than running off the right edge — see
+  // WebForYouSections for why this list scrolls down and Catch up's still scrolls sideways.
+  webCardGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
   webCardRowContent: { gap: 16, paddingBottom: 4 },
-  webCard: { width: 158, backgroundColor: 'transparent', elevation: 0, shadowOpacity: 0 },
+  // overflow:hidden + a self-width on the title keep a long show name inside the 158px column
+  // instead of spilling into the next card in the row.
+  webCard: { width: 158, backgroundColor: 'transparent', elevation: 0, shadowOpacity: 0, overflow: 'hidden' },
   webCardCover: { width: 158, height: 222, borderRadius: 14, backgroundColor: colors.coverPlaceholder },
-  webCardTitle: { fontSize: 14, marginTop: 10 },
+  webCardTitle: { fontSize: 14, marginTop: 10, width: '100%' },
 });

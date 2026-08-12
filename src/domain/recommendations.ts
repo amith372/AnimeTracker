@@ -50,15 +50,34 @@ function nextUnwatched(series: Series, kind: SeriesEntry['kind']): SeriesEntry |
 }
 
 /**
- * Catch-up items split by kind, for the screen's two sections. Seasons and movies are separated
- * for the same reason Catch up is separated from For you in the first place: a long list of
- * skipped seasons otherwise buries a couple of films at the bottom where they're never seen.
+ * Catch-up items split into the screen's three sections. Seasons and movies are separated for the
+ * same reason Catch up is separated from For you in the first place: a long list of skipped seasons
+ * otherwise buries a couple of films at the bottom where they're never seen.
+ *
+ * The third section, Future releases, is the entries there's nothing to watch *yet*. MAL reports
+ * `num_episodes: 0` for an announced-but-unaired entry (it can't count episodes that don't exist),
+ * so a zero episode count is the signal — checked before the kind split, so an unreleased film
+ * doesn't sit under Movies either. Without it, a season announced years ahead sat at the top of
+ * Catch up as if it were something the user had skipped, which is exactly the nagging the list is
+ * supposed to avoid. They stay listed rather than hidden: "coming, nothing to do" is genuinely
+ * useful, it just isn't a backlog.
  */
-export function splitCatchUpByKind(items: CatchUpItem[]): { seasons: CatchUpItem[]; movies: CatchUpItem[] } {
+export function splitCatchUpByKind(items: CatchUpItem[]): {
+  seasons: CatchUpItem[];
+  movies: CatchUpItem[];
+  futureReleases: CatchUpItem[];
+} {
+  const released = items.filter((i) => !isUnreleased(i.entry));
   return {
-    seasons: items.filter((i) => i.entry.kind === 'TV_SEASON'),
-    movies: items.filter((i) => i.entry.kind === 'MOVIE'),
+    seasons: released.filter((i) => i.entry.kind === 'TV_SEASON'),
+    movies: released.filter((i) => i.entry.kind === 'MOVIE'),
+    futureReleases: items.filter((i) => isUnreleased(i.entry)),
   };
+}
+
+/** Nothing to watch yet — MAL has no episode count for it (see splitCatchUpByKind). */
+function isUnreleased(entry: SeriesEntry): boolean {
+  return entry.episodeCount <= 0;
 }
 
 /**

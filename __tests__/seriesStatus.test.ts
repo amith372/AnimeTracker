@@ -1,4 +1,4 @@
-import { deriveSeriesStatus, type EntryStatusInput } from '@/domain/seriesStatus';
+import { deriveScopedSeriesStatus, deriveSeriesStatus, type EntryStatusInput } from '@/domain/seriesStatus';
 import type { WatchState } from '@/domain/types';
 
 function season(orderIndex: number, watchState: WatchState): EntryStatusInput {
@@ -132,4 +132,50 @@ describe("won't watch", () => {
 
 test('a series with no entries at all still derives to Watched', () => {
   expect(deriveSeriesStatus('NONE', [])).toEqual({ kind: 'WATCHED' });
+});
+
+describe('deriveScopedSeriesStatus — the Library\'s Watched X/Y count lens', () => {
+  // Every season seen, no film seen: partial overall, but finished if you only count seasons.
+  const seasonsDoneMoviesNot = [
+    season(0, 'WATCHED'),
+    season(1, 'WATCHED'),
+    movie(0, 'UNWATCHED'),
+    movie(1, 'UNWATCHED'),
+  ];
+
+  test('ALL is exactly deriveSeriesStatus', () => {
+    expect(deriveScopedSeriesStatus('NONE', seasonsDoneMoviesNot, 'ALL')).toEqual(
+      deriveSeriesStatus('NONE', seasonsDoneMoviesNot),
+    );
+  });
+
+  test('SEASONS ignores the films entirely — the show reads as finished', () => {
+    expect(deriveScopedSeriesStatus('NONE', seasonsDoneMoviesNot, 'SEASONS')).toEqual({ kind: 'WATCHED' });
+  });
+
+  test('MOVIES ignores the seasons — only the film backlog is counted', () => {
+    expect(deriveScopedSeriesStatus('NONE', seasonsDoneMoviesNot, 'MOVIES')).toEqual(
+      partial({ watchedMovies: 0, totalMovies: 2 }),
+    );
+  });
+
+  test('the lens is reversible — going back to ALL restores the original counts', () => {
+    const entries = [season(0, 'WATCHED'), season(1, 'WATCHED'), movie(0, 'UNWATCHED')];
+    const before = deriveScopedSeriesStatus('NONE', entries, 'ALL');
+    deriveScopedSeriesStatus('NONE', entries, 'SEASONS');
+    deriveScopedSeriesStatus('NONE', entries, 'MOVIES');
+    expect(deriveScopedSeriesStatus('NONE', entries, 'ALL')).toEqual(before);
+    expect(before).toEqual(partial({ watchedSeasons: 2, totalSeasons: 2, watchedMovies: 0, totalMovies: 1 }));
+  });
+
+  test('a manual status still wins under every lens', () => {
+    expect(deriveScopedSeriesStatus('DROPPED', seasonsDoneMoviesNot, 'SEASONS')).toEqual({ kind: 'DROPPED' });
+    expect(deriveScopedSeriesStatus('DROPPED', seasonsDoneMoviesNot, 'MOVIES')).toEqual({ kind: 'DROPPED' });
+  });
+
+  test('a series with no films at all is Watched under the MOVIES lens, not 0/0 partial', () => {
+    // Which is what keeps a season-only show out of the Watched X/Y tab when the user asks to see
+    // only movie backlogs.
+    expect(deriveScopedSeriesStatus('NONE', [season(0, 'UNWATCHED')], 'MOVIES')).toEqual({ kind: 'WATCHED' });
+  });
 });
