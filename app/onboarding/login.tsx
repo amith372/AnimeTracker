@@ -30,11 +30,17 @@ export default function LoginScreen() {
     setError(null);
     const result = await signInWithMal();
     setLoading(false);
-    // On success, app/auth.tsx already exchanged the handoff and navigated to '/' — it beats this
-    // await back every time, so there's nothing left to do here.
     if (!result.success) {
       setError(result.message);
+      return;
     }
+    // Native's signInWithMal() resolves via app/auth.tsx, which has already navigated to '/' by the
+    // time this await returns (see its header comment) — so this call is a no-op there. Web's
+    // resolves from malLinkRepository.web.ts's postMessage listener instead, which only updates the
+    // Supabase session and never navigates anything itself; without this, a successful web login
+    // just leaves the user sitting on this same screen looking unchanged (session updated, but
+    // nothing ever redirects away from it) — same fix handleContinueAsGuest already has below.
+    router.replace('/');
   }
 
   // Anonymous Supabase auth (see guestMode.ts) — a guest gets a real, if temporary, session and

@@ -30,17 +30,12 @@ export default function OAuthCompleteScreen() {
     if (linked === '1') payload.linked = '1';
     if (typeof malError === 'string') payload.malError = malError;
 
-    // TEMP DEBUG (remove once the web login bug is found).
-    console.log('[MAL-OAUTH-DEBUG] oauth-complete mounted. params=', { handoff, linked, malError }, 'window.opener truthy?', typeof window !== 'undefined' && !!window.opener, 'location=', typeof window !== 'undefined' ? window.location.href : 'n/a');
-
     if (typeof window !== 'undefined' && window.opener) {
       // Popup and opener are guaranteed same-origin (both served from this app's own domain), so
       // targeting window.location.origin here is exactly the opener's origin too.
-      console.log('[MAL-OAUTH-DEBUG] posting message to opener and closing popup, payload=', payload);
       window.opener.postMessage({ source: 'animetracker-mal-auth', ...payload }, window.location.origin);
       window.close();
     } else {
-      console.log('[MAL-OAUTH-DEBUG] no window.opener, falling back to same-tab redirect');
       // No opener — e.g. the popup got detached from its opener, or something opened this URL
       // directly. Land on the account screen with the same params rather than stranding the user on
       // a blank page; malLinkRepository.web.ts's own popup-blocked handling covers the common case

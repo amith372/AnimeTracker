@@ -49,56 +49,32 @@ function openMalAuthorizeFlow(): Promise<MalLinkResult> {
     };
 
     const onMessage = (event: MessageEvent) => {
-      // TEMP DEBUG (remove once the web login bug is found): log every message this window
-      // receives, matched or not, so a mismatched origin/shape shows up instead of silently
-      // vanishing.
-      console.log('[MAL-OAUTH-DEBUG] message event received. origin=', event.origin, 'expected=', window.location.origin, 'data=', event.data);
       // The message now comes from our own /oauth-complete route (see that file's header comment
       // for why it's no longer served from *.supabase.co), so it's simply this app's own origin.
-      if (event.origin !== window.location.origin) {
-        console.log('[MAL-OAUTH-DEBUG] rejected: origin mismatch');
-        return;
-      }
-      if (!isMalAuthMessage(event.data)) {
-        console.log('[MAL-OAUTH-DEBUG] rejected: not a recognized message shape');
-        return;
-      }
+      if (event.origin !== window.location.origin) return;
+      if (!isMalAuthMessage(event.data)) return;
       const data = event.data;
       if (data.malError) {
-        console.log('[MAL-OAUTH-DEBUG] malError branch:', data.malError);
         finish({ success: false, message: data.malError });
       } else if (typeof data.linked === 'string') {
-        console.log('[MAL-OAUTH-DEBUG] linked branch');
         finish({ success: true });
       } else if (typeof data.handoff === 'string') {
-        console.log('[MAL-OAUTH-DEBUG] handoff branch, exchanging session...');
         // Sign-in variant: trade the one-time handoff code for a real session, same exchange
         // app/auth.tsx performs for the mobile deep-link path.
         callMalSessionExchange(data.handoff)
-          .then(({ session }) => {
-            console.log('[MAL-OAUTH-DEBUG] handoff exchanged for session, calling setSession...');
-            return supabase.auth.setSession(session);
-          })
+          .then(({ session }) => supabase.auth.setSession(session))
           .then(({ error }) => {
-            console.log('[MAL-OAUTH-DEBUG] setSession result, error=', error);
             if (error) throw error;
             finish({ success: true });
           })
-          .catch((e) => {
-            console.log('[MAL-OAUTH-DEBUG] handoff exchange failed:', e);
-            finish({ success: false, message: e instanceof Error ? e.message : 'Login failed.' });
-          });
-      } else {
-        console.log('[MAL-OAUTH-DEBUG] recognized shape but no branch matched:', data);
+          .catch((e) => finish({ success: false, message: e instanceof Error ? e.message : 'Login failed.' }));
       }
     };
     window.addEventListener('message', onMessage);
 
     callMalOauthStart('web')
       .then(({ url }) => {
-        console.log('[MAL-OAUTH-DEBUG] got authorize URL, opening popup. origin of url=', new URL(url).origin);
         popup = window.open(url, 'mal-oauth', 'width=500,height=650');
-        console.log('[MAL-OAUTH-DEBUG] popup opened?', !!popup);
         if (!popup) {
           finish({ success: false, message: 'Popup was blocked — allow popups for this site and try again.' });
           return;
@@ -106,16 +82,10 @@ function openMalAuthorizeFlow(): Promise<MalLinkResult> {
         // Backstop for "user closed the popup without completing" — mal-oauth-callback's own HTML
         // always posts a message before closing itself, so this only fires on a genuine dismissal.
         pollClosed = setInterval(() => {
-          if (popup?.closed) {
-            console.log('[MAL-OAUTH-DEBUG] popup detected closed by poll, settled=', settled);
-            finish({ success: false, message: 'Login was cancelled.' });
-          }
+          if (popup?.closed) finish({ success: false, message: 'Login was cancelled.' });
         }, 500);
       })
-      .catch((e) => {
-        console.log('[MAL-OAUTH-DEBUG] mal-oauth-start failed:', e);
-        finish({ success: false, message: e instanceof Error ? e.message : 'Login failed.' });
-      });
+      .catch((e) => finish({ success: false, message: e instanceof Error ? e.message : 'Login failed.' }));
   });
 }
 
