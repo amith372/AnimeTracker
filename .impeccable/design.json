@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-12T17:58:19Z",
+  "title": "Design System: AnimeTracker",
+  "extensions": {
+    "colorMeta": {
+      "primary": { "role": "primary", "displayName": "Control Blue", "canonical": "#3B6EA5", "tonalRamp": ["#0f1c29", "#1e3753", "#2c537c", "#366598", "#5884b3", "#80a1c5", "#b1c5db", "#e2e9f2"] },
+      "ink": { "role": "neutral-inverse", "displayName": "Deep Ink", "canonical": "#1E293B", "tonalRamp": ["#080a0f", "#0f151e", "#171f2c", "#1c2636", "#404958", "#6d7480", "#a5a9b1", "#dddfe2"] },
+      "status-watched": { "role": "status", "displayName": "Signal Green", "canonical": "#10B981", "tonalRamp": ["#042e20", "#085d41", "#0c8b61", "#0faa77", "#34c494", "#64d2ad", "#9fe3cd", "#dbf5ec"] },
+      "status-watching": { "role": "status", "displayName": "Warm Amber", "canonical": "#F59E0B", "tonalRamp": ["#3d2803", "#7b4f06", "#b87708", "#e1910a", "#f7ad30", "#f9c060", "#fbd89d", "#fef0da"] },
+      "status-plan": { "role": "status", "displayName": "Queue Violet", "canonical": "#8B5CF6", "tonalRamp": ["#23173e", "#462e7b", "#6845b9", "#8055e2", "#9c74f7", "#b495f9", "#d1befb", "#eee7fe"] },
+      "status-dropped": { "role": "status", "displayName": "Muted Clay Red", "canonical": "#D2493C", "tonalRamp": ["#35120f", "#69251e", "#9e372d", "#c14337", "#d96459", "#e28980", "#edb6b1", "#f8e4e2"] },
+      "status-forgot": { "role": "status", "displayName": "Slate", "canonical": "#64748B", "tonalRamp": ["#191d23", "#323a46", "#4b5768", "#5c6b80", "#7b899c", "#9aa5b4", "#c1c7d1", "#e8eaee"] },
+      "status-partial": { "role": "status", "displayName": "Sky Blue", "canonical": "#4FA3F7", "tonalRamp": ["#14293e", "#28527c", "#3b7ab9", "#4996e3", "#69b1f8", "#8dc3fa", "#b9dafc", "#e5f1fe"] },
+      "background": { "role": "neutral", "displayName": "Fog White", "canonical": "#F8F9FA", "tonalRamp": ["#3e3e3f", "#7c7d7d", "#babbbc", "#e4e5e6", "#f9fafb", "#fafbfc", "#fcfdfd", "#fefefe"] },
+      "surface": { "role": "neutral", "displayName": "Pure White", "canonical": "#FFFFFF", "tonalRamp": ["#404040", "#808080", "#bfbfbf", "#ebebeb", "#ffffff", "#ffffff", "#ffffff", "#ffffff"] },
+      "border": { "role": "neutral", "displayName": "Hairline Grey", "canonical": "#E2E8F0", "tonalRamp": ["#393a3c", "#717478", "#aaaeb4", "#d0d5dd", "#e6ebf2", "#ecf0f5", "#f3f6f9", "#fbfcfd"] },
+      "text-primary": { "role": "neutral", "displayName": "Near-Black Ink", "canonical": "#0F172A", "tonalRamp": ["#04060b", "#080c15", "#0b1120", "#0e1527", "#333a4a", "#636875", "#9fa2aa", "#dbdcdf"] },
+      "text-faint": { "role": "neutral", "displayName": "Faint Grey", "canonical": "#94A3B8", "tonalRamp": ["#25292e", "#4a525c", "#6f7a8a", "#8896a9", "#a4b1c3", "#b9c3d1", "#d4dae3", "#eff1f4"] },
+      "hover-wash": { "role": "state", "displayName": "Hover Wash", "canonical": "#EEF3F8" },
+      "cover-placeholder": { "role": "state", "displayName": "Cover Placeholder", "canonical": "rgba(59,110,165,.08)" },
+      "brand-mark-start": { "role": "accent", "displayName": "Brand Mark Coral", "canonical": "#FF6F61" },
+      "brand-mark-mid": { "role": "accent", "displayName": "Brand Mark Pink", "canonical": "#C58FC0" },
+      "brand-mark-end": { "role": "accent", "displayName": "Brand Mark Sky Blue", "canonical": "#4FA3F7" }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Largest MD3 display-scale text; configured, rarely invoked directly today." },
+      "headline": { "displayName": "Headline", "purpose": "Screen-level titles (Library/Discover/For you headers, Series Detail hero title)." },
+      "title-font": { "displayName": "Title Font", "purpose": "Every actual anime/show/season title, via the shared SeriesTitleText component — never plain body font." },
+      "title": { "displayName": "Title", "purpose": "Component-level titles that are not a show's own name." },
+      "label": { "displayName": "Label", "purpose": "Chips, buttons, filter counts, small UI labels." },
+      "body": { "displayName": "Body", "purpose": "Paragraph text, subtitles, descriptions." },
+      "web-serif": { "displayName": "Web Serif", "purpose": "Wide-web-only chrome headlines: sidebar wordmark, page headline titles, Series Detail hero title above 900px. Never on native, never for a show's own title." }
+    },
+    "shadows": [],
+    "motion": [],
+    "breakpoints": [
+      { "name": "wide-web", "value": "900px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Solid Control Blue pill button — Discover's \"Add\" action, primary confirmations.",
+      "html": "<button class=\"ds-btn-primary\">Add</button>",
+      "css": ".ds-btn-primary { background: #3B6EA5; color: #ffffff; height: 40px; padding: 0 18px; border-radius: 999px; border: none; font-family: 'PlusJakartaSans_700Bold', sans-serif; font-weight: 700; font-size: 13.5px; cursor: pointer; transition: background 0.15s ease; } .ds-btn-primary:hover { background: #2F5C8C; } .ds-btn-primary:active { background: #274c73; }"
+    },
+    {
+      "name": "Status Chip (active)",
+      "kind": "chip",
+      "refersTo": "chip-status-active",
+      "description": "Selected state for a status filter/editor chip.",
+      "html": "<button class=\"ds-chip-active\">Watching</button>",
+      "css": ".ds-chip-active { background: #3B6EA5; color: #ffffff; height: 42px; padding: 0 16px; border-radius: 12px; border: 1px solid #3B6EA5; font-family: 'PlusJakartaSans_600SemiBold', sans-serif; font-weight: 600; font-size: 13.5px; cursor: pointer; }"
+    },
+    {
+      "name": "Status Chip (inactive)",
+      "kind": "chip",
+      "refersTo": "chip-status",
+      "description": "Resting state for a status filter/editor chip.",
+      "html": "<button class=\"ds-chip\">Plan to watch</button>",
+      "css": ".ds-chip { background: #ffffff; color: #94A3B8; height: 42px; padding: 0 16px; border-radius: 12px; border: 1px solid #E2E8F0; font-family: 'PlusJakartaSans_600SemiBold', sans-serif; font-weight: 600; font-size: 13.5px; cursor: pointer; transition: border-color 0.15s ease; } .ds-chip:hover { border-color: #CBD5E1; }"
+    },
+    {
+      "name": "Poster Card",
+      "kind": "card",
+      "refersTo": "card-poster",
+      "description": "Library/Discover grid card — cover art, title, status dot + label.",
+      "html": "<div class=\"ds-card-poster\"><div class=\"ds-card-poster-cover\"></div><div class=\"ds-card-poster-title\">Demon Slayer</div><div class=\"ds-card-poster-status\"><span class=\"ds-status-dot\" style=\"background:#4FA3F7\"></span>Watched 3/5 seasons</div></div>",
+      "css": ".ds-card-poster { width: 184px; } .ds-card-poster-cover { aspect-ratio: 3/4; border-radius: 16px; background: #E2E8F0; } .ds-card-poster-title { margin-top: 11px; font-family: 'ZenKakuGothicNew_700Bold', sans-serif; font-weight: 700; font-size: 14.5px; color: #0F172A; } .ds-card-poster-status { margin-top: 6px; display: flex; align-items: center; gap: 7px; font-family: 'PlusJakartaSans_600SemiBold', sans-serif; font-weight: 600; font-size: 12.5px; color: #64748B; } .ds-status-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }"
+    },
+    {
+      "name": "Search Input",
+      "kind": "input",
+      "refersTo": "input-search",
+      "description": "Pill search bar used on Library and Discover.",
+      "html": "<div class=\"ds-input-search\"><input type=\"text\" placeholder=\"Search your library\" /></div>",
+      "css": ".ds-input-search { height: 44px; border-radius: 999px; background: #ffffff; border: 1px solid #E2E8F0; display: flex; align-items: center; padding: 0 16px; } .ds-input-search input { border: none; outline: none; background: transparent; font-family: 'PlusJakartaSans_500Medium', sans-serif; font-size: 14px; color: #0F172A; width: 100%; } .ds-input-search:focus-within { border-color: #3B6EA5; }"
+    },
+    {
+      "name": "Sidebar Nav Row (active)",
+      "kind": "nav",
+      "refersTo": "nav-sidebar-row-active",
+      "description": "Wide-web sidebar's active route row — status dot + label on a tinted background.",
+      "html": "<div class=\"ds-nav-row ds-nav-row-active\"><span class=\"ds-nav-dot\"></span>Library</div>",
+      "css": ".ds-nav-row { display: flex; align-items: center; gap: 11px; min-height: 44px; padding: 0 14px; border-radius: 10px; font-family: 'PlusJakartaSans_600SemiBold', sans-serif; font-weight: 600; font-size: 14px; cursor: pointer; } .ds-nav-row-active, .ds-nav-row:hover { background: #EEF3F8; color: #0F172A; } .ds-nav-dot { width: 7px; height: 7px; border-radius: 2px; background: #3B6EA5; } .ds-nav-row:not(.ds-nav-row-active) { color: #475569; }"
+    },
+    {
+      "name": "Status Dot + Label",
+      "kind": "custom",
+      "refersTo": "status-dot",
+      "description": "The system's signature pairing — a filled status-color circle beside its label, repeated on every surface that shows a tracked show's status.",
+      "html": "<div class=\"ds-status-pair\"><span class=\"ds-status-dot\" style=\"background:#10B981\"></span><span>Watched</span></div>",
+      "css": ".ds-status-pair { display: flex; align-items: center; gap: 7px; font-family: 'PlusJakartaSans_500Medium', sans-serif; font-size: 12.5px; color: #64748B; } .ds-status-pair .ds-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Watch Room",
+    "overview": "AnimeTracker reads like a calm, well-run control room, not a storefront: a steel-blue and slate palette, flat bordered surfaces with no drop shadows, and exactly one color per watch-status so a glance at a status dot tells you more than a sentence of copy would. Nothing here is trying to sell anything — it's a personal, non-commercial tool for a small circle of people who already have real MyAnimeList data, and the whole visual language is built to get out of the way of that data. The one deliberately warm note is the coral-to-pink-to-blue brand mark (\"AT\"); everywhere else, color is meaning, not decoration.\n\nIt must never look like, or read as, the official MyAnimeList app — that's a contractual constraint, not a style preference, and it shapes the palette choice as much as anything: nothing here borrows MAL's own blue/white identity.\n\nThe system runs on two visual registers from one shared token set. Native (and web under 900px) is a single-column, bottom-tab mobile app. Web at 900px and above becomes a genuine desktop layout — a fixed sidebar, poster-card grids, a two-column Series Detail — using the exact same colors, type, and component shapes, just rearranged for the wider canvas. It's one system wearing two layouts, not two systems.",
+    "keyCharacteristics": [
+      "Flat, bordered surfaces — depth comes from hairline borders and background/surface contrast, never shadows.",
+      "One hue per watch-status, used nowhere else in the UI.",
+      "Two typefaces doing distinct jobs (a third, reserved one on web only).",
+      "A hard 900px layout swap on web, not a fluid responsive gradient.",
+      "The brand-mark gradient is a signature — the AT icon everywhere, plus the sidebar wordmark on wide web — and nowhere else."
+    ],
+    "rules": [
+      { "name": "The One Status, One Color Rule", "body": "Each of the six status colors means exactly one watch-status, everywhere in the app. Never reuse Signal Green, Warm Amber, Queue Violet, Muted Clay Red, Slate, or Sky Blue for anything that isn't that status.", "section": "colors" },
+      { "name": "The Borrowed-Blue Ban", "body": "Never introduce a blue closer to MyAnimeList's own brand blue than Control Blue already is, and never pair blue-on-white in a way that could be mistaken for MAL's own UI chrome.", "section": "colors" },
+      { "name": "The Title Font Rule", "body": "Any text that names an actual anime, show, or season always renders through SeriesTitleText (Zen Kaku Gothic New, Bold or Medium) — never the plain body font, regardless of screen or component.", "section": "typography" },
+      { "name": "The Web Serif Exception", "body": "Shippori Mincho appears in exactly three places, only on web at 900px and above: the sidebar wordmark, the page-level headline titles, and the Series Detail hero title on wide web. It never appears on native, never below the breakpoint, and never substitutes for the Title Font Rule.", "section": "typography" },
+      { "name": "The Borders-Not-Shadows Rule", "body": "New surfaces get a 1px Hairline Grey border and a background/surface contrast step. They do not get a boxShadow/elevation prop set beyond a component's own untouched default.", "section": "elevation" },
+      { "name": "The Scale-First Rule", "body": "Before hardcoding a new corner radius, check whether sm/md/lg/xl/pill already covers it, or extend the scale in src/theme/colors.ts — don't add a one-off literal.", "section": "shapes" }
+    ],
+    "dos": [
+      "Do reserve each of the six status colors for its one meaning — never repurpose Signal Green, Warm Amber, Queue Violet, Muted Clay Red, Slate, or Sky Blue for anything else.",
+      "Do render every real anime/show/season title through SeriesTitleText (Zen Kaku Gothic New) — see The Title Font Rule.",
+      "Do keep the wide-web layout gated behind the hard 900px breakpoint (useIsWideWeb) rather than a fluid responsive gradient.",
+      "Do use radii.pill for inputs and chips, radii.lg for cards/covers, and extend the scale in src/theme/colors.ts before hardcoding a new radius value.",
+      "Do give new interactive elements visible feedback on interaction — the shared useHover hook, Hover Wash for rows, a 0.92 opacity dip for poster/grid cards, Paper's built-in ripple/press-opacity on native."
+    ],
+    "donts": [
+      "Don't use the brand-mark gradient (coral to pink to sky blue) anywhere except the \"AT\" logo mark and, on the wide-web sidebar, its adjacent wordmark.",
+      "Don't add drop shadows or elevation to cards/surfaces — depth is borders and background contrast only.",
+      "Don't use Shippori Mincho outside the three confirmed wide-web chrome spots, and never for an actual show/season title.",
+      "Don't introduce a blue closer to MyAnimeList's own brand identity than Control Blue, or otherwise make the UI read as MAL's own app.",
+      "Don't add a new near-duplicate grey — Hairline Grey, Faint Grey, and Pale Grey already cover that space, each with a specific job."
+    ]
+  }
+}

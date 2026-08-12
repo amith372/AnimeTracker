@@ -35,6 +35,7 @@ import { statusDotColor } from '@/theme/statusColors';
 import { colors, radii, spacing } from '@/theme/colors';
 import { fontFamilies } from '@/theme/fonts';
 import { useIsWideWeb } from '@/hooks/useWebLayout';
+import { useHover } from '@/hooks/useHover';
 import type { SeriesStatus } from '@/domain/seriesStatus';
 
 type StatusFilter = SeriesStatus['kind'] | 'ALL';
@@ -43,6 +44,12 @@ const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
   { value: 'ALL', label: 'All' },
   ...STATUS_FILTER_KINDS.map((kind) => ({ value: kind as StatusFilter, label: statusKindLabel(kind) })),
 ];
+
+// Matches gridCard's width and webGridRow's gap below — kept as constants because the column-count
+// math needs the same numbers the styles use.
+const GRID_CARD_WIDTH = 184;
+const GRID_GAP = 22;
+const GRID_PADDING = 28;
 
 export default function LibraryScreen() {
   const { session, loading: sessionLoading } = useAccountSession();
@@ -57,8 +64,20 @@ export default function LibraryScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [moreMenuVisible, setMoreMenuVisible] = useState(false);
+  // Measured via onLayout on the grid's wrapping View — drives numColumns below so the wide-web
+  // poster grid keeps growing to more columns on a wider window (the fluid "auto-fill" behavior
+  // FlatList's fixed numColumns can't express on its own) while still getting real virtualization.
+  const [gridWidth, setGridWidth] = useState(0);
   const [pushing, setPushing] = useState(false);
   const [pushConfirmVisible, setPushConfirmVisible] = useState(false);
+
+  // How many 184px cards fit across the measured grid width at the fixed 22px gap/28px padding —
+  // same arithmetic a CSS repeat(auto-fill, minmax(184px,1fr)) grid would do, since FlatList only
+  // takes a fixed numColumns rather than an auto-fill keyword.
+  const gridColumns = useMemo(
+    () => Math.max(1, Math.floor((gridWidth - GRID_PADDING * 2 + GRID_GAP) / (GRID_CARD_WIDTH + GRID_GAP))),
+    [gridWidth],
+  );
 
   const filteredList = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -241,47 +260,55 @@ export default function LibraryScreen() {
           <IconButton icon="dots-vertical" onPress={() => setMoreMenuVisible(true)} />
         </View>
         <View style={styles.webBody}>
-          <ScrollView style={styles.webFilterColumn} contentContainerStyle={styles.webFilterColumnContent}>
-            <Text style={styles.webFilterHeading}>STATUS</Text>
-            {STATUS_FILTERS.map((f) => {
-              const active = statusFilter === f.value;
-              return (
-                <Pressable
+          <View style={styles.webFilterColumn}>
+            <View style={styles.webFilterColumnContent}>
+              <Text style={styles.webFilterHeading}>STATUS</Text>
+              {STATUS_FILTERS.map((f) => (
+                <WebFilterRow
                   key={f.value}
+                  label={f.label}
+                  count={filterCounts[f.value] ?? 0}
+                  dotColor={f.value === 'ALL' ? colors.checkboxUnchecked : statusDotColor(f.value as SeriesStatus['kind'])}
+                  active={statusFilter === f.value}
                   onPress={() => setStatusFilter(f.value)}
-                  style={[styles.webFilterRow, active && styles.webFilterRowActive]}
-                >
-                  <View
-                    style={[
-                      styles.webFilterDot,
-                      { backgroundColor: f.value === 'ALL' ? colors.checkboxUnchecked : statusDotColor(f.value as SeriesStatus['kind']) },
-                    ]}
-                  />
-                  <Text style={[styles.webFilterLabel, { color: active ? colors.textPrimary : colors.textMuted }]}>{f.label}</Text>
-                  <Text style={styles.webFilterCount}>{filterCounts[f.value] ?? 0}</Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-          <ScrollView style={styles.webGrid} contentContainerStyle={styles.webGridContent}>
+                />
+              ))}
+            </View>
+            {/* Pinned to the bottom (marginTop:'auto', same trick WebSidebar's own footer uses) so
+                a short filter list doesn't leave the column reading as an empty bordered panel —
+                the divider border now always ends at real content instead of trailing off into
+                dead space. */}
+            <View style={styles.webFilterColumnFooter}>
+              <MalAttribution />
+            </View>
+          </View>
+          <View style={styles.webGrid} onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}>
             {filteredList.length === 0 ? (
               <View style={styles.empty}>
                 <Text variant="bodyLarge">
                   {seriesList.length === 0 ? 'Nothing here yet' : 'No series match your search/filter'}
                 </Text>
               </View>
-            ) : (
-              <View style={styles.webGridRow}>
-                {filteredList.map((item) => (
-                  <LibraryGridCard key={item.id} series={item} onPress={() => router.push(`/series/${item.id}`)} />
-                ))}
-              </View>
-            )}
-          </ScrollView>
+            ) : gridWidth > 0 ? (
+              <FlatList
+                key={gridColumns}
+                data={filteredList}
+                numColumns={gridColumns}
+                keyExtractor={(item) => String(item.id)}
+                contentContainerStyle={styles.webGridContent}
+                columnWrapperStyle={gridColumns > 1 ? styles.webGridRow : undefined}
+                renderItem={({ item }) => <LibraryGridCard series={item} onPress={() => router.push(`/series/${item.id}`)} />}
+                // A library this size (a real user's had 200+ series) is exactly what virtualization
+                // is for — only rows near the viewport ever mount an Image, instead of every cover
+                // loading at once on first paint (see the impeccable `optimize` pass this came from).
+                removeClippedSubviews
+                initialNumToRender={gridColumns * 4}
+              />
+            ) : null}
+          </View>
         </View>
         {moreMenu}
         {pushConfirmDialog}
-        <MalAttribution />
         <Snackbar visible={syncMessage !== null} onDismiss={() => setSyncMessage(null)} duration={4000} style={styles.webToast}>
           {syncMessage}
         </Snackbar>
@@ -395,8 +422,9 @@ function SeriesRow({ series, onPress }: { series: Series; onPress: () => void })
  * Library grid card. Same data/onPress as SeriesRow above, just a different shape. */
 function LibraryGridCard({ series, onPress }: { series: Series; onPress: () => void }) {
   const isNew = hasVisibleNewSeasonAlert(series);
+  const [hovered, hoverHandlers] = useHover();
   return (
-    <Pressable style={styles.gridCard} onPress={onPress}>
+    <Pressable style={[styles.gridCard, hovered && styles.gridCardHovered]} onPress={onPress} {...hoverHandlers}>
       <View style={styles.gridCoverWrap}>
         <Image source={series.coverUrl ?? undefined} style={styles.gridCover} contentFit="cover" />
         {isNew && (
@@ -412,6 +440,32 @@ function LibraryGridCard({ series, onPress }: { series: Series; onPress: () => v
         <View style={[styles.statusDot, { backgroundColor: statusDotColor(series.status.kind) }]} />
         <Text style={styles.gridCardStatus}>{statusLabel(series.status)}</Text>
       </View>
+    </Pressable>
+  );
+}
+
+/** One vertical STATUS filter row in the wide-web sidebar-adjacent column — same active/onPress
+ * logic as the mobile filter chips, with hover feedback added since a mouse is reliably present
+ * whenever this branch renders (see the restrained colorize pass, colors.hoverWash). */
+function WebFilterRow({
+  label,
+  count,
+  dotColor,
+  active,
+  onPress,
+}: {
+  label: string;
+  count: number;
+  dotColor: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  const [hovered, hoverHandlers] = useHover();
+  return (
+    <Pressable onPress={onPress} {...hoverHandlers} style={[styles.webFilterRow, (active || hovered) && styles.webFilterRowActive]}>
+      <View style={[styles.webFilterDot, { backgroundColor: dotColor }]} />
+      <Text style={[styles.webFilterLabel, { color: active ? colors.textPrimary : colors.textMuted }]}>{label}</Text>
+      <Text style={styles.webFilterCount}>{count}</Text>
     </Pressable>
   );
 }
@@ -459,19 +513,29 @@ const styles = StyleSheet.create({
   webSearchbar: { flex: 1, maxWidth: 440, borderRadius: radii.pill, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, elevation: 0, height: 42 },
   webHeaderCount: { fontFamily: fontFamilies.bodyMedium, fontSize: 13, color: colors.textMuted },
   webBody: { flex: 1, flexDirection: 'row' },
-  webFilterColumn: { width: 200, flexShrink: 0, borderRightWidth: 1, borderRightColor: colors.border },
+  webFilterColumn: { width: 200, flexShrink: 0, flexDirection: 'column', borderRightWidth: 1, borderRightColor: colors.border },
   webFilterColumnContent: { padding: spacing.lg, gap: 2 },
+  webFilterColumnFooter: { marginTop: 'auto', paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
   webFilterHeading: { fontFamily: fontFamilies.bodySemiBold, fontSize: 11, letterSpacing: 1.4, color: colors.textFaint, marginBottom: spacing.sm },
   webFilterRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 36, paddingHorizontal: 10, borderRadius: radii.sm },
-  webFilterRowActive: { backgroundColor: '#EEF3F8' },
+  webFilterRowActive: { backgroundColor: colors.hoverWash },
   webFilterDot: { width: 7, height: 7, borderRadius: 4, flexShrink: 0 },
   webFilterLabel: { flex: 1, fontFamily: fontFamilies.bodyMedium, fontSize: 13.5 },
   webFilterCount: { fontFamily: fontFamilies.bodySemiBold, fontSize: 12, color: colors.textFaint },
   webGrid: { flex: 1 },
-  webGridContent: { padding: 28 },
+  // width:'100%' is load-bearing on react-native-web: without it, a vertical ScrollView's
+  // contentContainerStyle doesn't reliably stretch to the scrollview's own cross-axis width inside
+  // a flexDirection:'row' ancestor, so the flexWrap grid below never gets the width it needs to
+  // wrap past its first few columns — confirmed live (only 3 columns rendered on a window with
+  // room for 7+).
+  webGridContent: { padding: 28, width: '100%' },
   webGridRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 22 },
   gridCard: { width: 184 },
-  gridCoverWrap: { aspectRatio: 3 / 4, borderRadius: radii.lg, backgroundColor: colors.border, overflow: 'hidden' },
+  // Opacity dip on hover rather than a background wash — this precedent comes straight from the
+  // approved design mockup (poster-grid cards there use style-hover="opacity:.92"); a wash would
+  // mean padding the card, which shifts the cover art off its exact 184px spec.
+  gridCardHovered: { opacity: 0.92 },
+  gridCoverWrap: { aspectRatio: 3 / 4, borderRadius: radii.lg, backgroundColor: colors.coverPlaceholder, overflow: 'hidden' },
   gridCover: { width: '100%', height: '100%' },
   gridNewBadge: { position: 'absolute', top: 10, left: 10, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 6, backgroundColor: colors.primary },
   gridNewBadgeText: { fontFamily: fontFamilies.bodyBold, fontSize: 10, letterSpacing: 0.4, color: '#fff' },

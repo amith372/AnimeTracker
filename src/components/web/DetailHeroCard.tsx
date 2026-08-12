@@ -10,6 +10,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { colors, radii, spacing } from '@/theme/colors';
 import { fontFamilies } from '@/theme/fonts';
+import { useHover } from '@/hooks/useHover';
 
 export function DetailHeroCard({
   coverUrl,
@@ -31,13 +32,14 @@ export function DetailHeroCard({
   /** The two-column body (entries list + status/action column) rendered below the header. */
   children: ReactNode;
 }) {
+  const [backHovered, backHoverHandlers] = useHover();
   return (
     <ScrollView style={styles.page} contentContainerStyle={styles.pageContent}>
-      <Pressable onPress={onBack} style={styles.backLink}>
-        <Text style={styles.backLinkText}>‹ Back to library</Text>
+      <Pressable onPress={onBack} {...backHoverHandlers} style={styles.backLink}>
+        <Text style={[styles.backLinkText, backHovered && styles.backLinkTextHovered]}>‹ Back to library</Text>
       </Pressable>
       <View style={styles.card}>
-        <LinearGradient colors={[colors.primary, '#4778AC']} style={styles.header}>
+        <LinearGradient colors={[colors.primary, colors.heroGradientEnd]} style={styles.header}>
           <View style={styles.headerTopRow}>{topRight}</View>
           <View style={styles.headerContent}>
             <Image source={coverUrl ?? undefined} style={styles.cover} contentFit="cover" />
@@ -68,7 +70,8 @@ const styles = StyleSheet.create({
   pageContent: { alignItems: 'center', paddingHorizontal: 32, paddingVertical: 24 },
   backLink: { alignSelf: 'flex-start', width: '100%', maxWidth: CARD_MAX_WIDTH, marginBottom: spacing.md },
   backLinkText: { fontFamily: fontFamilies.bodySemiBold, fontSize: 13.5, color: colors.primary },
-  card: { width: '100%', maxWidth: CARD_MAX_WIDTH, borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  backLinkTextHovered: { color: colors.heroGradientEnd },
+  card: { width: '100%', maxWidth: CARD_MAX_WIDTH, borderRadius: radii.xl, overflow: 'hidden', borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   header: { flexDirection: 'row', gap: 26, padding: 30 },
   headerTopRow: { position: 'absolute', top: 14, right: 14, flexDirection: 'row' },
   headerContent: { flexDirection: 'row', gap: 26, flex: 1 },

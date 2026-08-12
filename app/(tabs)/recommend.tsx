@@ -574,7 +574,7 @@ const styles = StyleSheet.create({
   sectionHeader: { paddingTop: 8, paddingBottom: 4 },
   card: { marginBottom: 4, borderRadius: 16 },
   cardContent: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  cover: { width: 64, height: 90, borderRadius: 8, backgroundColor: colors.border },
+  cover: { width: 64, height: 90, borderRadius: 8, backgroundColor: colors.coverPlaceholder },
   cardText: { flex: 1 },
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   titleText: { flex: 1 },
@@ -604,6 +604,6 @@ const styles = StyleSheet.create({
   webForYouSections: { marginTop: 8, paddingBottom: 12 },
   webCardRowContent: { gap: 16, paddingBottom: 4 },
   webCard: { width: 158, backgroundColor: 'transparent', elevation: 0, shadowOpacity: 0 },
-  webCardCover: { width: 158, height: 222, borderRadius: 14, backgroundColor: colors.border },
+  webCardCover: { width: 158, height: 222, borderRadius: 14, backgroundColor: colors.coverPlaceholder },
   webCardTitle: { fontSize: 14, marginTop: 10 },
 });

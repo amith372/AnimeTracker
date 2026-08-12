@@ -46,3 +46,9 @@ supabase/.temp/
 # generated native folders
 /ios
 /android
+
+# Claude Code local settings + the impeccable design skill's own installed tooling — machine-
+# specific, reinstalled via `npx impeccable install`, not meant to be shared. Its DESIGN.md and
+# .impeccable/design.json outputs (project-root, not under .claude/) are tracked normally.
+.claude/settings.local.json
+.claude/skills/impeccable/

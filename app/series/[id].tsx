@@ -31,6 +31,7 @@ import { statusDotColor } from '@/theme/statusColors';
 import { MANUAL_STATUS_CHIP_LABELS } from '@/theme/statusChipLabels';
 import { fontFamilies } from '@/theme/fonts';
 import { useIsWideWeb } from '@/hooks/useWebLayout';
+import { useHover } from '@/hooks/useHover';
 import type { ManualStatus } from '@/domain/types';
 
 // "Liked" only makes sense once there's something to have an opinion on — shown for any status
@@ -134,20 +135,14 @@ export default function SeriesDetailScreen() {
         <View style={styles.webStatusColumn}>
           <Text style={styles.webSectionLabel}>STATUS</Text>
           <View style={styles.webStatusChipList}>
-            {EDITABLE_STATUS_CHOICES.map((choice) => {
-              const active = series.manualStatus === choice;
-              return (
-                <Pressable
-                  key={choice}
-                  onPress={() => runWrite(() => setSeriesManualStatus(series.id, choice))}
-                  style={[styles.webStatusChip, active && styles.webStatusChipActive]}
-                >
-                  <Text style={[styles.webStatusChipText, active && styles.webStatusChipTextActive]}>
-                    {MANUAL_STATUS_CHIP_LABELS[choice]}
-                  </Text>
-                </Pressable>
-              );
-            })}
+            {EDITABLE_STATUS_CHOICES.map((choice) => (
+              <WebStatusChip
+                key={choice}
+                label={MANUAL_STATUS_CHIP_LABELS[choice]}
+                active={series.manualStatus === choice}
+                onPress={() => runWrite(() => setSeriesManualStatus(series.id, choice))}
+              />
+            ))}
           </View>
           <Text style={styles.webStatusFootnote}>Data from MyAnimeList · watch marks stay in your account</Text>
         </View>
@@ -168,7 +163,7 @@ export default function SeriesDetailScreen() {
       {/* The gradient itself extends behind the status bar (an intentional edge-to-edge look),
           but the back/heart buttons need to sit below it — paddingTop: insets.top pushes just the
           interactive content down without adding a visible seam in the gradient. */}
-      <LinearGradient colors={[colors.primary, '#4778AC']} style={[styles.banner, { paddingTop: insets.top }]}>
+      <LinearGradient colors={[colors.primary, colors.heroGradientEnd]} style={[styles.banner, { paddingTop: insets.top }]}>
         <View style={styles.bannerTopRow}>
           <IconButton icon="arrow-left" iconColor="#fff" onPress={() => router.back()} />
           {canLike && (
@@ -361,6 +356,17 @@ function ArcListRow({
   );
 }
 
+/** One pressable status choice in the wide-web status column — active/onPress logic identical to
+ * the mobile status chip row, with hover feedback added (see colors.hoverWash). */
+function WebStatusChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  const [hovered, hoverHandlers] = useHover();
+  return (
+    <Pressable onPress={onPress} {...hoverHandlers} style={[styles.webStatusChip, active && styles.webStatusChipActive, !active && hovered && styles.webStatusChipHovered]}>
+      <Text style={[styles.webStatusChipText, active && styles.webStatusChipTextActive]}>{label}</Text>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   banner: { paddingBottom: spacing.xl, borderBottomLeftRadius: 30, borderBottomRightRadius: 30 },
@@ -405,6 +411,7 @@ const styles = StyleSheet.create({
   webStatusChipList: { gap: 7, marginTop: 12 },
   webStatusChip: { minHeight: 42, justifyContent: 'center', paddingHorizontal: 16, borderRadius: radii.md - 1, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   webStatusChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  webStatusChipHovered: { backgroundColor: colors.hoverWash, borderColor: colors.hoverWash },
   webStatusChipText: { fontFamily: fontFamilies.bodySemiBold, fontSize: 13.5, color: colors.textMuted },
   webStatusChipTextActive: { color: '#fff' },
   webStatusFootnote: { fontFamily: fontFamilies.bodyRegular, fontSize: 11, lineHeight: 17.6, color: colors.textFaint, marginTop: 20 },

@@ -128,7 +128,7 @@ export default function SeriesPreviewScreen() {
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
-      <LinearGradient colors={[colors.primary, '#4778AC']} style={[styles.banner, { paddingTop: insets.top }]}>
+      <LinearGradient colors={[colors.primary, colors.heroGradientEnd]} style={[styles.banner, { paddingTop: insets.top }]}>
         <View style={styles.bannerTopRow}>
           <IconButton icon="arrow-left" iconColor="#fff" onPress={() => router.back()} />
           <IconButton icon="information-outline" iconColor="#fff" accessibilityLabel="Show summary" onPress={openInfo} />
