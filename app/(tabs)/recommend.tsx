@@ -19,7 +19,7 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { FlatList, ScrollView, SectionList, StyleSheet, View } from 'react-native';
+import { FlatList, Pressable, ScrollView, SectionList, StyleSheet, View } from 'react-native';
 import {
   ActivityIndicator,
   Button,
@@ -38,6 +38,7 @@ import { SeriesTitleText } from '@/components/SeriesTitleText';
 import { LoadFailure } from '@/components/LoadFailure';
 import { refetchLibrary, useTrackedMalIds } from '@/repositories/AnimeRepository';
 import { userFacingMessage } from '@/repositories/errorMessage';
+import { useHover } from '@/hooks/useHover';
 import { fetchRecommendations, useCatchUp, type RecommendProgress } from '@/repositories/RecommendationRepository';
 import { splitCatchUpByKind, splitRecommendationsByType, type CatchUpItem } from '@/domain/recommendations';
 import type { ReconcileSeries } from '@/domain/reconcileSeries';
@@ -571,20 +572,40 @@ function WebForYouSections({ series, onPress }: { series: ReconcileSeries[]; onP
   );
 }
 
-/** Shared wide-web poster card for both Catch up and For you rows — cover, title, one meta line. */
+/**
+ * Shared wide-web poster card for both Catch up and For you — cover, title, one meta line.
+ *
+ * A plain Pressable, not Paper's Card. It was a Card with its own surface cancelled out
+ * (`backgroundColor:'transparent', elevation:0, shadowOpacity:0`) — a component used as a View with
+ * its defining features switched off — and padding set on it never reached the text, because Paper
+ * nests the children in its own ripple container. That's what left every show name flush against
+ * the card edge through two attempted fixes.
+ *
+ * Owning the container outright makes the surface deliberate (Pure White on Fog White, one hairline
+ * border, no shadow — DESIGN.md's Borders-Not-Shadows rule satisfied by construction rather than by
+ * cancellation) and the padding real. Hover is the same 0.92 opacity dip every other poster card in
+ * the system uses.
+ */
 function WebRecCard({ coverUrl, title, meta, onPress }: { coverUrl: string | null; title: string; meta?: string; onPress: () => void }) {
+  const [hovered, hoverHandlers] = useHover();
   return (
-    <Card style={styles.webCard} onPress={onPress}>
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      style={[styles.webCard, hovered && styles.webCardHovered]}
+      {...hoverHandlers}
+    >
       <Image source={coverUrl ?? undefined} style={styles.webCardCover} contentFit="cover" />
       <SeriesTitleText numberOfLines={2} style={styles.webCardTitle}>
         {title}
       </SeriesTitleText>
       {meta != null && (
-        <Text numberOfLines={1} style={styles.muted}>
+        <Text numberOfLines={1} style={styles.webCardMeta}>
           {meta}
         </Text>
       )}
-    </Card>
+    </Pressable>
   );
 }
 
@@ -725,13 +746,18 @@ const styles = StyleSheet.create({
   // show name read as clipped by the card it was in. Card width is the 158px cover column plus that
   // gutter on both sides, so the cover keeps its exact size.
   webCard: {
+    // The 158px cover column plus a 10px gutter on each side — cover and text share one inset, so
+    // neither sits flush against the card edge.
     width: 158 + 20,
     padding: 10,
-    backgroundColor: 'transparent',
-    elevation: 0,
-    shadowOpacity: 0,
+    borderRadius: radii.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
     overflow: 'hidden',
   },
+  webCardHovered: { opacity: 0.92 },
   webCardCover: { width: '100%', height: 222, borderRadius: radii.md, backgroundColor: colors.coverPlaceholder },
   webCardTitle: { fontSize: 14, marginTop: 10, width: '100%' },
+  webCardMeta: { fontFamily: fontFamilies.bodyRegular, fontSize: 12.5, color: colors.textMuted, marginTop: 2 },
 });
