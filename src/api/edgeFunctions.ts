@@ -37,8 +37,15 @@ export function callMalSessionExchange(code: string): Promise<{ session: { acces
   return invoke('mal-session-exchange', { code });
 }
 
-export function callMalImport(): Promise<{ entries: unknown[]; details: Record<string, unknown> }> {
-  return invoke('mal-import');
+/** Phase 1 of an import: the user's whole MAL list. Needs MAL linked to the current account. */
+export function callMalImportList(): Promise<{ entries: unknown[] }> {
+  return invoke('mal-import', { phase: 'list' });
+}
+
+/** Phase 2, called once per batch so ImportRepository can report real progress — ids MAL wouldn't
+ * return are simply absent from the response rather than failing the batch. */
+export function callMalImportDetails(ids: number[]): Promise<{ details: Record<string, unknown> }> {
+  return invoke('mal-import', { phase: 'details', ids });
 }
 
 export function callMalDiscover<T>(request: { type: 'season'; year: number; season: string; offset?: number } | { type: 'ranking'; rankingType: string; offset?: number } | { type: 'search'; query: string; offset?: number }): Promise<T> {
