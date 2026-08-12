@@ -6,14 +6,9 @@ import { getRequestUserId } from '../_shared/supabaseAdmin.ts';
 import { getValidMalAccessToken } from '../_shared/malAuth.ts';
 import { malGetAuthed, malGetUrlAuthed, malGetPublic } from '../_shared/malProxy.ts';
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
+import { describeError } from '../_shared/errors.ts';
 
-// Bumped from 6 (2026-08-12): even a modest library was hitting Supabase's Edge Function wall-clock
-// limit (~75s, confirmed via the dashboard's `shutdown: early_drop` log entries) — at 6 concurrent,
-// each of the detail pass + up to MAX_CLOSURE_PASSES more passes waits for its slowest MAL call
-// before starting the next, and MAL isn't always fast. This still only ever runs once per account
-// (initial import, not a loop), so a wider burst here doesn't meaningfully change how this app treats
-// guardrail #3's "never hammer endpoints in tight loops".
-const DETAIL_CONCURRENCY = 15;
+const DETAIL_CONCURRENCY = 6;
 const MAX_CLOSURE_PASSES = 5;
 
 interface AnimeNodeDto { id: number; title: string }
@@ -98,6 +93,9 @@ Deno.serve(async (req) => {
       details: Object.fromEntries(Array.from(detailById.entries()).map(([id, d]) => [String(id), d])),
     });
   } catch (e) {
-    return jsonResponse({ error: e instanceof Error ? e.message : 'mal-import failed' }, 500);
+    // describeError, not `instanceof Error`: see _shared/errors.ts for why that check was hiding
+    // the real cause behind a generic message.
+    console.error('mal-import failed:', e);
+    return jsonResponse({ error: `mal-import failed: ${describeError(e)}` }, 500);
   }
 });

@@ -5,6 +5,7 @@
 // existing rule, which still applies once this is the thing being called).
 import { malGetPublic } from '../_shared/malProxy.ts';
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
+import { describeError } from '../_shared/errors.ts';
 
 const DETAIL_FIELDS = 'related_anime,media_type,num_episodes,genres,main_picture,title,alternative_titles,status,start_season,mean,synopsis';
 
@@ -16,6 +17,6 @@ Deno.serve(async (req) => {
     const data = await malGetPublic(`anime/${id}`, { fields: DETAIL_FIELDS });
     return jsonResponse(data);
   } catch (e) {
-    return jsonResponse({ error: e instanceof Error ? e.message : 'mal-anime-detail failed' }, 500);
+    return jsonResponse({ error: `mal-anime-detail failed: ${describeError(e)}` }, 500);
   }
 });

@@ -28,6 +28,7 @@
 import { supabaseAdmin, getRequestUserId } from '../_shared/supabaseAdmin.ts';
 import { malGetPublic } from '../_shared/malProxy.ts';
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
+import { describeError } from '../_shared/errors.ts';
 
 const DETAIL_FIELDS = 'related_anime,media_type,num_episodes,status,start_season,title,alternative_titles';
 const CRON_SECRET = Deno.env.get('CRON_SECRET');
@@ -174,6 +175,6 @@ Deno.serve(async (req) => {
     const seriesWithNewSeasons = await syncUserSeries(userId);
     return jsonResponse({ seriesWithNewSeasons });
   } catch (e) {
-    return jsonResponse({ error: e instanceof Error ? e.message : 'mal-monthly-sync failed' }, 500);
+    return jsonResponse({ error: `mal-monthly-sync failed: ${describeError(e)}` }, 500);
   }
 });

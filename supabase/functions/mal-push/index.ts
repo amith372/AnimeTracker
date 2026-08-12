@@ -6,6 +6,7 @@ import { getRequestUserId } from '../_shared/supabaseAdmin.ts';
 import { getValidMalAccessToken } from '../_shared/malAuth.ts';
 import { malPutAuthed } from '../_shared/malProxy.ts';
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
+import { describeError } from '../_shared/errors.ts';
 
 type PushStatus = 'plan_to_watch' | 'watching' | 'completed';
 interface PushTarget { malId: number; status: PushStatus }
@@ -32,6 +33,6 @@ Deno.serve(async (req) => {
 
     return jsonResponse({ updated, failed });
   } catch (e) {
-    return jsonResponse({ error: e instanceof Error ? e.message : 'mal-push failed' }, 500);
+    return jsonResponse({ error: `mal-push failed: ${describeError(e)}` }, 500);
   }
 });

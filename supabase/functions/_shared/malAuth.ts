@@ -4,6 +4,7 @@
 // MAL's refresh-token rotation lives in Postgres (mal_refresh_token_if_needed, see the Phase 8
 // migration), not in this process — this file just calls that RPC.
 import { supabaseAdmin } from './supabaseAdmin.ts';
+import { describeError } from './errors.ts';
 
 const MAL_TOKEN_URL = 'https://myanimelist.net/v1/oauth2/token';
 export const MAL_CLIENT_ID = Deno.env.get('MAL_CLIENT_ID')!;
@@ -46,7 +47,10 @@ export async function getValidMalAccessToken(userId: string): Promise<string | n
     p_user_id: userId,
     p_client_id: MAL_CLIENT_ID,
   });
-  if (error) throw error;
+  // Wrapped in a real Error (not `throw error`): a PostgrestError is a plain object here, so
+  // throwing it raw made every caller's `e instanceof Error` check fail and replace the actual
+  // Postgres message with a generic "<function> failed" — see errors.ts.
+  if (error) throw new Error(`mal_refresh_token_if_needed failed: ${describeError(error)}`);
   const row = data?.[0];
   if (!row || !row.mal_linked) return null;
   return row.access_token;

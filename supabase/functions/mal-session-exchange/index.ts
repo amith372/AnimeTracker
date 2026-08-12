@@ -9,6 +9,7 @@
 import { supabaseAdmin } from '../_shared/supabaseAdmin.ts';
 import { supabaseAnon } from '../_shared/supabaseAnon.ts';
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
+import { describeError } from '../_shared/errors.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return handleOptions();
@@ -47,6 +48,6 @@ Deno.serve(async (req) => {
 
     return jsonResponse({ session: verifyData.session });
   } catch (e) {
-    return jsonResponse({ error: e instanceof Error ? e.message : 'mal-session-exchange failed' }, 500);
+    return jsonResponse({ error: `mal-session-exchange failed: ${describeError(e)}` }, 500);
   }
 });

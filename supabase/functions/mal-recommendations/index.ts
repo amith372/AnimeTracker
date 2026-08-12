@@ -1,6 +1,7 @@
 // Proxies MAL's `?fields=recommendations` read — public, same reasoning as mal-anime-detail.
 import { malGetPublic } from '../_shared/malProxy.ts';
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
+import { describeError } from '../_shared/errors.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return handleOptions();
@@ -10,6 +11,6 @@ Deno.serve(async (req) => {
     const data = await malGetPublic(`anime/${id}`, { fields: 'recommendations' });
     return jsonResponse(data);
   } catch (e) {
-    return jsonResponse({ error: e instanceof Error ? e.message : 'mal-recommendations failed' }, 500);
+    return jsonResponse({ error: `mal-recommendations failed: ${describeError(e)}` }, 500);
   }
 });

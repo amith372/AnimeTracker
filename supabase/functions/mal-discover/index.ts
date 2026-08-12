@@ -4,6 +4,7 @@
 // three, since they're one thin pass-through each.
 import { malGetPublic } from '../_shared/malProxy.ts';
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
+import { describeError } from '../_shared/errors.ts';
 
 const BROWSE_FIELDS = 'media_type,genres,main_picture,num_episodes,start_season,status,alternative_titles';
 const BROWSE_PAGE_SIZE = 25;
@@ -32,6 +33,6 @@ Deno.serve(async (req) => {
 
     return jsonResponse(data);
   } catch (e) {
-    return jsonResponse({ error: e instanceof Error ? e.message : 'mal-discover failed' }, 500);
+    return jsonResponse({ error: `mal-discover failed: ${describeError(e)}` }, 500);
   }
 });
