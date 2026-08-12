@@ -40,11 +40,21 @@ function openMalAuthorizeFlow(): Promise<MalLinkResult> {
     let popup: Window | null = null;
     let pollClosed: ReturnType<typeof setInterval> | null = null;
 
+    // Tears down both the listener and the popup-closed watchdog. Split out from finish() because
+    // the sign-in branch below needs to stop watching *before* it has a result: /oauth-complete
+    // closes the popup the instant it posts its message, so leaving the watchdog armed across the
+    // async session exchange let it win the race and report a cancellation for a login that was
+    // actually succeeding.
+    const stopWatching = () => {
+      window.removeEventListener('message', onMessage);
+      if (pollClosed) clearInterval(pollClosed);
+      pollClosed = null;
+    };
+
     const finish = (result: MalLinkResult) => {
       if (settled) return;
       settled = true;
-      window.removeEventListener('message', onMessage);
-      if (pollClosed) clearInterval(pollClosed);
+      stopWatching();
       resolve(result);
     };
 
@@ -54,6 +64,9 @@ function openMalAuthorizeFlow(): Promise<MalLinkResult> {
       if (event.origin !== window.location.origin) return;
       if (!isMalAuthMessage(event.data)) return;
       const data = event.data;
+      // The popup has done its job and is closing itself — from here the outcome is decided by this
+      // handler alone, so disarm the "user dismissed the popup" watchdog immediately.
+      stopWatching();
       if (data.malError) {
         finish({ success: false, message: data.malError });
       } else if (typeof data.linked === 'string') {
@@ -79,8 +92,9 @@ function openMalAuthorizeFlow(): Promise<MalLinkResult> {
           finish({ success: false, message: 'Popup was blocked — allow popups for this site and try again.' });
           return;
         }
-        // Backstop for "user closed the popup without completing" — mal-oauth-callback's own HTML
-        // always posts a message before closing itself, so this only fires on a genuine dismissal.
+        // Backstop for "user closed the popup without completing" — /oauth-complete always posts a
+        // message before closing itself, and that message disarms this watchdog (see onMessage), so
+        // this only fires on a genuine dismissal.
         pollClosed = setInterval(() => {
           if (popup?.closed) finish({ success: false, message: 'Login was cancelled.' });
         }, 500);
