@@ -267,6 +267,32 @@ export async function addSeries(item: ReconcileSeries): Promise<string> {
   return data as string;
 }
 
+/**
+ * Inserts several new series at once, leaving the rest of the library untouched — the additive MAL
+ * sync's write path (see ImportRepository.runAdditiveSync).
+ *
+ * Calls the `add_series` RPC directly rather than looping addSeries(): that wrapper invalidates the
+ * library query on every call, which for a batch would mean N refetches of the whole library for
+ * one user action. One invalidation at the end instead.
+ *
+ * Best-effort per series, matching how Import/Discover/Push already treat batches — one show MAL
+ * returned something odd for shouldn't cost the user the other nineteen. A 23505 is counted as
+ * neither added nor failed: unique(user_id, root_mal_id) means the show is already there, which is
+ * the desired end state, not an error worth reporting.
+ */
+export async function addImportedSeries(items: ReconcileSeries[]): Promise<{ added: number; failed: number }> {
+  const userId = await requireUserId();
+  let added = 0;
+  let failed = 0;
+  for (const item of items) {
+    const { error } = await supabase.rpc('add_series', { payload: toSeriesPayload(item) });
+    if (!error) added++;
+    else if (error.code !== '23505') failed++;
+  }
+  await queryClient.invalidateQueries({ queryKey: libraryKeys.library(userId) });
+  return { added, failed };
+}
+
 async function fetchLibraryMeta(userId: string): Promise<{ initialImportCompletedAt: string | null }> {
   const { data, error } = await supabase
     .from('user_library_meta')
@@ -297,6 +323,18 @@ export async function markInitialImportComplete(): Promise<void> {
   // the whole MAL import runs again before the fresh value ever lands. We know exactly what we just
   // wrote, so write it into the cache and skip the round trip entirely.
   queryClient.setQueryData(libraryKeys.meta(userId), { initialImportCompletedAt: now });
+}
+
+/**
+ * Stamps `last_sync_at` only, for the additive sync's "we checked MAL just now" bookkeeping.
+ * Deliberately not markInitialImportComplete(), which also writes initial_import_completed_at —
+ * that column is the Library-vs-Reconcile onboarding gate and must keep its original timestamp.
+ * Best-effort: failing to record when we last looked must not fail a sync that already inserted.
+ */
+export async function markLastSync(): Promise<void> {
+  const userId = await currentUserId();
+  if (!userId) return;
+  await supabase.from('user_library_meta').upsert({ user_id: userId, last_sync_at: new Date().toISOString() });
 }
 
 /** Reactive check for whether onboarding import has completed — gates Library vs. Reconcile.

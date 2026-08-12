@@ -176,6 +176,24 @@ export default function LibraryScreen() {
     <Portal>
       <Dialog visible={moreMenuVisible} onDismiss={() => setMoreMenuVisible(false)}>
         <Dialog.Content style={styles.moreMenuContent}>
+          {/* Distinct from "Sync now" below, which only re-walks series already in the library
+              looking for new seasons and never re-reads the MyAnimeList list itself — so a show
+              added on myanimelist.net after onboarding was invisible to the app entirely. This is
+              the only thing besides onboarding that reads that list. No confirmation dialog: the
+              additive sync only ever inserts whole new series (see runAdditiveSync), so unlike
+              "Update MyAnimeList" there's nothing here to undo. */}
+          {malLinked && (
+            <Pressable
+              style={styles.moreMenuRow}
+              onPress={() => {
+                setMoreMenuVisible(false);
+                router.push('/onboarding/reconcile?mode=additive');
+              }}
+            >
+              <MaterialCommunityIcons name="playlist-plus" size={22} color={colors.textPrimary} />
+              <Text variant="bodyLarge">Check MyAnimeList for new shows</Text>
+            </Pressable>
+          )}
           {/* Nothing to sync without MyAnimeList linked, so the refresh action is meaningless
               (and runMonthlySync itself is a no-op) otherwise — hidden rather than shown-but-dead. */}
           {malLinked && (

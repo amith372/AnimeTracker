@@ -6,11 +6,16 @@
 // the result to Postgres (replaceAllSeries's replace_library RPC) on confirm.
 import { Image } from 'expo-image';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { FlatList, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Button, Snackbar, Text } from 'react-native-paper';
-import { markInitialImportComplete, replaceAllSeries } from '@/repositories/AnimeRepository';
-import { runImport } from '@/repositories/ImportRepository';
+import {
+  addImportedSeries,
+  markInitialImportComplete,
+  markLastSync,
+  replaceAllSeries,
+} from '@/repositories/AnimeRepository';
+import { runAdditiveSync, runImport } from '@/repositories/ImportRepository';
 import { deriveSeriesStatus } from '@/domain/seriesStatus';
 import { statusLabel } from '@/domain/statusLabel';
 import { SeriesTitleText } from '@/components/SeriesTitleText';
@@ -30,10 +35,17 @@ export default function ReconcileScreen() {
   const [state, setState] = useState<ScreenState>({ kind: 'FETCHING_LIST' });
   const [saveError, setSaveError] = useState<string | null>(null);
   const router = useRouter();
+  // 'import' (onboarding, the default) fetches the whole MAL list and saves it as a full replace;
+  // 'additive' fetches only shows added to MAL since, and inserts them alongside the existing
+  // library. Everything between those two ends — the state machine, the checklist, select-all,
+  // the error/retry branch — is identical, which is why this is a mode rather than a second screen.
+  const { mode } = useLocalSearchParams<{ mode?: string }>();
+  const isAdditive = mode === 'additive';
 
   const startImport = useCallback(() => {
     setState({ kind: 'FETCHING_LIST' });
-    runImport((progress) => {
+    const run = isAdditive ? runAdditiveSync : runImport;
+    run((progress) => {
       switch (progress.kind) {
         case 'FETCHING_LIST':
           setState({ kind: 'FETCHING_LIST' });
@@ -49,7 +61,7 @@ export default function ReconcileScreen() {
           break;
       }
     });
-  }, []);
+  }, [isAdditive]);
 
   // Guards against a double-mount firing runImport() twice on load — same pattern as app/auth.tsx
   // and app/oauth-complete.tsx. Real-world impact confirmed via the Supabase dashboard: two
@@ -107,6 +119,20 @@ export default function ReconcileScreen() {
     const imported = state.series;
     setState({ kind: 'SAVING' });
     try {
+      if (isAdditive) {
+        // Insert-only, and back to wherever the user came from — the library they already had is
+        // still there, so there's nothing to redirect them to. markLastSync deliberately does not
+        // touch initial_import_completed_at (see AnimeRepository).
+        const { failed } = await addImportedSeries(imported);
+        await markLastSync();
+        if (failed > 0) {
+          setState({ kind: 'READY', series: imported });
+          setSaveError(`${failed} of ${imported.length} shows could not be added. Try again.`);
+          return;
+        }
+        router.back();
+        return;
+      }
       await replaceAllSeries(imported);
       await markInitialImportComplete();
       router.replace('/');
@@ -147,13 +173,31 @@ export default function ReconcileScreen() {
     );
   }
 
+  // Finding nothing is a normal outcome for the additive sync (it's what a repeat run looks like),
+  // so it gets a real "nothing to do" screen rather than an empty checklist above a Confirm button
+  // that would save nothing. The onboarding import has no equivalent case — an empty MAL list still
+  // needs confirming, since that's what marks onboarding done.
+  if (isAdditive && state.series.length === 0) {
+    return (
+      <View style={styles.center}>
+        <Text variant="bodyLarge">You&apos;re up to date</Text>
+        <Text variant="bodyMedium" style={styles.mutedText}>
+          No new shows on your MyAnimeList.
+        </Text>
+        <Button mode="contained" onPress={() => router.back()} buttonColor={colors.primary}>
+          Done
+        </Button>
+      </View>
+    );
+  }
+
   const allWatched = state.series.every((s) => s.entries.every((e) => e.watchState === 'WATCHED'));
 
   return (
     <View style={styles.container}>
       <View style={styles.selectAllRow}>
         <Text variant="bodyMedium" style={styles.mutedText}>
-          {state.series.length} shows found
+          {state.series.length} {isAdditive ? 'new shows found' : 'shows found'}
         </Text>
         <Button compact onPress={() => setAllEntries(!allWatched)}>
           {allWatched ? 'Deselect all' : 'Select all'}
@@ -165,7 +209,7 @@ export default function ReconcileScreen() {
         renderItem={({ item }) => <SeriesGroup series={item} onToggleEntry={toggleEntry} />}
       />
       <Button mode="contained" onPress={confirm} style={styles.confirmButton} buttonColor={colors.primary}>
-        Confirm &amp; save
+        {isAdditive ? 'Add to library' : 'Confirm & save'}
       </Button>
       <Snackbar visible={saveError !== null} onDismiss={() => setSaveError(null)} duration={6000}>
         {saveError}

@@ -14,12 +14,24 @@
 // ask for the list, then walk the relation closure asking for details a batch at a time, emitting
 // FETCHING_DETAILS after each. The Edge Function answers "give me these DTOs" and nothing more, so
 // the closure bookkeeping (which ids are still missing) lives here rather than there.
+//
+// Two entry points share that machinery: runImport (onboarding — the whole list, saved as a
+// destructive full replace) and runAdditiveSync (whatever's been added to the MAL list since,
+// inserted alongside the existing library and never replacing it). See runAdditiveSync's own
+// comment for why the app needs the second one at all.
 import { callMalImportDetails, callMalImportList } from '@/api/edgeFunctions';
 import type { AnimeDetailDto } from '@/api/malDataApi';
 import { mapMalListStatus, mergeSeriesManualStatus } from '@/domain/importStatus';
 import { mapAiringStatus, type ReconcileEntry, type ReconcileSeries } from '@/domain/reconcileSeries';
-import { groupIntoSeries, type AnimeRelationInput, type GroupedSeries } from '@/domain/seriesGrouping';
+import {
+  groupIntoSeries,
+  rejectSeriesOverlapping,
+  retainSeriesOnUserList,
+  type AnimeRelationInput,
+  type GroupedSeries,
+} from '@/domain/seriesGrouping';
 import { displayTitle } from '@/domain/title';
+import { getAllSeriesOnce } from './AnimeRepository';
 
 interface AnimeNodeDto {
   id: number;
@@ -46,19 +58,19 @@ const DETAIL_BATCH_SIZE = 25;
 // rounds. 5 passes has always been enough for real libraries.
 const MAX_CLOSURE_PASSES = 5;
 
-/** Fetches + groups the user's MAL list, reporting progress via `onProgress` as it goes. */
-export async function runImport(onProgress: (progress: ImportProgress) => void): Promise<void> {
-  onProgress({ kind: 'FETCHING_LIST' });
-
-  let entries: AnimeListEntryDto[];
-  try {
-    const result = await callMalImportList();
-    entries = result.entries as AnimeListEntryDto[];
-  } catch (e) {
-    onProgress({ kind: 'FAILED', message: describeError(e, 'fetching your list') });
-    return;
-  }
-
+/**
+ * Walks the related-anime closure out from `seedIds`, fetching details a batch at a time and
+ * emitting FETCHING_DETAILS after each so the caller can render a real progress bar.
+ *
+ * Shared by both entry points below — the walk itself doesn't care whether it was seeded with the
+ * user's whole MAL list (initial import) or just the entries they've added since (additive sync),
+ * and duplicating the batching/cycle/unavailable bookkeeping for the second caller would be asking
+ * for the two copies to drift.
+ */
+async function fetchDetailClosure(
+  seedIds: number[],
+  onProgress: (progress: ImportProgress) => void,
+): Promise<{ detailById: Map<number, AnimeDetailDto>; lastError: unknown }> {
   const detailById = new Map<number, AnimeDetailDto>();
   // Ids MAL wouldn't return (404s on stale relation edges are common) — remembered so the closure
   // passes below don't re-request the same dead id every single pass.
@@ -69,8 +81,8 @@ export async function runImport(onProgress: (progress: ImportProgress) => void):
   // when a new pass starts. That's honest — the real total genuinely isn't known until the closure
   // settles — and preferable to a bar that sits at 100% while work continues.
   let completed = 0;
-  let total = entries.length;
-  let queue = entries.map((entry) => entry.node.id);
+  let total = seedIds.length;
+  let queue = seedIds;
 
   onProgress({ kind: 'FETCHING_DETAILS', completed, total });
 
@@ -85,8 +97,8 @@ export async function runImport(onProgress: (progress: ImportProgress) => void):
         for (const [id, dto] of Object.entries(details)) detailById.set(Number(id), dto as AnimeDetailDto);
       } catch (e) {
         // One failed batch shouldn't abandon a long import — record it and carry on, same
-        // best-effort stance the per-id fetches take. If *everything* fails, the guard below turns
-        // that into a single clear error using this message.
+        // best-effort stance the per-id fetches take. If *everything* fails, the callers' guard
+        // turns that into a single clear error using this message.
         lastError = e;
       }
       // Anything still missing after its batch returned is one MAL wouldn't serve.
@@ -107,6 +119,31 @@ export async function runImport(onProgress: (progress: ImportProgress) => void):
     total += queue.length;
   }
 
+  return { detailById, lastError };
+}
+
+/** The user's whole MAL list, or null if the call failed (having already reported FAILED). */
+async function fetchList(onProgress: (progress: ImportProgress) => void): Promise<AnimeListEntryDto[] | null> {
+  onProgress({ kind: 'FETCHING_LIST' });
+  try {
+    const result = await callMalImportList();
+    return result.entries as AnimeListEntryDto[];
+  } catch (e) {
+    onProgress({ kind: 'FAILED', message: describeError(e, 'fetching your list') });
+    return null;
+  }
+}
+
+/** Fetches + groups the user's MAL list, reporting progress via `onProgress` as it goes. */
+export async function runImport(onProgress: (progress: ImportProgress) => void): Promise<void> {
+  const entries = await fetchList(onProgress);
+  if (entries === null) return;
+
+  const { detailById, lastError } = await fetchDetailClosure(
+    entries.map((entry) => entry.node.id),
+    onProgress,
+  );
+
   if (entries.length > 0 && detailById.size === 0) {
     onProgress({
       kind: 'FAILED',
@@ -121,7 +158,73 @@ export async function runImport(onProgress: (progress: ImportProgress) => void):
   const animeById = new Map<number, AnimeRelationInput>();
   for (const [id, dto] of detailById) animeById.set(id, toAnimeRelationInput(dto));
 
-  const grouped = groupIntoSeries(animeById);
+  // Grouping runs over the whole closure — including everything pulled in only to resolve
+  // relations — so it has to be narrowed back down to series the user actually tracks before the
+  // reconcile screen sees it. See retainSeriesOnUserList for why the walk stays wide.
+  const grouped = retainSeriesOnUserList(groupIntoSeries(animeById), new Set(statusByMalId.keys()));
+  const reconcileSeries = grouped.map((g) => toReconcileSeries(g, detailById, statusByMalId));
+
+  onProgress({ kind: 'READY', series: reconcileSeries });
+}
+
+/**
+ * Finds shows added to the user's MAL list since their last import, as whole series they don't
+ * already have — the additive counterpart to runImport.
+ *
+ * Exists because nothing else in the app ever re-reads the MAL list: mal-monthly-sync only walks
+ * series already in Postgres looking for new *seasons*, so a show added on myanimelist.net after
+ * onboarding stayed invisible forever, and the only remedy was a full destructive re-import.
+ *
+ * Strictly additive by design, which is what lets the caller skip a confirmation dialog: it reports
+ * only series with no overlap at all with the existing library. A new MAL entry that turns out to
+ * be a later season of something already tracked is deliberately dropped rather than merged in —
+ * modifying existing rows is monthly sync's job, and keeping this path insert-only means it can
+ * never clobber in-app-only state (liked, WONT_WATCH, WATCHED_FORGOT, manual statuses).
+ */
+export async function runAdditiveSync(onProgress: (progress: ImportProgress) => void): Promise<void> {
+  const entries = await fetchList(onProgress);
+  if (entries === null) return;
+
+  // Every MAL id already in the library, across every season and movie of every series — the same
+  // set useTrackedMalIds() gives Discover, read once rather than as a hook.
+  let trackedMalIds: Set<number>;
+  try {
+    const library = await getAllSeriesOnce();
+    trackedMalIds = new Set(library.flatMap((s) => s.entries.map((e) => e.malId)));
+  } catch (e) {
+    onProgress({ kind: 'FAILED', message: describeError(e, 'reading your library') });
+    return;
+  }
+
+  const seedIds = entries.map((e) => e.node.id).filter((id) => !trackedMalIds.has(id));
+  // Nothing new on MAL — the common case on a repeat run. Returning here costs exactly one MAL
+  // call (the list itself) instead of walking a closure that would be discarded anyway.
+  if (seedIds.length === 0) {
+    onProgress({ kind: 'READY', series: [] });
+    return;
+  }
+
+  const { detailById, lastError } = await fetchDetailClosure(seedIds, onProgress);
+
+  if (detailById.size === 0) {
+    onProgress({
+      kind: 'FAILED',
+      message: lastError
+        ? describeError(lastError, 'fetching the new shows')
+        : 'Could not reach MAL for any of the new shows.',
+    });
+    return;
+  }
+
+  const statusByMalId = new Map(entries.map((e) => [e.node.id, e.list_status.status]));
+  const animeById = new Map<number, AnimeRelationInput>();
+  for (const [id, dto] of detailById) animeById.set(id, toAnimeRelationInput(dto));
+
+  // Retain against the *whole* MAL list, not just the new ids: a newly-added show's other seasons
+  // may well already be on the list (just not in the app), and those still count as tracked-by-the-
+  // user for the purpose of "is this a real series or just relation scaffolding".
+  const onUserList = retainSeriesOnUserList(groupIntoSeries(animeById), new Set(statusByMalId.keys()));
+  const grouped = rejectSeriesOverlapping(onUserList, trackedMalIds);
   const reconcileSeries = grouped.map((g) => toReconcileSeries(g, detailById, statusByMalId));
 
   onProgress({ kind: 'READY', series: reconcileSeries });

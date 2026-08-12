@@ -214,6 +214,46 @@ function orderTvChain(memberIds: number[], animeById: Map<number, AnimeRelationI
 }
 
 /**
+ * Keeps only the grouped series that the user actually tracks — at least one entry present in
+ * `onUserList` (the set of MAL ids from their own animelist).
+ *
+ * The import deliberately fetches far more than the user's list: it walks *every* `related_anime`
+ * edge, not just sequel/prequel, because a series' movies attach by side_story/other/parent_story
+ * edges and are often not on the list themselves. The cost is that the same walk drags in
+ * spin-offs, alternative versions and unrelated franchise cousins, and `groupIntoSeries` faithfully
+ * turns each of those into its own one-entry series. Those have no imported MAL status at all, so
+ * they derive as "Watched 0/1 seasons" — a real 40-show library ended up buried under ~180 phantom
+ * rows (Mazinger/Gatchaman-era relation webs are especially bad for this).
+ *
+ * A series pulled in purely as relation scaffolding is dropped here; one the user tracks keeps all
+ * its entries, including the related movies that were never on the list. That's the point of doing
+ * this after grouping rather than narrowing the walk itself.
+ */
+export function retainSeriesOnUserList(
+  seriesList: GroupedSeries[],
+  onUserList: ReadonlySet<number>,
+): GroupedSeries[] {
+  return seriesList.filter((series) => series.entries.some((entry) => onUserList.has(entry.malId)));
+}
+
+/**
+ * Drops any grouped series that touches `malIds` — used by the additive MAL sync to keep to whole
+ * *new* series, never entries belonging to something already in the library.
+ *
+ * Has to run after grouping, not on the raw candidate ids: grouping expands a candidate out to its
+ * entire sequel chain, so a newly-added MAL entry that happens to be season 4 arrives here as a
+ * whole series whose seasons 1-3 the user already has. Checking only the seed id would let that
+ * through and then trip `add_series`' unique(user_id, root_mal_id). Same after-grouping exclusion
+ * rule the recommendations pipeline already needs (CLAUDE.md §7).
+ */
+export function rejectSeriesOverlapping(
+  seriesList: GroupedSeries[],
+  malIds: ReadonlySet<number>,
+): GroupedSeries[] {
+  return seriesList.filter((series) => !series.entries.some((entry) => malIds.has(entry.malId)));
+}
+
+/**
  * IDs referenced by a sequel/prequel edge from a known TV entry that aren't in `known` yet.
  * `groupIntoSeries` only connects entries that are already keys in the map it's given — a
  * single search/browse/import batch can easily miss a sibling season that isn't in that same
