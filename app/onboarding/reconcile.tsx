@@ -5,7 +5,7 @@
 // watched but MAL doesn't know about (they historically only marked season 1 on MAL), then writes
 // the result to Postgres (replaceAllSeries's replace_library RPC) on confirm.
 import { Image } from 'expo-image';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { FlatList, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Button, Snackbar, Text } from 'react-native-paper';
@@ -51,7 +51,16 @@ export default function ReconcileScreen() {
     });
   }, []);
 
+  // Guards against a double-mount firing runImport() twice on load — same pattern as app/auth.tsx
+  // and app/oauth-complete.tsx. Real-world impact confirmed via the Supabase dashboard: two
+  // mal-import invocations were booting in the same second, and the platform was dropping one of
+  // them (EarlyDrop) rather than queuing it, which surfaced as a generic "mal-import failed" error
+  // even though neither call was individually doing anything wrong. Doesn't guard the Retry
+  // button's own onPress — that one should always be allowed to start a fresh attempt.
+  const ranInitialImport = useRef(false);
   useEffect(() => {
+    if (ranInitialImport.current) return;
+    ranInitialImport.current = true;
     startImport();
   }, [startImport]);
 
