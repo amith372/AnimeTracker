@@ -19,7 +19,7 @@ import {
   type DiscoverState,
 } from '@/repositories/DiscoverRepository';
 import { currentSeason, nextSeason } from '@/domain/seasonTiming';
-import { colors, spacing } from '@/theme/colors';
+import { colors, radii, spacing } from '@/theme/colors';
 import { fontFamilies } from '@/theme/fonts';
 import { useIsWideWeb } from '@/hooks/useWebLayout';
 import type { AddChoice } from '@/domain/statusLabel';
@@ -105,6 +105,7 @@ export default function DiscoverScreen() {
         onSubmitEditing={() => setSubmittedQuery(searchText.trim())}
         onClearIconPress={() => setSubmittedQuery('')}
         style={[styles.searchbar, isWideWeb && styles.webSearchbar]}
+        inputStyle={styles.searchbarInput}
       />
 
       {showingSearch ? (
@@ -289,7 +290,12 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
   headerTitle: { fontFamily: fontFamilies.displayBold, color: colors.textPrimary },
-  searchbar: { margin: 12, borderRadius: 999, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, elevation: 0 },
+  searchbar: { margin: 12, borderRadius: radii.pill, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, elevation: 0 },
+  // minHeight:0 is load-bearing, not cosmetic — the same guard the Library screen's searchbar
+  // already carries. Paper sizes the inner TextInput's minHeight for its default 56px bar, so
+  // forcing a shorter height on the container leaves the input taller than its own box and the
+  // icon and placeholder sit above centre instead of in it.
+  searchbarInput: { fontFamily: fontFamilies.bodyRegular, minHeight: 0 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
   error: { textAlign: 'center' },
   subHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
