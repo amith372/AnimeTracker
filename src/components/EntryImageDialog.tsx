@@ -44,37 +44,43 @@ export function EntryImageDialog({ entry, onDismiss }: { entry: EntryImageTarget
 
   return (
     <Portal>
+      {/* Each branch is guarded on its own rather than wrapped together in a fragment. Paper's
+          Dialog clones every child to inject a `style` (it rounds the first and last child's
+          corners), so a single <>…</> child receives that style and React rejects it — a Fragment
+          takes only `key` and `children`, and the console error fired every time this opened.
+          React.Children.toArray drops the nulls, so Paper still sees Title and ScrollArea as its
+          first and last children and styles them correctly. */}
       <Dialog visible={entry !== null} onDismiss={onDismiss} style={dialogStyle}>
-        {entry && (
-          <>
-            <Dialog.Title>
-              <SeriesTitleText variant="titleLarge">{entry.title}</SeriesTitleText>
-            </Dialog.Title>
-            {/* ScrollArea rather than plain Content: a MAL synopsis runs to several paragraphs, and
-                the dialog is height-capped — without this the summary would simply be cut off with
-                no way to read the rest. */}
-            <Dialog.ScrollArea style={styles.scrollArea}>
-              <ScrollView contentContainerStyle={styles.scrollContent}>
-                <View style={styles.imageBox}>
-                  {loading ? (
-                    <ActivityIndicator />
-                  ) : imageUrl ? (
-                    <Image source={imageUrl} style={styles.image} contentFit="cover" />
-                  ) : (
-                    <View style={styles.image} />
-                  )}
-                </View>
-                {!loading && (
-                  <Text variant="bodyMedium" style={styles.synopsis}>
-                    {/* MAL has no synopsis at all for plenty of individual seasons — saying so beats
-                        an unexplained empty gap under the cover. */}
-                    {synopsis ?? 'No summary available for this one.'}
-                  </Text>
+        {entry ? (
+          <Dialog.Title>
+            <SeriesTitleText variant="titleLarge">{entry.title}</SeriesTitleText>
+          </Dialog.Title>
+        ) : null}
+        {/* ScrollArea rather than plain Content: a MAL synopsis runs to several paragraphs, and the
+            dialog is height-capped — without this the summary would simply be cut off with no way
+            to read the rest. */}
+        {entry ? (
+          <Dialog.ScrollArea style={styles.scrollArea}>
+            <ScrollView contentContainerStyle={styles.scrollContent}>
+              <View style={styles.imageBox}>
+                {loading ? (
+                  <ActivityIndicator />
+                ) : imageUrl ? (
+                  <Image source={imageUrl} style={styles.image} contentFit="cover" />
+                ) : (
+                  <View style={styles.image} />
                 )}
-              </ScrollView>
-            </Dialog.ScrollArea>
-          </>
-        )}
+              </View>
+              {!loading && (
+                <Text variant="bodyMedium" style={styles.synopsis}>
+                  {/* MAL has no synopsis at all for plenty of individual seasons — saying so beats
+                      an unexplained empty gap under the cover. */}
+                  {synopsis ?? 'No summary available for this one.'}
+                </Text>
+              )}
+            </ScrollView>
+          </Dialog.ScrollArea>
+        ) : null}
       </Dialog>
     </Portal>
   );
