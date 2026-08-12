@@ -223,6 +223,11 @@ export default function RecommendScreen() {
         )}
       </View>
 
+      {/* Toggle and filters share one band. They were stacked, which — with the screen header, the
+          tinted Catch up band's own title, and the section label — put five heading-ish rows above
+          any actual content, and inverted the ladder (the band's 16px title sat under a segmented
+          button that had already named it). */}
+      <View style={styles.controlRow}>
       <SegmentedButtons
         value={tab}
         onValueChange={(value) => setTab(value as Tab)}
@@ -261,6 +266,7 @@ export default function RecommendScreen() {
           )}
         </View>
       )}
+      </View>
       <Portal>
         {/* Multi-select — checkboxes rather than radio buttons, and the dialog stays open across
             taps so picking several genres in a row doesn't mean reopening it each time. */}
@@ -501,8 +507,10 @@ function WebCatchUpSections({
   return (
     <ScrollView style={styles.webCatchUpScroll} contentContainerStyle={styles.webCatchUpScrollContent}>
       <View style={styles.webCatchUpBand}>
-        <Text style={styles.webBandTitle}>Catch up</Text>
-        <Text style={styles.webBandSubtitle}>Seasons and movies waiting in shows you've already started.</Text>
+        {/* No "Catch up" title here: the segmented button directly above already says it, and its
+            16px repeat sat *below* that control while claiming to head the section — the inverted
+            step the whole stack-collapse was about. The tinted band is what marks the grouping now,
+            which is the job a band is actually good at. */}
         {sections.map((section) => (
           <View key={section.title} style={styles.webBandSection}>
             <Text style={styles.webBandSectionLabel}>{section.title}</Text>
@@ -658,8 +666,12 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
   headerTitle: { flex: 1, fontFamily: fontFamilies.displayBold, color: colors.textPrimary },
-  tabs: { marginHorizontal: 12, marginTop: 12 },
-  filterButtonsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8, paddingHorizontal: 12 },
+  // One band holding the toggle and its filters. flexWrap, not a fixed split: on a phone the
+  // segmented control plus three outlined buttons genuinely doesn't fit one line, so the filters
+  // drop to a second row instead of squeezing the toggle below a usable width.
+  controlRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: 12, marginTop: 12 },
+  tabs: { flexGrow: 1, flexShrink: 1, minWidth: 260 },
+  filterButtonsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   dialogScrollArea: { maxHeight: 400, paddingHorizontal: 0 },
   list: { padding: 12, gap: 8 },
   sectionHeader: { paddingTop: 8, paddingBottom: 4 },
@@ -689,18 +701,19 @@ const styles = StyleSheet.create({
   webCatchUpScrollContent: { paddingBottom: 24 },
   webCatchUpBand: {
     marginTop: 20,
+    gap: 14,
     padding: 22,
     borderRadius: 18,
     backgroundColor: 'rgba(59,110,165,0.08)',
     borderWidth: 1,
     borderColor: 'rgba(59,110,165,0.18)',
   },
-  webBandTitle: { fontFamily: fontFamilies.bodyBold, fontSize: 16, color: colors.textPrimary },
-  webBandSubtitle: { fontFamily: fontFamilies.bodyRegular, fontSize: 13, color: colors.textMuted, marginTop: 4 },
-  webBandSection: { marginTop: 14 },
+  // Spacing lives on the two parents (gap) rather than here, so the first section doesn't carry a
+  // leading margin now that the band's own title is gone.
+  webBandSection: {},
   webBandSectionLabel: { fontFamily: fontFamilies.bodySemiBold, fontSize: 12, letterSpacing: 1, color: colors.textFaint, marginBottom: 8 },
   webForYouScroll: { flex: 1, marginTop: 8 },
-  webForYouSections: { paddingBottom: 24 },
+  webForYouSections: { paddingBottom: 24, gap: 14 },
   // Wraps to as many 158px cards as the window fits, rather than running off the right edge — see
   // WebForYouSections for why this list scrolls down and Catch up's still scrolls sideways.
   webCardGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },

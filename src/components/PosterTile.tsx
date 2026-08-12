@@ -1,19 +1,22 @@
-// Shared poster tile — cover art + title + a short "TV · Season Year · N seasons" subtitle.
+// Shared poster tile — cover art + title + a short "3 seasons · 2 films · Fall 2024" subtitle.
 // Used by both Discover (Phase 4) and Recommendations (Phase 6), which both show grids/rows of
 // prospective ReconcileSeries the user can tap to add.
+//
+// The subtitle leads with the series' shape rather than its media type: "TV" was the least
+// informative thing on the tile (a season count already implies it), while how many seasons and
+// films the show actually is — the thing the grouping worked out and MAL's own list can't tell you
+// — wasn't shown at all. See seriesShapeLabel.
 import { Image } from 'expo-image';
 import { Pressable, StyleSheet } from 'react-native';
 import { Text } from 'react-native-paper';
 import type { ReconcileSeries } from '@/domain/reconcileSeries';
+import { seriesShapeLabel } from '@/domain/seriesShape';
 import { SeriesTitleText } from './SeriesTitleText';
 import { colors, radii } from '@/theme/colors';
 import { useHover } from '@/hooks/useHover';
 
 export function PosterTile({ series, onPress }: { series: ReconcileSeries; onPress: () => void }) {
-  const seasonCount = series.entries.filter((e) => e.kind === 'TV_SEASON').length;
-  const subtitle = [series.type === 'STANDALONE_MOVIE' ? 'Movie' : 'TV', series.seasonLabel, seasonCount > 1 ? `${seasonCount} seasons` : null]
-    .filter(Boolean)
-    .join(' · ');
+  const subtitle = [seriesShapeLabel(series), series.seasonLabel].filter(Boolean).join(' · ');
   const [hovered, hoverHandlers] = useHover();
 
   return (

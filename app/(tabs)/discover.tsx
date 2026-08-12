@@ -5,7 +5,9 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { BackHandler, FlatList, Pressable, StyleSheet, View } from 'react-native';
-import { ActivityIndicator, Button, IconButton, Searchbar, Text } from 'react-native-paper';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { ActivityIndicator, Button, Searchbar, Text } from 'react-native-paper';
+import { useHover } from '@/hooks/useHover';
 import { AddSeriesDialog } from '@/components/AddSeriesDialog';
 import { MalAttribution } from '@/components/MalAttribution';
 import { PosterTile } from '@/components/PosterTile';
@@ -43,10 +45,13 @@ export default function DiscoverScreen() {
   const sections = useMemo<Section[]>(() => {
     const thisSeason = currentSeason();
     const upcoming = nextSeason(thisSeason);
+    // Named in the app's own voice rather than after the MAL endpoint each one calls ("All Time
+    // Popular" was literally ranking_type=all). The rows are half of what this screen is for, and
+    // an endpoint name tells the user nothing about why they'd read that row.
     return [
-      { key: 'season-current', label: 'Popular This Season', query: { kind: 'SEASON', year: thisSeason.year, season: thisSeason.season } },
-      { key: 'season-next', label: 'Upcoming Next Season', query: { kind: 'SEASON', year: upcoming.year, season: upcoming.season } },
-      { key: 'ranking-all', label: 'All Time Popular', query: { kind: 'RANKING', rankingType: 'all' } },
+      { key: 'season-current', label: 'Airing this season', query: { kind: 'SEASON', year: thisSeason.year, season: thisSeason.season } },
+      { key: 'season-next', label: 'Coming next season', query: { kind: 'SEASON', year: upcoming.year, season: upcoming.season } },
+      { key: 'ranking-all', label: 'All-time greats', query: { kind: 'RANKING', rankingType: 'all' } },
     ];
   }, []);
 
@@ -103,18 +108,27 @@ export default function DiscoverScreen() {
       />
 
       {showingSearch ? (
-        <ResultsGrid
-          state={searchState}
-          onAdd={setPendingAdd}
-          onRetry={retrySearch}
-          emptyMessage="Nothing new here — everything's already in your library"
-        />
+        <>
+          {/* Searching used to replace the browse rows with no labelled way back — the only exit
+              was the Searchbar's own clear icon, which doesn't read as "return to browsing". Both
+              sub-states now announce themselves and carry the same explicit exit. */}
+          <SubHeader
+            label={`Results for "${submittedQuery}"`}
+            onBack={() => {
+              setSubmittedQuery('');
+              setSearchText('');
+            }}
+          />
+          <ResultsGrid
+            state={searchState}
+            onAdd={setPendingAdd}
+            onRetry={retrySearch}
+            emptyMessage="Nothing new here — everything's already in your library"
+          />
+        </>
       ) : expanded ? (
         <>
-          <View style={styles.expandedHeader}>
-            <IconButton icon="arrow-left" onPress={() => setExpanded(null)} />
-            <Text variant="titleMedium">{expanded.label}</Text>
-          </View>
+          <SubHeader label={expanded.label} onBack={() => setExpanded(null)} />
           <ResultsGrid
             state={expandedResults.state}
             onAdd={setPendingAdd}
@@ -141,6 +155,36 @@ export default function DiscoverScreen() {
   );
 }
 
+/**
+ * The row that names Discover's current sub-state and gets you out of it — shared by search results
+ * and the expanded "View All" grid, which are the same shape of thing: a full-screen list that
+ * replaced the browse rows.
+ *
+ * A labelled text exit, not a bare arrow icon: the icon alone (at paddingHorizontal 4) was the only
+ * affordance, and on the expanded grid it sat beside a heading with no visual relationship to the
+ * row it had replaced. This is also what the Android back handler above mirrors.
+ */
+function SubHeader({ label, onBack }: { label: string; onBack: () => void }) {
+  const [hovered, hoverHandlers] = useHover();
+  return (
+    <View style={styles.subHeader}>
+      <Pressable
+        onPress={onBack}
+        accessibilityRole="button"
+        accessibilityLabel="Back to browsing"
+        style={[styles.subHeaderBack, hovered && styles.subHeaderBackHovered]}
+        {...hoverHandlers}
+      >
+        <MaterialCommunityIcons name="chevron-left" size={18} color={colors.primary} />
+        <Text style={styles.subHeaderBackText}>Browse</Text>
+      </Pressable>
+      <Text numberOfLines={1} style={styles.subHeaderLabel}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
 function SectionRow({ section, onViewAll, onAdd }: { section: Section; onViewAll: () => void; onAdd: (s: ReconcileSeries) => void }) {
   const isWideWeb = useIsWideWeb();
   const [state, retry] = useDiscoverResults(section.query, PREVIEW_FETCH_COUNT);
@@ -149,13 +193,11 @@ function SectionRow({ section, onViewAll, onAdd }: { section: Section; onViewAll
   return (
     <View style={[styles.section, isWideWeb && styles.webSection]}>
       <View style={[styles.sectionHeader, isWideWeb && styles.webSectionHeader]}>
-        <Text variant="titleMedium" style={[isWideWeb && styles.webSectionTitle]}>
-          {section.label}
-        </Text>
-        <Pressable onPress={onViewAll}>
-          <Text variant="labelLarge" style={styles.viewAll}>
-            View All
-          </Text>
+        {/* One section-heading treatment, not Paper's variant on mobile and a custom style on web
+            — same role, same voice, only the size steps up on the wider canvas. */}
+        <Text style={[styles.sectionTitle, isWideWeb && styles.webSectionTitle]}>{section.label}</Text>
+        <Pressable onPress={onViewAll} accessibilityRole="button" accessibilityLabel={`View all ${section.label}`}>
+          <Text style={styles.viewAll}>View all</Text>
         </Pressable>
       </View>
       {state.kind === 'LOADING' ? (
@@ -250,13 +292,19 @@ const styles = StyleSheet.create({
   searchbar: { margin: 12, borderRadius: 999, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, elevation: 0 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
   error: { textAlign: 'center' },
-  expandedHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4 },
+  subHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
+  subHeaderBack: { flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: 36, paddingRight: spacing.sm, paddingLeft: 2, borderRadius: 8 },
+  subHeaderBackHovered: { backgroundColor: colors.hoverWash },
+  subHeaderBackText: { fontFamily: fontFamilies.bodySemiBold, fontSize: 13.5, color: colors.primary },
+  // flexShrink lets a long search query truncate rather than push the Browse exit off-screen.
+  subHeaderLabel: { flex: 1, minWidth: 0, fontFamily: fontFamilies.bodySemiBold, fontSize: 15, color: colors.textPrimary },
   section: { paddingBottom: 12 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8 },
   sectionList: { paddingHorizontal: 12, gap: 12 },
   sectionLoading: { paddingVertical: 24 },
   sectionError: { alignItems: 'center', paddingVertical: 12, gap: 4 },
-  viewAll: { color: colors.primary },
+  sectionTitle: { fontFamily: fontFamilies.bodyBold, fontSize: 15, color: colors.textPrimary },
+  viewAll: { fontFamily: fontFamilies.bodySemiBold, fontSize: 13.5, color: colors.primary },
   grid: { padding: 8 },
   footerLoading: { paddingVertical: 16 },
 
