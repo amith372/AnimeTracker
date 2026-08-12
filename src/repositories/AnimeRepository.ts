@@ -287,7 +287,16 @@ export async function markInitialImportComplete(): Promise<void> {
     .from('user_library_meta')
     .upsert({ user_id: userId, initial_import_completed_at: now, last_sync_at: now });
   if (error) throw error;
-  await queryClient.invalidateQueries({ queryKey: libraryKeys.meta(userId) });
+  // setQueryData, NOT invalidateQueries — invalidating caused a full re-import loop. At this point
+  // the caller (onboarding/reconcile.tsx's confirm) is about to router.replace('/'), so the Library
+  // screen is unmounted and this query is *inactive*: invalidation therefore only marks it stale
+  // without refetching. The Library then remounts, TanStack synchronously hands back the stale
+  // cached value from before the import (initialImportCompletedAt: null) while refetching in the
+  // background, and because that's cached-but-stale rather than absent, `isPending` is false — so
+  // useHasCompletedInitialImport returns false, the gate redirects straight back to reconcile, and
+  // the whole MAL import runs again before the fresh value ever lands. We know exactly what we just
+  // wrote, so write it into the cache and skip the round trip entirely.
+  queryClient.setQueryData(libraryKeys.meta(userId), { initialImportCompletedAt: now });
 }
 
 /** Reactive check for whether onboarding import has completed — gates Library vs. Reconcile.
