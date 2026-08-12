@@ -705,7 +705,9 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    backgroundColor: colors.surface,
+    // No background of its own — it inherits the page, so the hairline is the only thing marking
+    // where the header ends. A white band was doing the separating twice over and made the header
+    // read as a separate surface floating above the content rather than the top of one page.
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
