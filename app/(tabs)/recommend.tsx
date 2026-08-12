@@ -303,7 +303,9 @@ export default function RecommendScreen() {
         />
       )}
 
-      <MalAttribution />
+      {/* WebSidebar already shows this line on wide web (it's the "left bar" the sidebar owns) —
+          rendering it here too would duplicate it on every wide-web screen. */}
+      {!isWideWeb && <MalAttribution />}
     </View>
   );
 }

@@ -114,7 +114,9 @@ export default function DiscoverScreen() {
         />
       )}
 
-      <MalAttribution />
+      {/* WebSidebar already shows this line on wide web (it's the "left bar" the sidebar owns) —
+          rendering it here too would duplicate it on every wide-web screen. */}
+      {!isWideWeb && <MalAttribution />}
       <AddSeriesDialog series={pendingAdd} onConfirm={handleAdd} onCancel={() => setPendingAdd(null)} />
     </View>
   );

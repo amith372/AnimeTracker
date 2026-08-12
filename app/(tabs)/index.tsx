@@ -274,13 +274,6 @@ export default function LibraryScreen() {
                 />
               ))}
             </View>
-            {/* Pinned to the bottom (marginTop:'auto', same trick WebSidebar's own footer uses) so
-                a short filter list doesn't leave the column reading as an empty bordered panel —
-                the divider border now always ends at real content instead of trailing off into
-                dead space. */}
-            <View style={styles.webFilterColumnFooter}>
-              <MalAttribution />
-            </View>
           </View>
           <View style={styles.webGrid} onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}>
             {filteredList.length === 0 ? (
@@ -515,7 +508,6 @@ const styles = StyleSheet.create({
   webBody: { flex: 1, flexDirection: 'row' },
   webFilterColumn: { width: 200, flexShrink: 0, flexDirection: 'column', borderRightWidth: 1, borderRightColor: colors.border },
   webFilterColumnContent: { padding: spacing.lg, gap: 2 },
-  webFilterColumnFooter: { marginTop: 'auto', paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
   webFilterHeading: { fontFamily: fontFamilies.bodySemiBold, fontSize: 11, letterSpacing: 1.4, color: colors.textFaint, marginBottom: spacing.sm },
   webFilterRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 36, paddingHorizontal: 10, borderRadius: radii.sm },
   webFilterRowActive: { backgroundColor: colors.hoverWash },
