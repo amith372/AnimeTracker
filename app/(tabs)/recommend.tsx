@@ -214,16 +214,32 @@ export default function RecommendScreen() {
       {/* Tabs.Screen (see app/(tabs)/_layout.tsx) has headerShown:false, so — unlike the old
           Stack-nested version of this screen — there's no native header to hang the refresh
           action on anymore; this row replaces it. */}
-      <View style={[styles.header, isWideWeb && styles.webHeader]}>
-        <Text variant="headlineSmall" style={[styles.headerTitle, isWideWeb && styles.webHeaderTitle]}>
-          For you
-        </Text>
-        {state.kind === 'LOADING' ? (
-          <ActivityIndicator style={styles.headerSpinner} />
-        ) : (
-          <IconButton icon="refresh" onPress={refreshFromMal} />
-        )}
-      </View>
+      {/* EXPERIMENT — the same hero Discover carries. Without it this screen kept a bare title row
+          while its sibling opened on a gradient, which read as the experiment being half-applied
+          rather than as a deliberate difference. The subtitle earns its line by naming what the two
+          tabs below actually are. */}
+      <LinearGradient
+        colors={[...logoGradient]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.hero, isWideWeb && styles.webHero]}
+      >
+        <View style={styles.heroRow}>
+          <View style={styles.heroText}>
+            <Text style={[styles.heroTitle, isWideWeb && styles.webHeroTitle]}>For you</Text>
+            <Text style={[styles.heroSubtitle, isWideWeb && styles.webHeroSubtitle]}>
+              Finish what you started, or start something new.
+            </Text>
+          </View>
+          {/* White, not the default tint: on a saturated gradient the theme's ink-coloured icon
+              disappears into the coral end. */}
+          {state.kind === 'LOADING' ? (
+            <ActivityIndicator color="#fff" style={styles.headerSpinner} />
+          ) : (
+            <IconButton icon="refresh" iconColor="#fff" accessibilityLabel="Refresh recommendations" onPress={refreshFromMal} />
+          )}
+        </View>
+      </LinearGradient>
 
       {/* Toggle and filters share one band. They were stacked, which — with the screen header, the
           tinted Catch up band's own title, and the section label — put five heading-ish rows above
@@ -692,8 +708,20 @@ function ForYouList({
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
-  headerTitle: { flex: 1, fontFamily: fontFamilies.displayBold, color: colors.textPrimary },
+  // EXPERIMENT — hero, mirroring Discover's exactly (same 30px bottom-corner exception on mobile,
+  // same full-bleed treatment on web) so the two sibling screens open the same way.
+  hero: {
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    ...shadows.md,
+  },
+  heroRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  heroText: { flex: 1, minWidth: 0 },
+  heroTitle: { fontFamily: fontFamilies.displayBold, fontSize: 30, color: '#fff' },
+  heroSubtitle: { fontFamily: fontFamilies.bodyRegular, fontSize: 13.5, color: 'rgba(255,255,255,0.88)', marginTop: 2 },
   // One band holding the toggle and its filters. flexWrap, not a fixed split: on a phone the
   // segmented control plus three outlined buttons genuinely doesn't fit one line, so the filters
   // drop to a second row instead of squeezing the toggle below a usable width.
@@ -721,8 +749,19 @@ const styles = StyleSheet.create({
 
   // --- Wide web ---
   webContainer: { paddingHorizontal: 24 },
-  webHeader: { paddingTop: 22 },
-  webHeaderTitle: { fontFamily: fontFamilies.webSerifBold, fontSize: 26, color: colors.textPrimary },
+  // Negative margins cancel webContainer's gutter so the hero bleeds edge to edge while everything
+  // below stays inside it — same arrangement as Discover.
+  webHero: {
+    marginHorizontal: -24,
+    paddingTop: 40,
+    paddingBottom: 32,
+    paddingHorizontal: 40,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    ...shadows.lg,
+  },
+  webHeroTitle: { fontFamily: fontFamilies.webSerifBold, fontSize: 38 },
+  webHeroSubtitle: { fontSize: 15 },
   webCatchUpScroll: { flex: 1 },
   // The band used to sit flush against the bottom of the window with its last row half-cut. The
   // padding is the same 24px breathing room webForYouSections already leaves below its own grid.
