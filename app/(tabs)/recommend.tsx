@@ -214,13 +214,18 @@ export default function RecommendScreen() {
       {/* Tabs.Screen (see app/(tabs)/_layout.tsx) has headerShown:false, so — unlike the old
           Stack-nested version of this screen — there's no native header to hang the refresh
           action on anymore; this row replaces it. */}
-      {/* A plain title row, deliberately — Discover keeps the gradient hero, this one doesn't. The
-          two screens aren't the same kind of arrival: Discover opens on a question you're about to
-          ask (search), while this one opens straight onto a list you already own. */}
+      {/* A header band, not a hero — the same idiom the Library's own header uses (a surface strip
+          closed by one hairline), so the two screens agree on what a header is. Discover keeps the
+          gradient because it's a different kind of arrival: it opens on a question you're about to
+          ask, while this opens onto a list you already own. The subtitle is what stops this reading
+          as a bare title, and it earns its line by naming the two tabs directly below it. */}
       <View style={[styles.header, isWideWeb && styles.webHeader]}>
-        <Text variant="headlineSmall" style={[styles.headerTitle, isWideWeb && styles.webHeaderTitle]}>
-          For you
-        </Text>
+        <View style={styles.headerText}>
+          <Text variant="headlineSmall" style={[styles.headerTitle, isWideWeb && styles.webHeaderTitle]}>
+            For you
+          </Text>
+          <Text style={styles.headerSubtitle}>Finish what you started, or start something new.</Text>
+        </View>
         {state.kind === 'LOADING' ? (
           <ActivityIndicator style={styles.headerSpinner} />
         ) : (
@@ -694,8 +699,19 @@ function ForYouList({
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
-  headerTitle: { flex: 1, fontFamily: fontFamilies.displayBold, color: colors.textPrimary },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  headerText: { flex: 1, minWidth: 0 },
+  headerTitle: { fontFamily: fontFamilies.displayBold, color: colors.textPrimary },
+  headerSubtitle: { fontFamily: fontFamilies.bodyRegular, fontSize: 13, color: colors.textMuted, marginTop: 2 },
   tabs: { marginHorizontal: 12, marginTop: 12 },
   filterButtonsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8, paddingHorizontal: 12 },
   dialogScrollArea: { maxHeight: 400, paddingHorizontal: 0 },
@@ -719,7 +735,10 @@ const styles = StyleSheet.create({
 
   // --- Wide web ---
   webContainer: { paddingHorizontal: 24 },
-  webHeader: { paddingTop: 22 },
+  // Negative margin cancels webContainer's 24px gutter so the band spans the full content width,
+  // the way a header should — matching the Library's wide-web header, which is full-bleed because
+  // its own container carries no horizontal padding.
+  webHeader: { marginHorizontal: -24, paddingHorizontal: 32, paddingVertical: 18 },
   webHeaderTitle: { fontFamily: fontFamilies.webSerifBold, fontSize: 26, color: colors.textPrimary },
   webCatchUpScroll: { flex: 1 },
   // The band used to sit flush against the bottom of the window with its last row half-cut. The
