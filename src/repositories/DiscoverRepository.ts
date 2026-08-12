@@ -119,8 +119,8 @@ function limitNodes(nodes: AnimeBrowseNodeDto[], nodeLimit?: number): AnimeBrows
 }
 
 /** Adds one Discover/Recommendations result to the library with the status the user picked, as a
- * whole grouped series. Returns the new local series id. */
-export async function addDiscoveredSeries(series: ReconcileSeries, manualStatus: ManualStatus): Promise<number> {
+ * whole grouped series. Returns the new series id. */
+export async function addDiscoveredSeries(series: ReconcileSeries, manualStatus: ManualStatus): Promise<string> {
   return addSeriesToLibrary({ ...series, manualStatus });
 }
 
@@ -135,7 +135,11 @@ export interface AnimeIdRef {
  * Recommendations (Phase 6) can reuse the exact same detail-fetch/closure-expansion/grouping
  * pipeline for its own candidate ids, instead of reimplementing it.
  */
-export async function fetchDetailsAndGroup(nodes: AnimeIdRef[], onProgress: (p: DiscoverProgress) => void): Promise<void> {
+export async function fetchDetailsAndGroup(
+  nodes: AnimeIdRef[],
+  onProgress: (p: DiscoverProgress) => void,
+  opts?: { bypassCache?: boolean },
+): Promise<void> {
   const detailById = new Map<number, AnimeDetailDto>();
   let completed = 0;
   onProgress({ kind: 'FETCHING_DETAILS', completed: 0, total: nodes.length });
@@ -145,7 +149,7 @@ export async function fetchDetailsAndGroup(nodes: AnimeIdRef[], onProgress: (p: 
   // below, same as the closure-expansion loop already treats a related id it can't fetch.
   await mapWithConcurrency(nodes, DETAIL_FETCH_CONCURRENCY, async (node) => {
     try {
-      detailById.set(node.id, await getAnimeDetailCached(node.id));
+      detailById.set(node.id, await getAnimeDetailCached(node.id, { bypass: opts?.bypassCache }));
     } catch {
       // Dropped — see comment above.
     }

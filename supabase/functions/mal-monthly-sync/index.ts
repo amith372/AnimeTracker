@@ -116,8 +116,9 @@ async function syncOneSeries(seriesId: string): Promise<boolean> {
     episode_count: detail.num_episodes ?? 0,
     watch_state: 'UNWATCHED',
     airing_status: mapAiringStatus(detail.status),
-    // No device authored this write — left null so every device's next pull treats it as a normal
-    // remote change to merge in, rather than an echo of its own edit (see src/sync/merge.ts).
+    // No device authored this write. updated_by_device_id is vestigial now (it was Phase 9/10's
+    // sync-echo marker, back when clients had a local mirror to reconcile) — left null, and every
+    // client just reads the row fresh via its Realtime subscription (see src/repositories/realtime.ts).
     updated_by_device_id: null,
   }));
 

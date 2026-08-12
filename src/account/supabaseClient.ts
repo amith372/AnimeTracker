@@ -1,7 +1,7 @@
-// Supabase client singleton — Phase 7's new account/sync backend, alongside (not replacing) the
-// existing local SQLite `db` from src/db/client.ts. Both env vars are safe to expose in the client
-// bundle: RLS policies, not key secrecy, are what protect a user's rows (see CLAUDE.md
-// Setup/secrets) — unlike the MAL Client ID, which stays server-only from Phase 8 onward.
+// Supabase client singleton — the app's one and only data backend (direct-Postgres cutover: there
+// is no local SQLite mirror anymore, see CLAUDE.md's "What this is"). Both env vars are safe to
+// expose in the client bundle: RLS policies, not key secrecy, are what protect a user's rows (see
+// CLAUDE.md Setup/secrets) — unlike the MAL Client ID, which stays server-only.
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 

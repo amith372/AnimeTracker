@@ -3,7 +3,7 @@
 // role directly, same pattern as the rest of this app (screens call repository functions/hooks,
 // no separate state-holder class). Runs the import on mount, lets the user tick any seasons they
 // watched but MAL doesn't know about (they historically only marked season 1 on MAL), then writes
-// the result to SQLite on confirm.
+// the result to Postgres (replaceAllSeries's replace_library RPC) on confirm.
 import { Image } from 'expo-image';
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';

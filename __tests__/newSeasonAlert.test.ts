@@ -4,7 +4,7 @@ const NOW = Date.UTC(2026, 7, 4); // 2026-08-04, an arbitrary fixed "now" so tes
 
 function baseSeries(overrides: Partial<Series>): Series {
   return {
-    id: 1,
+    id: '1',
     title: 'Test Show',
     coverUrl: null,
     genres: [],

@@ -1,1 +1,0 @@
-ALTER TABLE `series` ADD `liked` integer DEFAULT false NOT NULL;

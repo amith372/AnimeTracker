@@ -1,1 +1,0 @@
-ALTER TABLE `series_entries` DROP COLUMN `watched`;

@@ -1,7 +1,8 @@
 // A single season/movie's own cover art, for the Series Detail screen's title-tap popup. No new
 // cache table needed — getAnimeDetailCached already fetches+caches `main_picture` as part of its
-// normal detail fetch (30-day TTL, SQLite-backed, see apiCache.ts), and that field has been part
-// of its field set since before this repository existed, so no DETAIL_CACHE_VERSION bump either.
+// normal detail fetch (30-day TTL, shared Postgres table, see apiCache.ts), and that field has
+// been part of its field set since before this repository existed, so no DETAIL_CACHE_VERSION
+// bump either.
 import { getAnimeDetailCached } from './apiCache';
 
 export async function getEntryImageUrl(malId: number): Promise<string | null> {

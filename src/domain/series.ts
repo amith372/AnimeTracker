@@ -3,7 +3,7 @@ import { isResolved, type AiringStatus, type EntryKind, type ManualStatus, type 
 import type { SeriesStatus } from './seriesStatus';
 
 export interface SeriesEntry {
-  id: number;
+  id: string;
   malId: number;
   kind: EntryKind;
   orderIndex: number;
@@ -18,7 +18,7 @@ export interface SeriesEntry {
 
 /** The fully-assembled, UI-ready view of one tracked show — what the Library/Detail screens render. */
 export interface Series {
-  id: number;
+  id: string;
   title: string;
   coverUrl: string | null;
   genres: string[];

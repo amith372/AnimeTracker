@@ -10,7 +10,7 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Button, Text } from 'react-native-paper';
 import { signInWithMal } from '@/account/malLinkRepository';
-import { setGuestMode } from '@/account/guestMode';
+import { continueAsGuest } from '@/account/guestMode';
 import { AtLogoMark } from '@/components/AtLogoMark';
 import { MalAttribution } from '@/components/MalAttribution';
 import { colors, radii } from '@/theme/colors';
@@ -37,12 +37,19 @@ export default function LoginScreen() {
     }
   }
 
-  // Skips both MAL and an app account entirely — index.tsx's gate routes a guest straight to an
-  // empty local library instead of onboarding/reconcile, which needs a linked MAL account to
-  // import from. Discover still works (its Edge Functions don't require a signed-in user), so a
-  // guest can build a library by hand.
+  // Anonymous Supabase auth (see guestMode.ts) — a guest gets a real, if temporary, session and
+  // therefore a real working library (add/track/mark, all of it), not just a read-only browse.
+  // index.tsx's gate routes them straight past onboarding/reconcile, which needs a linked MAL
+  // account to import from — Discover/Add still work, so a guest can build a library by hand.
   async function handleContinueAsGuest() {
-    await setGuestMode(true);
+    setLoading(true);
+    setError(null);
+    const result = await continueAsGuest();
+    setLoading(false);
+    if (!result.success) {
+      setError(result.message);
+      return;
+    }
     router.replace('/');
   }
 

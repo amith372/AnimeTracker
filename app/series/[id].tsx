@@ -10,7 +10,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Chip, IconButton, Text } from 'react-native-paper';
+import { Chip, IconButton, Snackbar, Text } from 'react-native-paper';
 import {
   useSeries,
   setEntryWatchState,
@@ -43,15 +43,26 @@ const EDITABLE_STATUS_CHOICES: ManualStatus[] = [...MANUAL_STATUS_CHOICES, 'NONE
 
 export default function SeriesDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const series = useSeries(Number(id));
+  const series = useSeries(id);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [imagePopupEntry, setImagePopupEntry] = useState<SeriesEntry | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Every write here is now a network call that can fail (optimistic — see AnimeRepository.ts —
+  // so it rolls back on its own, but the user still needs to be told why their tap didn't stick).
+  // Wraps the fire-and-forget writes below rather than making every onPress an async handler.
+  function runWrite(write: () => Promise<void>) {
+    write().catch((e) => setErrorMessage(e instanceof Error ? e.message : 'Something went wrong'));
+  }
 
   // "New season!" is a nudge to come look, not a persistent status — opening the series it's
   // about is the natural point to dismiss it, same as reading a notification.
   useEffect(() => {
-    if (series?.newSeasonAvailable) clearNewSeasonAvailable(series.id);
+    // Passive/background dismissal, not a user-initiated write — a failure here just means the
+    // badge reappears next visit, not worth a snackbar. Explicit catch to avoid an unhandled
+    // rejection warning.
+    if (series?.newSeasonAvailable) clearNewSeasonAvailable(series.id).catch(() => {});
   }, [series?.id, series?.newSeasonAvailable]);
 
   if (!series) {
@@ -80,7 +91,7 @@ export default function SeriesDetailScreen() {
             <IconButton
               icon={series.liked ? 'heart' : 'heart-outline'}
               iconColor={series.liked ? '#fff' : 'rgba(255,255,255,0.85)'}
-              onPress={() => setSeriesLiked(series.id, !series.liked)}
+              onPress={() => runWrite(() => setSeriesLiked(series.id, !series.liked))}
             />
           )}
         </View>
@@ -112,7 +123,7 @@ export default function SeriesDetailScreen() {
             <Chip
               key={choice}
               selected={active}
-              onPress={() => setSeriesManualStatus(series.id, choice)}
+              onPress={() => runWrite(() => setSeriesManualStatus(series.id, choice))}
               style={[styles.statusChip, active && styles.statusChipActive]}
               textStyle={active ? styles.statusChipTextActive : styles.statusChipText}
             >
@@ -140,13 +151,16 @@ export default function SeriesDetailScreen() {
         renderItem={({ item }) => {
           const arcs = arcsForMalId(item.entry.malId);
           return arcs ? (
-            <ArcListRow entry={item.entry} arcs={arcs} kindNumber={item.kindNumber} onOpenInfo={() => setImagePopupEntry(item.entry)} />
+            <ArcListRow entry={item.entry} arcs={arcs} kindNumber={item.kindNumber} onOpenInfo={() => setImagePopupEntry(item.entry)} runWrite={runWrite} />
           ) : (
-            <EntryRow entry={item.entry} kindNumber={item.kindNumber} onOpenInfo={() => setImagePopupEntry(item.entry)} />
+            <EntryRow entry={item.entry} kindNumber={item.kindNumber} onOpenInfo={() => setImagePopupEntry(item.entry)} runWrite={runWrite} />
           );
         }}
       />
       <EntryImageDialog entry={imagePopupEntry} onDismiss={() => setImagePopupEntry(null)} />
+      <Snackbar visible={errorMessage !== null} onDismiss={() => setErrorMessage(null)} duration={4000}>
+        {errorMessage}
+      </Snackbar>
     </View>
   );
 }
@@ -157,11 +171,21 @@ export default function SeriesDetailScreen() {
  * popup instead of toggling anything. Three separate gestures rather than one that cycles through
  * or conflates them.
  */
-function EntryRow({ entry, kindNumber, onOpenInfo }: { entry: SeriesEntry; kindNumber: number; onOpenInfo: () => void }) {
+function EntryRow({
+  entry,
+  kindNumber,
+  onOpenInfo,
+  runWrite,
+}: {
+  entry: SeriesEntry;
+  kindNumber: number;
+  onOpenInfo: () => void;
+  runWrite: (write: () => Promise<void>) => void;
+}) {
   const watched = entry.watchState === 'WATCHED';
   const wontWatch = entry.watchState === 'WONT_WATCH';
-  const toggleWatched = () => setEntryWatchState(entry.id, watched ? 'UNWATCHED' : 'WATCHED');
-  const toggleWontWatch = () => setEntryWatchState(entry.id, wontWatch ? 'UNWATCHED' : 'WONT_WATCH');
+  const toggleWatched = () => runWrite(() => setEntryWatchState(entry.id, watched ? 'UNWATCHED' : 'WATCHED'));
+  const toggleWontWatch = () => runWrite(() => setEntryWatchState(entry.id, wontWatch ? 'UNWATCHED' : 'WONT_WATCH'));
 
   // "Season 2" / "Movie 1" rather than a generic "TV Season" — with a long show title truncated
   // to one line, that generic label was the only thing that could tell two same-named seasons
@@ -205,7 +229,19 @@ function EntryRow({ entry, kindNumber, onOpenInfo }: { entry: SeriesEntry; kindN
  * not. The header's own watched/won't-watch controls are dropped: this entry's watchState is
  * derived entirely from the arc checkboxes (see setArcWatched), not set directly.
  */
-function ArcListRow({ entry, arcs, kindNumber, onOpenInfo }: { entry: SeriesEntry; arcs: Arc[]; kindNumber: number; onOpenInfo: () => void }) {
+function ArcListRow({
+  entry,
+  arcs,
+  kindNumber,
+  onOpenInfo,
+  runWrite,
+}: {
+  entry: SeriesEntry;
+  arcs: Arc[];
+  kindNumber: number;
+  onOpenInfo: () => void;
+  runWrite: (write: () => Promise<void>) => void;
+}) {
   const watchedKeys = new Set(entry.watchedArcKeys ?? []);
 
   return (
@@ -226,7 +262,7 @@ function ArcListRow({ entry, arcs, kindNumber, onOpenInfo }: { entry: SeriesEntr
           <View key={arc.key} style={[styles.entryRow, styles.arcRow]}>
             <SquareCheckbox
               checked={watched}
-              onPress={() => setArcWatched(entry.id, arc.key, !watched)}
+              onPress={() => runWrite(() => setArcWatched(entry.id, arc.key, !watched))}
               accessibilityLabel={`Mark ${arc.title} as watched`}
             />
             <View style={styles.entryText}>

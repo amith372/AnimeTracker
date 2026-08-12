@@ -14,7 +14,7 @@ import type { Series, SeriesEntry } from '@/domain/series';
 
 function makeEntry(overrides: Partial<SeriesEntry>): SeriesEntry {
   return {
-    id: 1,
+    id: '1',
     malId: 1,
     kind: 'TV_SEASON',
     orderIndex: 0,
@@ -37,7 +37,7 @@ const PARTIAL = {
 
 function makeSeries(overrides: Partial<Series> & { entries?: SeriesEntry[] }): Series {
   return {
-    id: 1,
+    id: '1',
     title: 'Series',
     coverUrl: null,
     genres: [],
@@ -58,8 +58,8 @@ describe('getCatchUpEntries', () => {
     const series = makeSeries({
       status: PARTIAL,
       entries: [
-        makeEntry({ id: 1, malId: 1, orderIndex: 0, watchState: 'WATCHED' }),
-        makeEntry({ id: 2, malId: 2, orderIndex: 1, watchState: 'UNWATCHED' }),
+        makeEntry({ id: '1', malId: 1, orderIndex: 0, watchState: 'WATCHED' }),
+        makeEntry({ id: '2', malId: 2, orderIndex: 1, watchState: 'UNWATCHED' }),
       ],
     });
     const items = getCatchUpEntries([series]);
@@ -73,12 +73,12 @@ describe('getCatchUpEntries', () => {
     const series = makeSeries({
       status: PARTIAL,
       entries: [
-        makeEntry({ id: 1, malId: 1, orderIndex: 0, watchState: 'WATCHED' }),
-        makeEntry({ id: 2, malId: 2, orderIndex: 1, watchState: 'WATCHED' }),
-        makeEntry({ id: 3, malId: 3, orderIndex: 2, watchState: 'WATCHED' }),
-        makeEntry({ id: 4, malId: 4, orderIndex: 3, watchState: 'UNWATCHED' }),
-        makeEntry({ id: 5, malId: 5, orderIndex: 4, watchState: 'UNWATCHED' }),
-        makeEntry({ id: 6, malId: 6, orderIndex: 5, watchState: 'UNWATCHED' }),
+        makeEntry({ id: '1', malId: 1, orderIndex: 0, watchState: 'WATCHED' }),
+        makeEntry({ id: '2', malId: 2, orderIndex: 1, watchState: 'WATCHED' }),
+        makeEntry({ id: '3', malId: 3, orderIndex: 2, watchState: 'WATCHED' }),
+        makeEntry({ id: '4', malId: 4, orderIndex: 3, watchState: 'UNWATCHED' }),
+        makeEntry({ id: '5', malId: 5, orderIndex: 4, watchState: 'UNWATCHED' }),
+        makeEntry({ id: '6', malId: 6, orderIndex: 5, watchState: 'UNWATCHED' }),
       ],
     });
     const items = getCatchUpEntries([series]);
@@ -91,9 +91,9 @@ describe('getCatchUpEntries', () => {
     const series = makeSeries({
       status: PARTIAL,
       entries: [
-        makeEntry({ id: 1, malId: 1, orderIndex: 0, watchState: 'WATCHED' }),
-        makeEntry({ id: 2, malId: 2, orderIndex: 1, watchState: 'UNWATCHED' }),
-        makeEntry({ id: 3, malId: 3, orderIndex: 2, watchState: 'WATCHED' }),
+        makeEntry({ id: '1', malId: 1, orderIndex: 0, watchState: 'WATCHED' }),
+        makeEntry({ id: '2', malId: 2, orderIndex: 1, watchState: 'UNWATCHED' }),
+        makeEntry({ id: '3', malId: 3, orderIndex: 2, watchState: 'WATCHED' }),
       ],
     });
     expect(getCatchUpEntries([series]).map((i) => i.entry.malId)).toEqual([2]);
@@ -104,10 +104,10 @@ describe('getCatchUpEntries', () => {
     const series = makeSeries({
       status: PARTIAL,
       entries: [
-        makeEntry({ id: 1, malId: 1, kind: 'TV_SEASON', orderIndex: 0, watchState: 'UNWATCHED' }),
-        makeEntry({ id: 2, malId: 2, kind: 'TV_SEASON', orderIndex: 1, watchState: 'UNWATCHED' }),
-        makeEntry({ id: 3, malId: 3, kind: 'MOVIE', orderIndex: 2, watchState: 'UNWATCHED' }),
-        makeEntry({ id: 4, malId: 4, kind: 'MOVIE', orderIndex: 3, watchState: 'UNWATCHED' }),
+        makeEntry({ id: '1', malId: 1, kind: 'TV_SEASON', orderIndex: 0, watchState: 'UNWATCHED' }),
+        makeEntry({ id: '2', malId: 2, kind: 'TV_SEASON', orderIndex: 1, watchState: 'UNWATCHED' }),
+        makeEntry({ id: '3', malId: 3, kind: 'MOVIE', orderIndex: 2, watchState: 'UNWATCHED' }),
+        makeEntry({ id: '4', malId: 4, kind: 'MOVIE', orderIndex: 3, watchState: 'UNWATCHED' }),
       ],
     });
     expect(getCatchUpEntries([series]).map((i) => i.entry.malId)).toEqual([1, 3]);
@@ -119,8 +119,8 @@ describe('getCatchUpEntries', () => {
     const series = makeSeries({
       status: PARTIAL,
       entries: [
-        makeEntry({ id: 1, malId: 1, kind: 'TV_SEASON', watchState: 'WATCHED' }),
-        makeEntry({ id: 2, malId: 2, kind: 'MOVIE', watchState: 'UNWATCHED' }),
+        makeEntry({ id: '1', malId: 1, kind: 'TV_SEASON', watchState: 'WATCHED' }),
+        makeEntry({ id: '2', malId: 2, kind: 'MOVIE', watchState: 'UNWATCHED' }),
       ],
     });
     const items = getCatchUpEntries([series]);
@@ -133,8 +133,8 @@ describe('getCatchUpEntries', () => {
     const series = makeSeries({
       status: PARTIAL,
       entries: [
-        makeEntry({ id: 1, malId: 1, watchState: 'WONT_WATCH' }),
-        makeEntry({ id: 2, malId: 2, kind: 'MOVIE', watchState: 'WONT_WATCH' }),
+        makeEntry({ id: '1', malId: 1, watchState: 'WONT_WATCH' }),
+        makeEntry({ id: '2', malId: 2, kind: 'MOVIE', watchState: 'WONT_WATCH' }),
       ],
     });
     expect(getCatchUpEntries([series])).toHaveLength(0);
@@ -163,8 +163,8 @@ describe('splitCatchUpByKind / splitRecommendationsByType', () => {
     const series = makeSeries({
       status: PARTIAL,
       entries: [
-        makeEntry({ id: 1, malId: 1, kind: 'TV_SEASON', watchState: 'UNWATCHED' }),
-        makeEntry({ id: 2, malId: 2, kind: 'MOVIE', watchState: 'UNWATCHED' }),
+        makeEntry({ id: '1', malId: 1, kind: 'TV_SEASON', watchState: 'UNWATCHED' }),
+        makeEntry({ id: '2', malId: 2, kind: 'MOVIE', watchState: 'UNWATCHED' }),
       ],
     });
     const split = splitCatchUpByKind(getCatchUpEntries([series]));

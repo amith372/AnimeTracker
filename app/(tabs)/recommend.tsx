@@ -31,7 +31,6 @@ import {
 import { MalAttribution } from '@/components/MalAttribution';
 import { SeriesTitleText } from '@/components/SeriesTitleText';
 import { fetchRecommendations, useCatchUp, type RecommendProgress } from '@/repositories/RecommendationRepository';
-import { clearApiCache } from '@/repositories/apiCache';
 import { splitCatchUpByKind, splitRecommendationsByType, type CatchUpItem } from '@/domain/recommendations';
 import type { ReconcileSeries } from '@/domain/reconcileSeries';
 import { colors, spacing } from '@/theme/colors';
@@ -73,7 +72,7 @@ export default function RecommendScreen() {
   const [sortMode, setSortMode] = useState<SortMode>('RECOMMENDED');
   const [sortDialogVisible, setSortDialogVisible] = useState(false);
 
-  function load() {
+  function load(opts?: { bypassCache?: boolean }) {
     setState({ kind: 'LOADING', message: 'Loading...' });
     fetchRecommendations((progress: RecommendProgress) => {
       switch (progress.kind) {
@@ -93,17 +92,17 @@ export default function RecommendScreen() {
           setState({ kind: 'ERROR', message: progress.message });
           break;
       }
-    });
+    }, opts);
   }
 
-  useEffect(load, []);
+  useEffect(() => load(), []);
 
-  // Drops the cached MAL responses before reloading, so this genuinely re-asks MAL rather than
-  // rebuilding the same answer from local data. Slow by design — it's the escape hatch for when
-  // cached detail has gone stale.
-  async function refreshFromMal() {
-    await clearApiCache();
-    load();
+  // Skips reading the shared api_cache table (never skips writing it) so this genuinely re-asks
+  // MAL rather than rebuilding the same answer from cached data — the escape hatch for when a
+  // cached detail has gone stale. Doesn't clear the cache itself: it's shared across every
+  // account, so wiping it here would cost everyone else's warm cache too (see apiCache.ts).
+  function refreshFromMal() {
+    load({ bypassCache: true });
   }
 
   // "For you" cards open the not-yet-tracked preview screen (full profile + summary + status

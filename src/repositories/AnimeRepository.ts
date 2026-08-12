@@ -1,179 +1,207 @@
-// The RN equivalent of the old app's AnimeRepository.kt — the only thing screens touch to read
-// or write library data.
+// The only thing screens touch to read or write library data — same role as the old SQLite-backed
+// version, now backed directly by Supabase Postgres (no local mirror, see CLAUDE.md's "What this
+// is"). Two kinds of exports, same split as before and for the same reason (React's reactivity is
+// tied to the component lifecycle): `use*` hooks for reactive reads, built on TanStack Query
+// instead of Drizzle's useLiveQuery; plain `async function`s for one-shot reads/writes, usable
+// anywhere including non-component code (MalPushRepository, RecommendationRepository).
 //
-// One real architectural difference from the Kotlin version worth understanding: Room's
-// `Flow<List<Series>>` is a framework-agnostic "cold stream" that Compose just happens to
-// collect. Drizzle's reactive equivalent, `useLiveQuery`, is a *React hook* — reactivity in
-// React is tied to the component lifecycle, there's no equivalent stream you can hold onto
-// outside of one. So this file has two kinds of exports: plain `async function`s for one-shot
-// reads/writes (usable anywhere, including future non-UI code like a background sync task), and
-// `use*` hooks for reactive reads that a screen re-renders on automatically.
-import { asc, eq } from 'drizzle-orm';
-import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
+// The whole library is one query (`libraryKeys.library(userId)`), not one query per series —
+// useSeries(id) below just selects out of it. That single cache entry is what `useCatchUp`
+// (RecommendationRepository.ts) relies on for a stable object identity across renders; see
+// useLibrary's comment.
 import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useAccountSession } from '@/account/accountRepository';
 import { supabase } from '@/account/supabaseClient';
-import { db } from '@/db/client';
-import { series, seriesEntries, syncMeta, syncOutbox } from '@/db/schema';
-import { getDeviceId } from '@/sync/deviceId';
-import { requestOutboxDrain } from '@/sync/outbox';
-import type { AiringStatus, EntryKind, ManualStatus, WatchState } from '@/domain/types';
-import { allArcsWatched, type Series, type SeriesEntry } from '@/domain/series';
-import { arcsForMalId } from '@/domain/arcs';
-import { deriveSeriesStatus } from '@/domain/seriesStatus';
+import type { ManualStatus, WatchState } from '@/domain/types';
+import type { Series } from '@/domain/series';
 import type { ReconcileSeries } from '@/domain/reconcileSeries';
+import { libraryKeys, queryClient } from './queryClient';
+import {
+  ENTRY_COLUMNS,
+  SERIES_COLUMNS,
+  groupRows,
+  nextArcWatchState,
+  reviseSeriesEntries,
+  reviseSeriesManualStatus,
+  toSeriesPayload,
+  type SeriesEntryRow,
+  type SeriesRow,
+} from './seriesMapping';
 
-type SeriesRow = typeof series.$inferSelect;
-type SeriesEntryRow = typeof seriesEntries.$inferSelect;
-/** The transaction handle Drizzle's sync expo-sqlite driver hands to a `db.transaction()` body. */
-type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
-
-/**
- * Marks one local row as needing a push to Supabase (Phase 9) — called inside the same
- * transaction as the real write it accompanies, so an interrupted app never has a write that
- * "happened" locally without an outbox row to eventually carry it up. `onConflictDoUpdate` on the
- * (entity, localId) unique index collapses repeated writes to the same row into one pending push
- * rather than growing the table — see schema.ts's syncOutbox comment for why this stores no
- * payload snapshot, only the pointer to re-read at drain time.
- */
-function queueOutbox(tx: Transaction, entity: 'series' | 'series_entries', localId: number): void {
-  tx.insert(syncOutbox)
-    .values({ entity, localId, createdAtEpochMillis: Date.now() })
-    .onConflictDoUpdate({
-      target: [syncOutbox.entity, syncOutbox.localId],
-      set: { createdAtEpochMillis: Date.now() },
-    })
-    .run();
+/** The signed-in user's id, or null for a guest/signed-out session — every read/write below is
+ * scoped to this. */
+async function currentUserId(): Promise<string | null> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  return session?.user.id ?? null;
 }
 
-/** Raw DB row (with its nested entries) -> the UI-ready Series, deriving its watch status. */
-function toDomainSeries(row: SeriesRow & { entries: SeriesEntryRow[] }): Series {
-  const sortedEntries = [...row.entries].sort((a, b) => a.orderIndex - b.orderIndex);
-  const status = deriveSeriesStatus(
-    row.manualStatus,
-    sortedEntries.map((e) => ({ kind: e.kind, orderIndex: e.orderIndex, watchState: e.watchState })),
-  );
-  const entries: SeriesEntry[] = sortedEntries.map((e) => ({
-    id: e.id,
-    malId: e.malId,
-    kind: e.kind,
-    orderIndex: e.orderIndex,
-    title: e.title,
-    episodeCount: e.episodeCount,
-    watchState: e.watchState,
-    airingStatus: e.airingStatus,
-    watchedArcKeys: e.watchedArcKeys ?? null,
-  }));
-  return {
-    id: row.id,
-    title: row.title,
-    coverUrl: row.coverUrl,
-    genres: row.genres,
-    rootMalId: row.rootMalId,
-    type: row.type,
-    manualStatus: row.manualStatus,
-    status,
-    entries,
-    newSeasonAvailable: row.newSeasonAvailable,
-    newSeasonAiredAtEpochMillis: row.newSeasonAiredAtEpochMillis ?? null,
-    liked: row.liked,
-  };
+/** Same as currentUserId, but throws a message fit to show the user — every write goes through
+ * this rather than currentUserId, since a write with no signed-in owner is a real error, not a
+ * guest's normal "nothing to show" state. Defense-in-depth behind the UI's own sign-in gates. */
+async function requireUserId(): Promise<string> {
+  const userId = await currentUserId();
+  if (!userId) throw new Error('Sign in to track shows.');
+  return userId;
+}
+
+async function fetchLibrary(userId: string): Promise<Series[]> {
+  const [seriesRes, entryRes] = await Promise.all([
+    supabase.from('series').select(SERIES_COLUMNS).eq('user_id', userId).is('deleted_at', null).order('title'),
+    supabase.from('series_entries').select(ENTRY_COLUMNS).eq('user_id', userId).is('deleted_at', null),
+  ]);
+  if (seriesRes.error) throw seriesRes.error;
+  if (entryRes.error) throw entryRes.error;
+  return groupRows(seriesRes.data as unknown as SeriesRow[], entryRes.data as unknown as SeriesEntryRow[]);
 }
 
 /**
- * Groups flat series + entries rows into the nested shape toDomainSeries expects.
- *
- * This is two plain `useLiveQuery(db.select()...)` calls joined in JS, not one relational
- * `db.query.series.findMany({ with: { entries: true } })` call — found by testing tap-to-mark
- * live (not just at next app launch): the relational query builder's result didn't reliably
- * trigger a re-render when a *write* changed the data, even with `enableChangeListener: true` on
- * the connection, while two plain `select()` live queries do. Bug filed upstream is plausible;
- * this is the safer, better-documented pattern in the meantime.
+ * Reactive whole-library read. Unlike the old SQLite version this can genuinely be "loading" (a
+ * network fetch, not a local read), so unlike useAllSeries below this reports that explicitly —
+ * screens that would otherwise flash "Nothing here yet" on every cold start (the Library screen)
+ * should use this, not useAllSeries.
  */
-function groupRows(seriesRows: SeriesRow[], entryRows: SeriesEntryRow[]): Series[] {
-  // Bucket the entries by series id in one pass. This used to run `entryRows.filter(...)` once per
-  // series — O(series x entries), which for a few hundred shows and a couple of thousand entries is
-  // hundreds of thousands of comparisons on *every* render of the Library and Recommendations.
-  const entriesBySeriesId = new Map<number, SeriesEntryRow[]>();
-  for (const entry of entryRows) {
-    const bucket = entriesBySeriesId.get(entry.seriesId);
-    if (bucket) bucket.push(entry);
-    else entriesBySeriesId.set(entry.seriesId, [entry]);
-  }
-  return seriesRows.map((row) => toDomainSeries({ ...row, entries: entriesBySeriesId.get(row.id) ?? [] }));
+export function useLibrary(): { series: Series[]; isLoading: boolean; error: Error | null } {
+  const { session, loading: sessionLoading } = useAccountSession();
+  const userId = session?.user.id ?? null;
+  const query = useQuery({
+    queryKey: libraryKeys.library(userId ?? 'anonymous'),
+    queryFn: () => fetchLibrary(userId!),
+    enabled: !!userId,
+  });
+  if (sessionLoading) return { series: [], isLoading: true, error: null };
+  if (!userId) return { series: [], isLoading: false, error: null };
+  return { series: query.data ?? [], isLoading: query.isPending, error: query.error as Error | null };
 }
 
-/**
- * Reactive whole-library read, sorted by title — screens call this to render the Library list.
- *
- * Memoized on the two row arrays, so an unrelated re-render reuses the same Series objects rather
- * than rebuilding them. That identity matters beyond the wasted work: `useCatchUp` feeds this
- * straight into the Recommendations screen's `genreOptions` memo, which a fresh array would
- * invalidate on every single render.
- */
+/** Reactive whole-library read for callers that don't need to distinguish "loading" from "empty"
+ * (Catch up, tracked-id filtering) — see useLibrary for the one screen that does need to. */
 export function useAllSeries(): Series[] {
-  const { data: seriesRows } = useLiveQuery(db.select().from(series).orderBy(asc(series.title)));
-  const { data: entryRows } = useLiveQuery(db.select().from(seriesEntries));
-  return useMemo(() => groupRows(seriesRows ?? [], entryRows ?? []), [seriesRows, entryRows]);
+  return useLibrary().series;
 }
 
-/** Reactive read of one series by id, for the Detail screen. */
-export function useSeries(id: number): Series | null {
-  const { data: seriesRows } = useLiveQuery(db.select().from(series).where(eq(series.id, id)));
-  const { data: entryRows } = useLiveQuery(db.select().from(seriesEntries).where(eq(seriesEntries.seriesId, id)));
-  const row = seriesRows?.[0];
-  return row ? toDomainSeries({ ...row, entries: entryRows ?? [] }) : null;
+/** Reactive read of one series by id, for the Detail screen — selects out of the same cached
+ * library query useLibrary/useAllSeries use, rather than a separate network round trip. */
+export function useSeries(id: string): Series | null {
+  const series = useAllSeries();
+  return series.find((s) => s.id === id) ?? null;
 }
 
-/** One-shot read for non-component contexts (e.g. a future background sync task). */
+/** One-shot read for non-component contexts (Recommendations, Push to MAL). Reuses the cached
+ * library query via fetchQuery rather than issuing a redundant round trip, so what gets pushed to
+ * MAL matches exactly what's on screen. Returns [] for a guest — this is a read, not a write, so
+ * "nothing to show" is the correct answer rather than an error. */
 export async function getAllSeriesOnce(): Promise<Series[]> {
-  const rows = await db.query.series.findMany({ with: { entries: true } });
-  return rows.map(toDomainSeries);
+  const userId = await currentUserId();
+  if (!userId) return [];
+  return queryClient.fetchQuery({ queryKey: libraryKeys.library(userId), queryFn: () => fetchLibrary(userId) });
+}
+
+/** Reactive set of every MAL id already tracked (any season/movie in any series) — Discover uses
+ * this to filter out results the user already has, whole series at a time. */
+export function useTrackedMalIds(): Set<number> {
+  const series = useAllSeries();
+  return useMemo(() => new Set(series.flatMap((s) => s.entries.map((e) => e.malId))), [series]);
+}
+
+/**
+ * Applies an optimistic update to the cached library immediately, then commits the real write.
+ * On failure the optimistic change is rolled back and the error re-thrown — callers (screens) are
+ * expected to catch it and show feedback (see app/series/[id].tsx's runWrite).
+ *
+ * No onSettled refetch on success: the server's post-write state is byte-identical to the
+ * optimistic one (same fields the write actually changed), and Realtime's echo of this device's
+ * own write triggers realtime.ts's debounced invalidate anyway — an immediate refetch per write
+ * would mean, e.g., 12 redundant round trips for a 12-season "mark all watched".
+ */
+async function optimisticLibraryUpdate(
+  apply: (current: Series[]) => Series[],
+  commit: (userId: string) => Promise<void>,
+): Promise<void> {
+  const userId = await requireUserId();
+  const key = libraryKeys.library(userId);
+  await queryClient.cancelQueries({ queryKey: key });
+  const previous = queryClient.getQueryData<Series[]>(key);
+  queryClient.setQueryData<Series[]>(key, (current) => apply(current ?? []));
+  try {
+    await commit(userId);
+  } catch (e) {
+    queryClient.setQueryData(key, previous);
+    throw e;
+  }
 }
 
 /** Sets one entry's watch state — what tap-to-mark and the "won't watch" toggle both write. */
-export async function setEntryWatchState(entryId: number, watchState: WatchState): Promise<void> {
-  db.transaction((tx) => {
-    tx.update(seriesEntries).set({ watchState }).where(eq(seriesEntries.id, entryId)).run();
-    queueOutbox(tx, 'series_entries', entryId);
-  });
-  requestOutboxDrain();
+export async function setEntryWatchState(entryId: string, watchState: WatchState): Promise<void> {
+  await optimisticLibraryUpdate(
+    (current) =>
+      current.map((s) => {
+        if (!s.entries.some((e) => e.id === entryId)) return s;
+        const entries = s.entries.map((e) => (e.id === entryId ? { ...e, watchState } : e));
+        return reviseSeriesEntries(s, entries);
+      }),
+    async () => {
+      const { error } = await supabase.from('series_entries').update({ watch_state: watchState }).eq('id', entryId);
+      if (error) throw error;
+    },
+  );
 }
 
 /**
  * Toggles one arc's checkbox for the one entry that has arcs (see domain/arcs.ts), and keeps the
  * entry's real watchState derived from the resulting set: WATCHED once every arc is checked,
- * UNWATCHED otherwise. This is what keeps status derivation, push, and sync working against an
- * ordinary single TV_SEASON entry with no changes of their own — they only ever read watchState,
- * never watchedArcKeys.
+ * UNWATCHED otherwise. Reads the entry's current watchedArcKeys from the already-cached library
+ * instead of a separate SELECT (the whole library is already in memory client-side, unlike the old
+ * SQLite version which had to query for it).
  */
-export async function setArcWatched(entryId: number, arcKey: string, watched: boolean): Promise<void> {
-  const [row] = await db
-    .select({ malId: seriesEntries.malId, watchedArcKeys: seriesEntries.watchedArcKeys })
-    .from(seriesEntries)
-    .where(eq(seriesEntries.id, entryId));
-  if (!row) return;
-  const current = new Set(row.watchedArcKeys ?? []);
-  if (watched) current.add(arcKey);
-  else current.delete(arcKey);
-  const nextKeys = Array.from(current);
-  const nextWatchState: WatchState = allArcsWatched(arcsForMalId(row.malId) ?? [], nextKeys) ? 'WATCHED' : 'UNWATCHED';
-  db.transaction((tx) => {
-    tx.update(seriesEntries)
-      .set({ watchedArcKeys: nextKeys, watchState: nextWatchState })
-      .where(eq(seriesEntries.id, entryId))
-      .run();
-    queueOutbox(tx, 'series_entries', entryId);
-  });
-  requestOutboxDrain();
+export async function setArcWatched(entryId: string, arcKey: string, watched: boolean): Promise<void> {
+  const userId = await requireUserId();
+  const cached = queryClient.getQueryData<Series[]>(libraryKeys.library(userId)) ?? [];
+  let malId: number | null = null;
+  let nextKeys: string[] = [];
+  for (const s of cached) {
+    const entry = s.entries.find((e) => e.id === entryId);
+    if (!entry) continue;
+    malId = entry.malId;
+    const keys = new Set(entry.watchedArcKeys ?? []);
+    if (watched) keys.add(arcKey);
+    else keys.delete(arcKey);
+    nextKeys = Array.from(keys);
+    break;
+  }
+  if (malId === null) return; // entry not found in cache — nothing to do
+  const nextWatchState = nextArcWatchState(malId, nextKeys);
+
+  await optimisticLibraryUpdate(
+    (current) =>
+      current.map((s) => {
+        if (!s.entries.some((e) => e.id === entryId)) return s;
+        const entries = s.entries.map((e) =>
+          e.id === entryId ? { ...e, watchedArcKeys: nextKeys, watchState: nextWatchState } : e,
+        );
+        return reviseSeriesEntries(s, entries);
+      }),
+    async () => {
+      const { error } = await supabase
+        .from('series_entries')
+        .update({ watched_arc_keys: nextKeys, watch_state: nextWatchState })
+        .eq('id', entryId);
+      if (error) throw error;
+    },
+  );
 }
 
 /** Flips a series' "liked" flag — feeds into recommendation scoring (Phase 6). */
-export async function setSeriesLiked(seriesId: number, liked: boolean): Promise<void> {
-  db.transaction((tx) => {
-    tx.update(series).set({ liked }).where(eq(series.id, seriesId)).run();
-    queueOutbox(tx, 'series', seriesId);
-  });
-  requestOutboxDrain();
+export async function setSeriesLiked(seriesId: string, liked: boolean): Promise<void> {
+  await optimisticLibraryUpdate(
+    (current) => current.map((s) => (s.id === seriesId ? { ...s, liked } : s)),
+    async () => {
+      const { error } = await supabase.from('series').update({ liked }).eq('id', seriesId);
+      if (error) throw error;
+    },
+  );
 }
 
 /**
@@ -181,222 +209,98 @@ export async function setSeriesLiked(seriesId: number, liked: boolean): Promise<
  * and the only way to reach WATCHED_FORGOT, which has no MAL equivalent. Writing `NONE` clears the
  * override so status goes back to being derived from which seasons are watched.
  *
- * Purely local, like every status write in this app: we never PATCH/PUT/DELETE back to MAL.
+ * Purely local-to-this-write, like every status write in this app: we never PATCH/PUT/DELETE back
+ * to MAL (see CLAUDE.md §8 for the one deliberate exception, Push).
  */
-export async function setSeriesManualStatus(seriesId: number, manualStatus: ManualStatus): Promise<void> {
-  db.transaction((tx) => {
-    tx.update(series).set({ manualStatus }).where(eq(series.id, seriesId)).run();
-    queueOutbox(tx, 'series', seriesId);
-  });
-  requestOutboxDrain();
-}
-
-/**
- * Inserts one grouped series + its entries. Takes a `tx` because a series and its entries must
- * always be written together — a series row with no entries would derive as "Watched" and be
- * unfixable from the UI, since there'd be nothing to tick.
- *
- * Note the synchronous `.run()`/`.all()` calls: expo-sqlite is Drizzle's *sync* driver, and its
- * `transaction()` takes a plain `(tx) => T` callback that it does not await. Handing it an async
- * callback would commit the transaction while the writes were still pending, which is worse than
- * having no transaction at all.
- */
-/**
- * `queueSync` is false for `replaceAllSeries`'s onboarding-import loop — that path is excluded
- * from the outbox entirely (see its own doc comment) — and true for `addSeries`, whose one new
- * series + entries genuinely need to reach Supabase.
- */
-function insertSeriesTx(tx: Transaction, item: ReconcileSeries, queueSync: boolean): number {
-  const [insertedSeries] = tx
-    .insert(series)
-    .values({
-      title: item.title,
-      coverUrl: item.coverUrl,
-      genres: item.genres,
-      rootMalId: item.rootMalId,
-      type: item.type,
-      manualStatus: item.manualStatus,
-    })
-    .returning({ id: series.id })
-    .all();
-  if (queueSync) queueOutbox(tx, 'series', insertedSeries.id);
-  if (item.entries.length > 0) {
-    const insertedEntries = tx
-      .insert(seriesEntries)
-      .values(
-        item.entries.map((entry) => ({
-          seriesId: insertedSeries.id,
-          malId: entry.malId,
-          kind: entry.kind,
-          orderIndex: entry.orderIndex,
-          title: entry.title,
-          episodeCount: entry.episodeCount,
-          watchState: entry.watchState,
-          airingStatus: entry.airingStatus,
-        })),
-      )
-      .returning({ id: seriesEntries.id })
-      .all();
-    if (queueSync) for (const entry of insertedEntries) queueOutbox(tx, 'series_entries', entry.id);
-  }
-  return insertedSeries.id;
-}
-
-/**
- * Wipes the whole local library and replaces it with a fresh (reconciled) import result.
- *
- * All of it in one transaction, because the delete half is destructive and the insert half can
- * fail: previously a failure (or the app being killed) partway through the per-series insert loop
- * left the user with a half-empty — or entirely empty — library, and the freshly imported data
- * that would have refilled it was only ever held in the reconcile screen's React state, which is
- * gone by then. Now either the whole replacement lands or the old library is untouched.
- */
-export async function replaceAllSeries(items: ReconcileSeries[]): Promise<void> {
-  db.transaction((tx) => {
-    tx.delete(seriesEntries).run();
-    tx.delete(series).run();
-    for (const item of items) insertSeriesTx(tx, item, false);
-  });
-  void replaceRemoteLibrary(items);
-}
-
-/**
- * Phase 10's counterpart to the local wipe-and-reinsert above — this is the only write path that
- * bypasses the outbox (see insertSeriesTx's `queueSync` doc comment for why: an N-row outbox burst
- * would look like a full delete to a concurrently-pulling second device, and is far slower than
- * one round trip). Best-effort and fire-and-forget: this only ever runs once, right after
- * onboarding import, and must never block or fail the local import that already succeeded above —
- * a signed-out/guest import, or a network failure here, just means this device's library reaches
- * Supabase later (e.g. once Phase 9's initial-adoption sweep picks it up after this device gets a
- * session, or once the user retries some future "sync now" affordance).
- */
-async function replaceRemoteLibrary(items: ReconcileSeries[]): Promise<void> {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session) return;
-  const deviceId = await getDeviceId();
-  const payload = items.map((item) => ({
-    title: item.title,
-    cover_url: item.coverUrl,
-    genres: item.genres,
-    root_mal_id: item.rootMalId,
-    type: item.type,
-    manual_status: item.manualStatus,
-    updated_by_device_id: deviceId,
-    entries: item.entries.map((entry) => ({
-      mal_id: entry.malId,
-      kind: entry.kind,
-      order_index: entry.orderIndex,
-      title: entry.title,
-      episode_count: entry.episodeCount,
-      watch_state: entry.watchState,
-      airing_status: entry.airingStatus,
-    })),
-  }));
-  await supabase.rpc('replace_library', { payload });
-}
-
-/** Adds a single new series (from Discover/Recommendations) without touching the rest of the
- * library. Returns the new local series id, so a caller navigating straight from a not-yet-
- * tracked preview into the real Detail screen knows which id to push. */
-export async function addSeries(item: ReconcileSeries): Promise<number> {
-  const id = db.transaction((tx) => insertSeriesTx(tx, item, true));
-  requestOutboxDrain();
-  return id;
-}
-
-/** Reactive set of every MAL id already tracked (any season/movie in any series) — Discover uses
- * this to filter out results the user already has, whole series at a time. */
-export function useTrackedMalIds(): Set<number> {
-  const { data } = useLiveQuery(db.select({ malId: seriesEntries.malId }).from(seriesEntries));
-  return new Set((data ?? []).map((row) => row.malId));
-}
-
-/** Marks onboarding import as done — a single sync_meta row's mere existence means "imported". */
-export async function markInitialImportComplete(): Promise<void> {
-  await recordSyncRun();
-}
-
-/**
- * Stamps `lastSyncEpoch` on the singleton sync_meta row, creating it if this is the first run.
- *
- * Shared by the onboarding import and the monthly sync. The column existed from the start but only
- * the import ever wrote it, so "when did we last check for new seasons" was never actually
- * recorded — a sync could run every month for a year and the value would still read as the day the
- * user first imported.
- */
-export async function recordSyncRun(): Promise<void> {
-  const existing = await db.select({ id: syncMeta.id }).from(syncMeta).limit(1);
-  if (existing.length > 0) {
-    await db.update(syncMeta).set({ lastSyncEpoch: Date.now() }).where(eq(syncMeta.id, existing[0].id));
-  } else {
-    await db.insert(syncMeta).values({ lastSyncEpoch: Date.now() });
-  }
-}
-
-/** Reactive check for whether onboarding import has completed — gates Library vs. Reconcile. */
-export function useHasCompletedInitialImport(): boolean | null {
-  const { data } = useLiveQuery(db.select({ id: syncMeta.id }).from(syncMeta).limit(1));
-  if (data === undefined) return null;
-  return data.length > 0;
-}
-
-/** A season/movie found by the monthly sync, not yet written to SQLite. */
-export interface NewSeriesEntry {
-  malId: number;
-  kind: EntryKind;
-  orderIndex: number;
-  title: string;
-  episodeCount: number;
-  airingStatus: AiringStatus;
-}
-
-/** Appends newly-discovered seasons to an already-tracked series (monthly sync only — Discover
- * and reconcile create whole new series instead, see addSeries/replaceAllSeries). */
-export async function addNewEntries(seriesId: number, entries: NewSeriesEntry[]): Promise<void> {
-  if (entries.length === 0) return;
-  db.transaction((tx) => {
-    const inserted = tx
-      .insert(seriesEntries)
-      .values(
-        entries.map((entry) => ({
-          seriesId,
-          malId: entry.malId,
-          kind: entry.kind,
-          orderIndex: entry.orderIndex,
-          title: entry.title,
-          episodeCount: entry.episodeCount,
-          watchState: 'UNWATCHED' as const,
-          airingStatus: entry.airingStatus,
-        })),
-      )
-      .returning({ id: seriesEntries.id })
-      .all();
-    for (const entry of inserted) queueOutbox(tx, 'series_entries', entry.id);
-  });
-  requestOutboxDrain();
-}
-
-/** Sets the "new season!" flag + when that season airs — cleared when the user opens the Detail
- * screen (see clearNewSeasonAvailable). `airedAtEpochMillis` feeds hasVisibleNewSeasonAlert's
- * "hide once it's over a year old" rule; null if the new season's air date is unknown. */
-export async function setNewSeasonAvailable(seriesId: number, airedAtEpochMillis: number | null): Promise<void> {
-  db.transaction((tx) => {
-    tx.update(series)
-      .set({ newSeasonAvailable: true, newSeasonAiredAtEpochMillis: airedAtEpochMillis })
-      .where(eq(series.id, seriesId))
-      .run();
-    queueOutbox(tx, 'series', seriesId);
-  });
-  requestOutboxDrain();
+export async function setSeriesManualStatus(seriesId: string, manualStatus: ManualStatus): Promise<void> {
+  await optimisticLibraryUpdate(
+    (current) => current.map((s) => (s.id === seriesId ? reviseSeriesManualStatus(s, manualStatus) : s)),
+    async () => {
+      const { error } = await supabase.from('series').update({ manual_status: manualStatus }).eq('id', seriesId);
+      if (error) throw error;
+    },
+  );
 }
 
 /** Clears the "new season!" flag — called when the user opens that series' Detail screen. */
-export async function clearNewSeasonAvailable(seriesId: number): Promise<void> {
-  db.transaction((tx) => {
-    tx.update(series).set({ newSeasonAvailable: false }).where(eq(series.id, seriesId)).run();
-    queueOutbox(tx, 'series', seriesId);
+export async function clearNewSeasonAvailable(seriesId: string): Promise<void> {
+  await optimisticLibraryUpdate(
+    (current) => current.map((s) => (s.id === seriesId ? { ...s, newSeasonAvailable: false } : s)),
+    async () => {
+      const { error } = await supabase.from('series').update({ new_season_available: false }).eq('id', seriesId);
+      if (error) throw error;
+    },
+  );
+}
+
+/**
+ * Wipes the whole library and replaces it with a fresh (reconciled) import result — the
+ * onboarding-import write path. Delegates the whole delete-then-reinsert to the `replace_library`
+ * Postgres RPC (single round trip, single transaction — see that function's migration comment for
+ * why a client-side loop of individual writes is the wrong shape here), then invalidates the cache
+ * so the Library screen picks up the new rows.
+ */
+export async function replaceAllSeries(items: ReconcileSeries[]): Promise<void> {
+  const userId = await requireUserId();
+  const { error } = await supabase.rpc('replace_library', { payload: items.map(toSeriesPayload) });
+  if (error) throw error;
+  await queryClient.invalidateQueries({ queryKey: libraryKeys.library(userId) });
+}
+
+/**
+ * Adds a single new series (from Discover/Recommendations) without touching the rest of the
+ * library, via the `add_series` RPC (series + entries in one round trip — see that function's
+ * migration comment: a series row with no entries would derive as "Watched" and be unfixable from
+ * the UI). Returns the new series' server-assigned id, so a caller navigating straight from a
+ * not-yet-tracked preview into the real Detail screen knows which id to push to.
+ */
+export async function addSeries(item: ReconcileSeries): Promise<string> {
+  const userId = await requireUserId();
+  const { data, error } = await supabase.rpc('add_series', { payload: toSeriesPayload(item) });
+  if (error) {
+    // unique(user_id, root_mal_id) — the show is already tracked. Surface a message worth showing
+    // rather than a raw Postgres error code.
+    if (error.code === '23505') throw new Error('This show is already in your library.');
+    throw error;
+  }
+  await queryClient.invalidateQueries({ queryKey: libraryKeys.library(userId) });
+  return data as string;
+}
+
+async function fetchLibraryMeta(userId: string): Promise<{ initialImportCompletedAt: string | null }> {
+  const { data, error } = await supabase
+    .from('user_library_meta')
+    .select('initial_import_completed_at')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) throw error;
+  return { initialImportCompletedAt: data?.initial_import_completed_at ?? null };
+}
+
+/** Marks onboarding import as done — see supabase/migrations/20260812000000_direct_postgres.sql's
+ * user_library_meta table, the server-side (per-account, not per-device) replacement for the old
+ * local-only sync_meta. Also stamps last_sync_at, matching what the old recordSyncRun did. */
+export async function markInitialImportComplete(): Promise<void> {
+  const userId = await requireUserId();
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from('user_library_meta')
+    .upsert({ user_id: userId, initial_import_completed_at: now, last_sync_at: now });
+  if (error) throw error;
+  await queryClient.invalidateQueries({ queryKey: libraryKeys.meta(userId) });
+}
+
+/** Reactive check for whether onboarding import has completed — gates Library vs. Reconcile.
+ * Tri-state preserved from the old hook: null means "still loading/unknown", not "no". */
+export function useHasCompletedInitialImport(): boolean | null {
+  const { session, loading: sessionLoading } = useAccountSession();
+  const userId = session?.user.id ?? null;
+  const query = useQuery({
+    queryKey: libraryKeys.meta(userId ?? 'anonymous'),
+    queryFn: () => fetchLibraryMeta(userId!),
+    enabled: !!userId,
   });
-  requestOutboxDrain();
+  if (sessionLoading || !userId) return null;
+  if (query.isPending) return null;
+  return query.data?.initialImportCompletedAt != null;
 }

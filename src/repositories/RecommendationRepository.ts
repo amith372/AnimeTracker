@@ -53,8 +53,15 @@ export function useCatchUp(): CatchUpItem[] {
   return getCatchUpEntries(allSeries);
 }
 
-/** Runs the full MAL-based + genre-based recommendation pipeline and reports progress as it goes. */
-export async function fetchRecommendations(onProgress: (p: RecommendProgress) => void): Promise<void> {
+/** Runs the full MAL-based + genre-based recommendation pipeline and reports progress as it goes.
+ * `bypassCache` backs the Recommendations screen's manual "refresh" action — it skips reading
+ * (never skips writing) the shared api_cache table, so a refresh gets genuinely fresh MAL data
+ * without wiping what every other user has cached (see apiCache.ts's cached() for why a full-table
+ * clear would be wrong on a shared cache). */
+export async function fetchRecommendations(
+  onProgress: (p: RecommendProgress) => void,
+  opts?: { bypassCache?: boolean },
+): Promise<void> {
   const allSeries = await getAllSeriesOnce();
   const sourceSeries = allSeries.filter(isRecommendationSource);
 
@@ -65,12 +72,12 @@ export async function fetchRecommendations(onProgress: (p: RecommendProgress) =>
 
   onProgress({ kind: 'FETCHING_SOURCES', completed: 0, total: sourceSeries.length });
   let sourcesCompleted = 0;
-  const recommendedBySeries = new Map<number, RecommendedRef[]>();
+  const recommendedBySeries = new Map<string, RecommendedRef[]>();
   // Best-effort here too — a series whose recommendations can't be fetched just contributes
   // nothing to the tally/profile, rather than failing every other series' contribution too.
   await mapWithConcurrency(sourceSeries, SOURCE_FETCH_CONCURRENCY, async (series) => {
     try {
-      const result = await getAnimeRecommendationsCached(series.rootMalId);
+      const result = await getAnimeRecommendationsCached(series.rootMalId, { bypass: opts?.bypassCache });
       recommendedBySeries.set(
         series.id,
         (result.recommendations ?? []).map((r) => ({
@@ -124,7 +131,7 @@ export async function fetchRecommendations(onProgress: (p: RecommendProgress) =>
   // fetchDetailsAndGroup already does for a related id it can't fetch.
   await mapWithConcurrency(candidateIds, CANDIDATE_FETCH_CONCURRENCY, async (id) => {
     try {
-      detailById.set(id, await getAnimeDetailCached(id));
+      detailById.set(id, await getAnimeDetailCached(id, { bypass: opts?.bypassCache }));
     } catch {
       // Dropped — see comment above.
     }
@@ -155,21 +162,25 @@ export async function fetchRecommendations(onProgress: (p: RecommendProgress) =>
 
   let grouped: ReconcileSeries[] | null = null;
   let groupingError: string | null = null;
-  await fetchDetailsAndGroup(nodesToGroup, (progress: DiscoverProgress) => {
-    switch (progress.kind) {
-      case 'FETCHING_DETAILS':
-        onProgress({ kind: 'GROUPING', completed: progress.completed, total: progress.total });
-        break;
-      case 'READY':
-        grouped = progress.series;
-        break;
-      case 'FAILED':
-        groupingError = progress.message;
-        break;
-      case 'FETCHING_LIST':
-        break;
-    }
-  });
+  await fetchDetailsAndGroup(
+    nodesToGroup,
+    (progress: DiscoverProgress) => {
+      switch (progress.kind) {
+        case 'FETCHING_DETAILS':
+          onProgress({ kind: 'GROUPING', completed: progress.completed, total: progress.total });
+          break;
+        case 'READY':
+          grouped = progress.series;
+          break;
+        case 'FAILED':
+          groupingError = progress.message;
+          break;
+        case 'FETCHING_LIST':
+          break;
+      }
+    },
+    { bypassCache: opts?.bypassCache },
+  );
 
   if (groupingError !== null) {
     onProgress({ kind: 'FAILED', message: groupingError });

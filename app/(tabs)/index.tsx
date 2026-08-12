@@ -17,7 +17,7 @@ import { ActivityIndicator, Button, Chip, Dialog, IconButton, Portal, Searchbar,
 import { useIsGuest } from '@/account/guestMode';
 import { useAccountSession } from '@/account/accountRepository';
 import { useMalLinkStatus } from '@/account/malLinkRepository';
-import { useAllSeries, useHasCompletedInitialImport } from '@/repositories/AnimeRepository';
+import { useHasCompletedInitialImport, useLibrary } from '@/repositories/AnimeRepository';
 import { runMonthlySync } from '@/repositories/SyncRepository';
 import { pushStatusesToMal } from '@/repositories/MalPushRepository';
 import { MalAttribution } from '@/components/MalAttribution';
@@ -40,10 +40,10 @@ const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
 
 export default function LibraryScreen() {
   const { session, loading: sessionLoading } = useAccountSession();
-  const [isGuest] = useIsGuest();
+  const isGuest = useIsGuest();
   const [malLinked] = useMalLinkStatus();
   const hasImported = useHasCompletedInitialImport();
-  const seriesList = useAllSeries();
+  const { series: seriesList, isLoading: libraryLoading } = useLibrary();
   const router = useRouter();
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
@@ -115,13 +115,12 @@ export default function LibraryScreen() {
       </View>
     );
   }
-  // No session at all and not an explicit guest -> straight to login/account choices. Having *any*
-  // Supabase session (even one with no MAL linked yet, e.g. an email/password-only account) is
-  // enough to skip this — same as guest mode always was.
-  if (!session && !isGuest) {
+  // No session at all -> straight to login/account/guest choices. A guest is itself a session now
+  // (anonymous auth, see guestMode.ts) — this only catches someone who hasn't made any choice yet.
+  if (!session) {
     return <Redirect href="/onboarding/login" />;
   }
-  // A guest, or an account with no MAL linked, never has a MAL list to import, so they skip
+  // Neither a guest nor an account with no MAL linked ever has a MAL list to import, so both skip
   // straight to the (possibly empty) library instead of onboarding/reconcile — only a MAL-linked
   // account needs that gate.
   if (malLinked) {
@@ -135,6 +134,16 @@ export default function LibraryScreen() {
     if (!hasImported) {
       return <Redirect href="/onboarding/reconcile" />;
     }
+  }
+  // Avoids a flash of "Nothing here yet" while the library's first fetch is still in flight —
+  // useAllSeries()/useLibrary() can genuinely be loading now (a network read), unlike the old
+  // SQLite-backed version.
+  if (libraryLoading) {
+    return (
+      <View style={styles.empty}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
   }
 
   return (
@@ -187,6 +196,22 @@ export default function LibraryScreen() {
           </Chip>
         ))}
       </ScrollView>
+      <FlatList
+            style={styles.list}
+            contentContainerStyle={styles.listContent}
+            data={filteredList}
+            keyExtractor={(item) => String(item.id)}
+            renderItem={({ item }) => (
+              <SeriesRow series={item} onPress={() => router.push(`/series/${item.id}`)} />
+            )}
+            ListEmptyComponent={
+              <View style={styles.empty}>
+                <Text variant="bodyLarge">
+                  {seriesList.length === 0 ? 'Nothing here yet' : 'No series match your search/filter'}
+                </Text>
+              </View>
+            }
+          />
       <Portal>
         <Dialog visible={moreMenuVisible} onDismiss={() => setMoreMenuVisible(false)}>
           <Dialog.Content style={styles.moreMenuContent}>
@@ -214,8 +239,10 @@ export default function LibraryScreen() {
               </Pressable>
             )}
             {/* Phase 7's app-account system — see app/onboarding/account.tsx, which is also where
-                signing out and linking MyAnimeList (if not already linked) both live now. Shown
-                regardless of session/guest state, since an app account is independent/optional. */}
+                signing out, converting a guest session to a real account, and linking MyAnimeList
+                (if not already linked) all live now. Reachable at every session state — a guest is
+                always signed in now (anonymous auth, see guestMode.ts), so there's no separate
+                "Log in" item to show only when signed out; Account itself branches on isGuest. */}
             <Pressable
               style={styles.moreMenuRow}
               onPress={() => {
@@ -224,20 +251,8 @@ export default function LibraryScreen() {
               }}
             >
               <MaterialCommunityIcons name="account-circle-outline" size={22} color={colors.textPrimary} />
-              <Text variant="bodyLarge">Account</Text>
+              <Text variant="bodyLarge">{isGuest ? 'Create account' : 'Account'}</Text>
             </Pressable>
-            {!session && (
-              <Pressable
-                style={styles.moreMenuRow}
-                onPress={() => {
-                  setMoreMenuVisible(false);
-                  router.push('/onboarding/login');
-                }}
-              >
-                <MaterialCommunityIcons name="login" size={22} color={colors.textPrimary} />
-                <Text variant="bodyLarge">Log in</Text>
-              </Pressable>
-            )}
           </Dialog.Content>
         </Dialog>
       </Portal>
@@ -259,22 +274,6 @@ export default function LibraryScreen() {
           </Dialog.Actions>
         </Dialog>
       </Portal>
-      <FlatList
-        style={styles.list}
-        contentContainerStyle={styles.listContent}
-        data={filteredList}
-        keyExtractor={(item) => String(item.id)}
-        renderItem={({ item }) => (
-          <SeriesRow series={item} onPress={() => router.push(`/series/${item.id}`)} />
-        )}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text variant="bodyLarge">
-              {seriesList.length === 0 ? 'Nothing here yet' : 'No series match your search/filter'}
-            </Text>
-          </View>
-        }
-      />
       <MalAttribution />
       <Snackbar visible={syncMessage !== null} onDismiss={() => setSyncMessage(null)} duration={4000}>
         {syncMessage}

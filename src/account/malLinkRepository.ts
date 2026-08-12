@@ -1,18 +1,22 @@
-// Orchestrates both variants of the server-terminated MAL OAuth flow (see the plan doc's §1 and
-// supabase/functions/mal-oauth-start|callback|session-exchange): "Continue with MyAnimeList"
-// (sign-in — creates/finds the Supabase account) and "Link MyAnimeList" (attaches MAL to an
-// already-signed-in account). Both share the same browser-round-trip shape as the old, now-deleted
-// src/auth/authRepository.ts's login(): open the authorize URL, await the redirect, done — the
-// PKCE verifier/state never touch this device at all anymore (they live server-side, in
-// mal_oauth_sessions), so there's nothing here to persist across an Activity kill the way the old
-// Kotlin app once had to.
+// Native (iOS/Android) implementation — orchestrates both variants of the server-terminated MAL
+// OAuth flow (see the plan doc's §1 and supabase/functions/mal-oauth-start|callback|session-exchange):
+// "Continue with MyAnimeList" (sign-in — creates/finds the Supabase account) and "Link MyAnimeList"
+// (attaches MAL to an already-signed-in account). Both share the same browser-round-trip shape as
+// the old, now-deleted src/auth/authRepository.ts's login(): open the authorize URL, await the
+// redirect, done — the PKCE verifier/state never touch this device at all anymore (they live
+// server-side, in mal_oauth_sessions), so there's nothing here to persist across an Activity kill
+// the way the old Kotlin app once had to.
+//
+// Metro resolves `.web.ts` over this bare file on web builds — see malLinkRepository.web.ts for
+// that platform's popup+postMessage equivalent, and malLinkStatus.ts for the platform-agnostic
+// status queries both files re-export.
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
-import { useCallback, useEffect, useState } from 'react';
-import { supabase } from './supabaseClient';
 import { callMalOauthStart } from '@/api/edgeFunctions';
+import type { MalLinkResult } from './malLinkStatus';
 
-export type MalLinkResult = { success: true } | { success: false; message: string };
+export type { MalLinkResult } from './malLinkStatus';
+export { isMalLinked, useMalLinkStatus } from './malLinkStatus';
 
 // Only tells the caller whether the browser closed via the matching redirect vs. being dismissed —
 // app/auth.tsx receives that same redirect through expo-router's own Linking handling and is what
@@ -57,33 +61,4 @@ export async function linkMalAccount(): Promise<MalLinkResult> {
   } catch (e) {
     return { success: false, message: e instanceof Error ? e.message : 'Linking failed.' };
   }
-}
-
-/** One-shot check for non-component contexts (e.g. SyncRepository's monthly sync, which used to
- * gate on the old per-device isLoggedIn()). */
-export async function isMalLinked(): Promise<boolean> {
-  const { data } = await supabase.from('mal_link_status').select('user_id').maybeSingle();
-  return data !== null;
-}
-
-/**
- * Reactive-ish MAL link status for the current account — one-shot-plus-manual-refresh, same shape
- * as the account/MAL hooks elsewhere in the app (no realtime source to subscribe to for this yet).
- * Reads `mal_link_status` (a view over mal_accounts with the token columns withheld — see the
- * Phase 8 migration) rather than mal_accounts directly, so this can never accidentally select a
- * token column even by future accident.
- */
-export function useMalLinkStatus(): [boolean | null, () => void] {
-  const [linked, setLinked] = useState<boolean | null>(null);
-  const refresh = useCallback(() => {
-    supabase
-      .from('mal_link_status')
-      .select('user_id')
-      .maybeSingle()
-      .then(({ data }) => setLinked(data !== null));
-  }, []);
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-  return [linked, refresh];
 }

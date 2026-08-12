@@ -10,12 +10,23 @@ import { isSupabaseConfigured, supabase } from './supabaseClient';
 
 export type AccountAuthResult = { success: true } | { success: false; message: string };
 
-/** Creates a new email/password account. No MAL link — Import/Push stay hidden until one exists. */
+/**
+ * Creates a new email/password account — or, if the caller is currently an anonymous guest
+ * (see guestMode.ts), *upgrades* that session in place instead of creating a separate one.
+ * `updateUser` keeps the same auth.uid() (and therefore every row already written under it), while
+ * `signUp` would mint a new user and orphan the guest's data. This is the one thing that makes
+ * "convert your guest library to a real account" possible.
+ */
 export async function signUpWithEmail(email: string, password: string): Promise<AccountAuthResult> {
   if (!isSupabaseConfigured) {
     return { success: false, message: 'Accounts aren’t set up yet — Supabase isn’t configured.' };
   }
-  const { error } = await supabase.auth.signUp({ email, password });
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const { error } = session?.user.is_anonymous
+    ? await supabase.auth.updateUser({ email, password })
+    : await supabase.auth.signUp({ email, password });
   if (error) return { success: false, message: error.message };
   return { success: true };
 }

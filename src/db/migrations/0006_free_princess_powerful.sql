@@ -1,1 +1,0 @@
-ALTER TABLE `series_entries` ADD `watched_arc_keys` text;

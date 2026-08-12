@@ -2,7 +2,7 @@ import { seasonProgress } from '@/domain/series';
 import type { SeriesEntry } from '@/domain/series';
 
 function entry(id: number, kind: SeriesEntry['kind'], watchState: SeriesEntry['watchState']): SeriesEntry {
-  return { id, malId: id, kind, orderIndex: id, title: `entry ${id}`, episodeCount: 12, watchState, airingStatus: 'FINISHED', watchedArcKeys: null };
+  return { id: String(id), malId: id, kind, orderIndex: id, title: `entry ${id}`, episodeCount: 12, watchState, airingStatus: 'FINISHED', watchedArcKeys: null };
 }
 
 test('counts resolved (watched or wont-watch) TV seasons out of the total, ignoring movies', () => {

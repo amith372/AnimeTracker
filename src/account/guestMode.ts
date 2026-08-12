@@ -1,32 +1,38 @@
-// "Continue without an account" — lets the Library gate in app/(tabs)/index.tsx skip straight to
-// an empty local library instead of forcing a login/account screen. Phase 8: moved out of the
-// old src/auth/tokenStore.ts (which otherwise only ever held MAL tokens, now gone entirely — MAL
-// custody is server-side) into src/account/, since guest mode is a concept about the app's account
-// system now, not about MAL specifically. Still SecureStore-backed, independent of both the
-// Supabase session and the SQLite library, exactly as before.
-import * as SecureStore from 'expo-secure-store';
-import { useCallback, useEffect, useState } from 'react';
+// "Continue without an account" — backed by Supabase's anonymous auth (supabase.auth.signInAnonymously())
+// rather than a local flag. This is a deliberate pivot from the direct-Postgres cutover's first cut
+// (a browse-only guest with no library): an anonymous sign-in gives a guest a REAL, if temporary,
+// auth.uid(), so every RLS-protected read/write in the app (AnimeRepository.ts, everything downstream
+// of it) works completely unmodified — there is no separate guest code path anywhere else in the app.
+// A guest is, as far as Postgres and every screen are concerned, just an account with no email yet.
+//
+// Lifespan: the anonymous session persists in AsyncStorage exactly like a real one (see
+// supabaseClient.ts) — closing and reopening the app keeps a guest's library. It only ends when they
+// explicitly sign out (logOutAccount) or convert to a real account (see accountRepository.ts's
+// signUpWithEmail, which upgrades an anonymous session in place via supabase.auth.updateUser rather
+// than creating a separate one, so converting keeps everything the guest already added) or link
+// MyAnimeList (malLinkRepository.ts's linkMalAccount already attaches to whatever is currently
+// signed in, anonymous or not, with no changes needed).
+//
+// Requires "Allow anonymous sign-ins" to be enabled in the Supabase project's Auth settings
+// (dashboard-only toggle, not something a migration can turn on) — see continueAsGuest's error
+// path for what happens if it isn't.
+import { isSupabaseConfigured, supabase } from './supabaseClient';
+import { useAccountSession, type AccountAuthResult } from './accountRepository';
 
-const KEY_GUEST_MODE = 'guest_mode_enabled';
-
-export async function setGuestMode(enabled: boolean): Promise<void> {
-  if (enabled) await SecureStore.setItemAsync(KEY_GUEST_MODE, '1');
-  else await SecureStore.deleteItemAsync(KEY_GUEST_MODE);
+/** Starts (or resumes, if one is already active) an anonymous session. */
+export async function continueAsGuest(): Promise<AccountAuthResult> {
+  if (!isSupabaseConfigured) {
+    return { success: false, message: 'Accounts aren’t set up yet — Supabase isn’t configured.' };
+  }
+  const { error } = await supabase.auth.signInAnonymously();
+  if (error) return { success: false, message: error.message };
+  return { success: true };
 }
 
-export async function isGuestMode(): Promise<boolean> {
-  return (await SecureStore.getItemAsync(KEY_GUEST_MODE)) !== null;
-}
-
-/** One-shot-plus-manual-refresh, same shape as the old auth hooks — SecureStore has no
- * change-notification API, so callers must call refresh() themselves after continueAsGuest(). */
-export function useIsGuest(): [boolean | null, () => void] {
-  const [guest, setGuest] = useState<boolean | null>(null);
-  const refresh = useCallback(() => {
-    isGuestMode().then(setGuest);
-  }, []);
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-  return [guest, refresh];
+/** Whether the current session (if any) is an anonymous guest rather than a real account — fully
+ * reactive, since it just reads useAccountSession's own session state. null while that's loading. */
+export function useIsGuest(): boolean | null {
+  const { session, loading } = useAccountSession();
+  if (loading) return null;
+  return session?.user.is_anonymous ?? false;
 }

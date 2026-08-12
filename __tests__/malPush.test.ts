@@ -4,14 +4,14 @@ import type { SeriesStatus } from '@/domain/seriesStatus';
 import type { EntryKind, WatchState } from '@/domain/types';
 
 function entry(malId: number, watchState: WatchState, kind: EntryKind = 'TV_SEASON'): SeriesEntry {
-  return { id: malId, malId, kind, orderIndex: malId, title: `entry ${malId}`, episodeCount: 12, watchState, airingStatus: 'FINISHED', watchedArcKeys: null };
+  return { id: String(malId), malId, kind, orderIndex: malId, title: `entry ${malId}`, episodeCount: 12, watchState, airingStatus: 'FINISHED', watchedArcKeys: null };
 }
 
 /** Only the fields buildPushTargets actually reads (`status.kind`, `entries`) matter; the rest are
  * filled with harmless placeholders so each test can stay focused on what it's checking. */
 function series(status: SeriesStatus, entries: SeriesEntry[]): Series {
   return {
-    id: 1,
+    id: '1',
     title: 'Test Series',
     coverUrl: null,
     genres: [],
