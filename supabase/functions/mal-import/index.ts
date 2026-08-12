@@ -7,8 +7,15 @@ import { getValidMalAccessToken } from '../_shared/malAuth.ts';
 import { malGetAuthed, malGetUrlAuthed, malGetPublic } from '../_shared/malProxy.ts';
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { describeError } from '../_shared/errors.ts';
+import { readCachedDetails, writeCachedDetails } from '../_shared/apiCache.ts';
 
-const DETAIL_CONCURRENCY = 6;
+// 10 rather than the original 6, for user-visible latency: this is one MAL call per anime across a
+// whole list plus its relation closure, and it's the slowest thing in the app by a wide margin.
+// (Not the same reasoning as the reverted 92880b4 bump, which was chasing a timeout that turned out
+// to be the token RPC failing instead — see c7515e6.) Still modest, still a once-per-account
+// operation, and with the shared cache above a repeat run mostly doesn't reach MAL at all, so this
+// stays comfortably inside guardrail #3's "never hammer endpoints in tight loops".
+const DETAIL_CONCURRENCY = 10;
 const MAX_CLOSURE_PASSES = 5;
 
 interface AnimeNodeDto { id: number; title: string }
@@ -57,14 +64,39 @@ Deno.serve(async (req) => {
     }
 
     const detailById = new Map<number, AnimeDetailDto>();
-    await mapWithConcurrency(entries, DETAIL_CONCURRENCY, async (entry) => {
-      try {
-        detailById.set(entry.node.id, await malGetPublic<AnimeDetailDto>(`anime/${entry.node.id}`, { fields: DETAIL_FIELDS }));
-      } catch {
-        // Best-effort, same as the old client-side ImportRepository — a dropped id is simply left
-        // out of the grouping the client does with this response.
-      }
-    });
+    // Ids MAL wouldn't return (404s on stale relation edges are common), tracked so the closure
+    // passes below don't re-request the same dead id on every one of their MAX_CLOSURE_PASSES.
+    const unavailable = new Set<number>();
+
+    /**
+     * Resolves details for `ids` into detailById: shared cache first, then MAL for whatever's left,
+     * writing the fetched ones back. This is where nearly all of an import's wall-clock time goes
+     * (one MAL call per anime, and the closure below multiplies that), so the cache is what makes a
+     * retry — or a second user with overlapping shows — fast instead of a full re-fetch.
+     */
+    async function loadDetails(ids: number[]): Promise<void> {
+      const wanted = ids.filter((id) => !detailById.has(id) && !unavailable.has(id));
+      if (wanted.length === 0) return;
+
+      for (const [id, dto] of await readCachedDetails<AnimeDetailDto>(wanted)) detailById.set(id, dto);
+
+      const toFetch = wanted.filter((id) => !detailById.has(id));
+      const fetched = new Map<number, AnimeDetailDto>();
+      await mapWithConcurrency(toFetch, DETAIL_CONCURRENCY, async (id) => {
+        try {
+          const dto = await malGetPublic<AnimeDetailDto>(`anime/${id}`, { fields: DETAIL_FIELDS });
+          fetched.set(id, dto);
+          detailById.set(id, dto);
+        } catch {
+          // Best-effort, same as the old client-side ImportRepository — a dropped id is simply left
+          // out of the grouping the client does with this response.
+          unavailable.add(id);
+        }
+      });
+      await writeCachedDetails(fetched);
+    }
+
+    await loadDetails(entries.map((entry) => entry.node.id));
 
     // Closure expansion: chase sequel/prequel/side-story ids referenced by related_anime that
     // aren't in detailById yet, same MAX_CLOSURE_PASSES-bounded loop the old ImportRepository ran
@@ -75,17 +107,11 @@ Deno.serve(async (req) => {
       const missing = new Set<number>();
       for (const detail of detailById.values()) {
         for (const rel of detail.related_anime ?? []) {
-          if (!detailById.has(rel.node.id)) missing.add(rel.node.id);
+          if (!detailById.has(rel.node.id) && !unavailable.has(rel.node.id)) missing.add(rel.node.id);
         }
       }
       if (missing.size === 0) break;
-      await mapWithConcurrency(Array.from(missing), DETAIL_CONCURRENCY, async (id) => {
-        try {
-          detailById.set(id, await malGetPublic<AnimeDetailDto>(`anime/${id}`, { fields: DETAIL_FIELDS }));
-        } catch {
-          // Best-effort, as above.
-        }
-      });
+      await loadDetails(Array.from(missing));
     }
 
     return jsonResponse({
