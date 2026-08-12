@@ -12,7 +12,7 @@ import { Text } from 'react-native-paper';
 import type { ReconcileSeries } from '@/domain/reconcileSeries';
 import { seriesShapeLabel } from '@/domain/seriesShape';
 import { SeriesTitleText } from './SeriesTitleText';
-import { colors, radii } from '@/theme/colors';
+import { colors, radii, shadows } from '@/theme/colors';
 import { useHover } from '@/hooks/useHover';
 
 export function PosterTile({ series, onPress }: { series: ReconcileSeries; onPress: () => void }) {
@@ -37,7 +37,7 @@ const styles = StyleSheet.create({
   // Same opacity-dip precedent as Library's grid card (see index.tsx) — a hover wash would mean
   // padding the tile, which shifts the cover off its exact 110px spec.
   tileHovered: { opacity: 0.92 },
-  tileCover: { width: 110, height: 156, borderRadius: radii.sm, backgroundColor: colors.coverPlaceholder },
+  tileCover: { width: 110, height: 156, borderRadius: radii.sm, backgroundColor: colors.coverPlaceholder, ...shadows.md },
   tileTitle: { marginTop: 4 },
   tileSubtitle: { color: colors.textMuted },
 });

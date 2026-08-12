@@ -4,8 +4,9 @@
 // them is just local state, so the poster tile and Add dialog only need to exist once.
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { BackHandler, FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { BackHandler, FlatList, Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { ActivityIndicator, Button, Searchbar, Text } from 'react-native-paper';
 import { useHover } from '@/hooks/useHover';
 import { AddSeriesDialog } from '@/components/AddSeriesDialog';
@@ -19,7 +20,7 @@ import {
   type DiscoverState,
 } from '@/repositories/DiscoverRepository';
 import { currentSeason, nextSeason } from '@/domain/seasonTiming';
-import { colors, radii, spacing } from '@/theme/colors';
+import { colors, logoGradient, radii, shadows, spacing } from '@/theme/colors';
 import { fontFamilies } from '@/theme/fonts';
 import { useIsWideWeb } from '@/hooks/useWebLayout';
 import type { AddChoice } from '@/domain/statusLabel';
@@ -90,23 +91,33 @@ export default function DiscoverScreen() {
 
   return (
     <View style={[styles.container, isWideWeb && styles.webContainer]}>
-      {/* Tabs.Screen (see app/(tabs)/_layout.tsx) has headerShown:false, so — unlike the old
-          Stack-nested version of this screen — there's no native header to set a title on
-          anymore; this row replaces it. */}
-      <View style={[styles.header, isWideWeb && styles.webHeader]}>
-        <Text variant="headlineSmall" style={[styles.headerTitle, isWideWeb && styles.webHeaderTitle]}>
-          Discover
+      {/* Tabs.Screen (see app/(tabs)/_layout.tsx) has headerShown:false, so there's no native
+          header to set a title on — the hero below is what names the screen.
+
+          EXPERIMENT — axes 3 and 4. The hero is where the brand gradient leaves the "AT" mark: the
+          two arrived together because a gradient needs a surface big enough to actually read as
+          one, and the hero needs something to be made of. Search lives *inside* it, so the screen
+          opens on the thing you came to do rather than on a title bar above a thin input. */}
+      <LinearGradient
+        colors={[...logoGradient]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.hero, isWideWeb && styles.webHero]}
+      >
+        <Text style={[styles.heroTitle, isWideWeb && styles.webHeroTitle]}>Discover</Text>
+        <Text style={[styles.heroSubtitle, isWideWeb && styles.webHeroSubtitle]}>
+          Search anything, or start from what&apos;s airing.
         </Text>
-      </View>
-      <Searchbar
-        placeholder="Search anime"
-        value={searchText}
-        onChangeText={setSearchText}
-        onSubmitEditing={() => setSubmittedQuery(searchText.trim())}
-        onClearIconPress={() => setSubmittedQuery('')}
-        style={[styles.searchbar, isWideWeb && styles.webSearchbar]}
-        inputStyle={styles.searchbarInput}
-      />
+        <Searchbar
+          placeholder="Search anime"
+          value={searchText}
+          onChangeText={setSearchText}
+          onSubmitEditing={() => setSubmittedQuery(searchText.trim())}
+          onClearIconPress={() => setSubmittedQuery('')}
+          style={[styles.searchbar, isWideWeb && styles.webSearchbar]}
+          inputStyle={styles.searchbarInput}
+        />
+      </LinearGradient>
 
       {showingSearch ? (
         <>
@@ -114,6 +125,7 @@ export default function DiscoverScreen() {
               was the Searchbar's own clear icon, which doesn't read as "return to browsing". Both
               sub-states now announce themselves and carry the same explicit exit. */}
           <SubHeader
+            style={styles.sectionListContent}
             label={`Results for "${submittedQuery}"`}
             onBack={() => {
               setSubmittedQuery('');
@@ -129,7 +141,7 @@ export default function DiscoverScreen() {
         </>
       ) : expanded ? (
         <>
-          <SubHeader label={expanded.label} onBack={() => setExpanded(null)} />
+          <SubHeader style={styles.sectionListContent} label={expanded.label} onBack={() => setExpanded(null)} />
           <ResultsGrid
             state={expandedResults.state}
             onAdd={setPendingAdd}
@@ -143,7 +155,7 @@ export default function DiscoverScreen() {
         <FlatList
           data={sections}
           keyExtractor={(s) => s.key}
-          contentContainerStyle={isWideWeb ? styles.webSectionList : undefined}
+          contentContainerStyle={[styles.sectionListContent, isWideWeb && styles.webSectionList]}
           renderItem={({ item }) => <SectionRow section={item} onViewAll={() => setExpanded(item)} onAdd={setPendingAdd} />}
         />
       )}
@@ -165,10 +177,10 @@ export default function DiscoverScreen() {
  * affordance, and on the expanded grid it sat beside a heading with no visual relationship to the
  * row it had replaced. This is also what the Android back handler above mirrors.
  */
-function SubHeader({ label, onBack }: { label: string; onBack: () => void }) {
+function SubHeader({ label, onBack, style }: { label: string; onBack: () => void; style?: ViewStyle }) {
   const [hovered, hoverHandlers] = useHover();
   return (
-    <View style={styles.subHeader}>
+    <View style={[styles.subHeader, style]}>
       <Pressable
         onPress={onBack}
         accessibilityRole="button"
@@ -288,9 +300,21 @@ function ResultsGrid({
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
-  headerTitle: { fontFamily: fontFamilies.displayBold, color: colors.textPrimary },
-  searchbar: { margin: 12, borderRadius: radii.pill, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, elevation: 0 },
+  // EXPERIMENT — the hero. Rounded only at the bottom on mobile, matching the Series Detail
+  // banner's existing 30px "big media moment" exception rather than inventing a second treatment.
+  hero: {
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    ...shadows.md,
+  },
+  heroTitle: { fontFamily: fontFamilies.displayBold, fontSize: 30, color: '#fff' },
+  // White at 88% rather than a grey: on a saturated gradient a neutral grey goes muddy, while
+  // translucent white keeps the hue underneath and stays legible across all three stops.
+  heroSubtitle: { fontFamily: fontFamilies.bodyRegular, fontSize: 13.5, color: 'rgba(255,255,255,0.88)', marginTop: 2 },
+  searchbar: { marginTop: spacing.lg, borderRadius: radii.pill, backgroundColor: colors.surface, borderWidth: 0, ...shadows.md },
   // minHeight:0 is load-bearing, not cosmetic — the same guard the Library screen's searchbar
   // already carries. Paper sizes the inner TextInput's minHeight for its default 56px bar, so
   // forcing a shorter height on the container leaves the input taller than its own box and the
@@ -304,6 +328,9 @@ const styles = StyleSheet.create({
   subHeaderBackText: { fontFamily: fontFamilies.bodySemiBold, fontSize: 13.5, color: colors.primary },
   // flexShrink lets a long search query truncate rather than push the Browse exit off-screen.
   subHeaderLabel: { flex: 1, minWidth: 0, fontFamily: fontFamilies.bodySemiBold, fontSize: 15, color: colors.textPrimary },
+  // The rows need their own breathing room from the hero now that there's no header row and no
+  // searchbar margin between the two.
+  sectionListContent: { paddingTop: spacing.lg },
   section: { paddingBottom: 12 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8 },
   sectionList: { paddingHorizontal: 12, gap: 12 },
@@ -316,9 +343,20 @@ const styles = StyleSheet.create({
 
   // --- Wide web ---
   webContainer: { paddingHorizontal: 24 },
-  webHeader: { paddingTop: 22 },
-  webHeaderTitle: { fontFamily: fontFamilies.webSerifBold, fontSize: 26, color: colors.textPrimary },
-  webSearchbar: { maxWidth: 480, marginLeft: 0, height: 44 },
+  // Negative margins cancel webContainer's own 24px gutter so the hero bleeds to the edges of the
+  // content area while everything below it stays inside the gutter.
+  webHero: {
+    marginHorizontal: -24,
+    paddingTop: 40,
+    paddingBottom: 32,
+    paddingHorizontal: 40,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    ...shadows.lg,
+  },
+  webHeroTitle: { fontFamily: fontFamilies.webSerifBold, fontSize: 38 },
+  webHeroSubtitle: { fontSize: 15 },
+  webSearchbar: { maxWidth: 480, height: 44 },
   webSectionList: { paddingTop: 8 },
   webSection: { paddingBottom: 22 },
   webSectionHeader: { paddingHorizontal: 4 },

@@ -8,7 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import type { ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
-import { colors, radii, spacing } from '@/theme/colors';
+import { colors, radii, shadows, spacing } from '@/theme/colors';
 import { fontFamilies } from '@/theme/fonts';
 import { useHover } from '@/hooks/useHover';
 
@@ -71,7 +71,7 @@ const styles = StyleSheet.create({
   backLink: { alignSelf: 'flex-start', width: '100%', maxWidth: CARD_MAX_WIDTH, marginBottom: spacing.md },
   backLinkText: { fontFamily: fontFamilies.bodySemiBold, fontSize: 13.5, color: colors.primary },
   backLinkTextHovered: { color: colors.heroGradientEnd },
-  card: { width: '100%', maxWidth: CARD_MAX_WIDTH, borderRadius: radii.xl, overflow: 'hidden', borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  card: { width: '100%', maxWidth: CARD_MAX_WIDTH, borderRadius: radii.xl, overflow: 'hidden', borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, ...shadows.lg },
   header: { flexDirection: 'row', gap: 26, padding: 30 },
   headerTopRow: { position: 'absolute', top: 14, right: 14, flexDirection: 'row' },
   headerContent: { flexDirection: 'row', gap: 26, flex: 1 },

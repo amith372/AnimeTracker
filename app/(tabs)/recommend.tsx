@@ -42,7 +42,8 @@ import { useHover } from '@/hooks/useHover';
 import { fetchRecommendations, useCatchUp, type RecommendProgress } from '@/repositories/RecommendationRepository';
 import { splitCatchUpByKind, splitRecommendationsByType, type CatchUpItem } from '@/domain/recommendations';
 import type { ReconcileSeries } from '@/domain/reconcileSeries';
-import { colors, radii, spacing } from '@/theme/colors';
+import { LinearGradient } from 'expo-linear-gradient';
+import { colors, logoGradient, radii, shadows, spacing } from '@/theme/colors';
 import { dialogStyle } from '@/theme/dialog';
 import { fontFamilies } from '@/theme/fonts';
 import { useIsWideWeb } from '@/hooks/useWebLayout';
@@ -508,6 +509,12 @@ function WebCatchUpSections({
   return (
     <ScrollView style={styles.webCatchUpScroll} contentContainerStyle={styles.webCatchUpScrollContent}>
       <View style={styles.webCatchUpBand}>
+        <LinearGradient
+          colors={[...logoGradient]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.webBandGradientEdge}
+        />
         {/* No "Catch up" title here: the segmented button directly above already says it, and its
             16px repeat sat *below* that control while claiming to head the section — the inverted
             step the whole stack-collapse was about. The tinted band is what marks the grouping now,
@@ -696,7 +703,7 @@ const styles = StyleSheet.create({
   dialogScrollArea: { maxHeight: 400, paddingHorizontal: 0 },
   list: { padding: 12, gap: 8 },
   sectionHeader: { paddingTop: 8, paddingBottom: 4 },
-  card: { marginBottom: 4, borderRadius: 16 },
+  card: { marginBottom: 4, borderRadius: radii.lg, backgroundColor: colors.surface, ...shadows.sm },
   cardContent: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   cover: { width: 64, height: 90, borderRadius: 8, backgroundColor: colors.coverPlaceholder },
   // minWidth:0 lets these columns actually shrink below their content's intrinsic width — a flex
@@ -720,15 +727,22 @@ const styles = StyleSheet.create({
   // The band used to sit flush against the bottom of the window with its last row half-cut. The
   // padding is the same 24px breathing room webForYouSections already leaves below its own grid.
   webCatchUpScrollContent: { paddingBottom: 24 },
+  // EXPERIMENT — axis 3. The band keeps a tinted fill but takes a gradient top edge, so the brand
+  // gradient appears somewhere other than the Discover hero and reads as a system rather than one
+  // screen's flourish. A 3px rule, not a gradient fill: the cards on top of it need a calm ground.
   webCatchUpBand: {
     marginTop: 20,
     gap: 14,
     padding: 22,
-    borderRadius: 18,
-    backgroundColor: 'rgba(59,110,165,0.08)',
+    paddingTop: 25,
+    borderRadius: radii.xl,
+    backgroundColor: 'rgba(87,66,45,0.05)',
     borderWidth: 1,
-    borderColor: 'rgba(59,110,165,0.18)',
+    borderColor: colors.border,
+    overflow: 'hidden',
+    ...shadows.sm,
   },
+  webBandGradientEdge: { position: 'absolute', top: 0, left: 0, right: 0, height: 3 },
   // Spacing lives on the two parents (gap) rather than here, so the first section doesn't carry a
   // leading margin now that the band's own title is gone.
   webBandSection: {},
@@ -755,6 +769,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     overflow: 'hidden',
+    ...shadows.md,
   },
   webCardHovered: { opacity: 0.92 },
   webCardCover: { width: '100%', height: 222, borderRadius: radii.md, backgroundColor: colors.coverPlaceholder },

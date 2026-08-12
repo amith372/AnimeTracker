@@ -34,7 +34,7 @@ import { STATUS_FILTER_KINDS, statusKindLabel, statusLabel } from '@/domain/stat
 import { hasVisibleNewSeasonAlert, type Series } from '@/domain/series';
 import { buildPushTargets } from '@/domain/malPush';
 import { statusDotColor } from '@/theme/statusColors';
-import { colors, radii, spacing } from '@/theme/colors';
+import { colors, radii, shadows, spacing } from '@/theme/colors';
 import { dialogStyle } from '@/theme/dialog';
 import { fontFamilies } from '@/theme/fonts';
 import { useIsWideWeb } from '@/hooks/useWebLayout';
@@ -658,6 +658,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.lg,
+    ...shadows.sm,
   },
   cover: { width: 56, height: 80, borderRadius: radii.sm, backgroundColor: colors.border },
   cardText: { flex: 1, gap: spacing.xs },
@@ -697,7 +698,10 @@ const styles = StyleSheet.create({
   // approved design mockup (poster-grid cards there use style-hover="opacity:.92"); a wash would
   // mean padding the card, which shifts the cover art off its exact 184px spec.
   gridCardHovered: { opacity: 0.92 },
-  gridCoverWrap: { aspectRatio: 3 / 4, borderRadius: radii.lg, backgroundColor: colors.coverPlaceholder, overflow: 'hidden' },
+  // The shadow goes on the cover wrapper, not the card: the card is a transparent column with the
+  // title below it, so a shadow there would outline the text block too. Shadowing the artwork is
+  // what makes a poster grid read as objects on a surface.
+  gridCoverWrap: { aspectRatio: 3 / 4, borderRadius: radii.lg, backgroundColor: colors.coverPlaceholder, overflow: 'hidden', ...shadows.md },
   gridCover: { width: '100%', height: '100%' },
   gridNewBadge: { position: 'absolute', top: 10, left: 10, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 6, backgroundColor: colors.primary },
   gridNewBadgeText: { fontFamily: fontFamilies.bodyBold, fontSize: 10, letterSpacing: 0.4, color: '#fff' },
