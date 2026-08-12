@@ -13,29 +13,37 @@ import { malGetAuthed } from '../_shared/malProxy.ts';
 import { generateHandoffCode } from '../_shared/pkce.ts';
 
 const REDIRECT_URI = `${Deno.env.get('SUPABASE_URL')}/functions/v1/mal-oauth-callback`;
+// Origin of the deployed app itself (e.g. https://animetracker-btpk.onrender.com), used only by the
+// web finish below. Not the same value as SUPABASE_URL — see that function's comment for why.
+const SITE_URL = Deno.env.get('SITE_URL');
 
-function html(body: string): Response {
-  return new Response(body, { headers: { 'Content-Type': 'text/html' } });
+// Plain-text response — used only for the two edge cases below where we don't yet know which
+// platform to redirect to (no session row resolved yet). Deliberately not HTML: Supabase's gateway
+// downgrades any HTML-ish Content-Type to text/plain anyway (see webFinish's comment), so tags here
+// would just show up as literal, visible text.
+function text(body: string): Response {
+  return new Response(body, { headers: { 'Content-Type': 'text/plain' } });
 }
 
 function redirect(location: string): Response {
   return new Response(null, { status: 302, headers: { Location: location } });
 }
 
-/** Web finish: postMessage to the opener, with a same-tab redirect as the popup-blocked fallback. */
-function webFinish(payload: Record<string, string>, fallbackPath: string): Response {
+/**
+ * Web finish: redirect the popup to our own app's /oauth-complete route, which does the
+ * postMessage-to-opener + window.close() handoff (see app/oauth-complete.tsx). This used to return
+ * inline HTML with a <script> tag directly from this function — Supabase's Edge Function gateway
+ * now silently downgrades any HTML-ish response's Content-Type to text/plain and injects a
+ * `sandbox` Content-Security-Policy (confirmed via a raw curl against the deployed function: a JSON
+ * response passes through untouched, an HTML one does not), presumably to stop *.supabase.co from
+ * being usable to host arbitrary live/scripted pages. That makes returning executable HTML directly
+ * from this domain a dead end regardless of what headers the function itself sets — the fix is to
+ * redirect to a domain we actually control instead, mirroring how the mobile variant already
+ * redirects to its own animetracker:// scheme rather than trying to execute anything here.
+ */
+function webFinish(payload: Record<string, string>): Response {
   const qs = new URLSearchParams(payload).toString();
-  return html(`<!doctype html><html><body>
-    <script>
-      if (window.opener) {
-        window.opener.postMessage(${JSON.stringify({ source: 'animetracker-mal-auth', ...payload })}, '*');
-        window.close();
-      } else {
-        window.location.replace(${JSON.stringify(fallbackPath)} + '?${qs}');
-      }
-    </script>
-    <p>You can close this window.</p>
-  </body></html>`);
+  return redirect(`${SITE_URL}/oauth-complete?${qs}`);
 }
 
 Deno.serve(async (req) => {
@@ -44,7 +52,7 @@ Deno.serve(async (req) => {
   const state = url.searchParams.get('state');
   const malError = url.searchParams.get('error');
 
-  if (!state) return html('<p>Invalid MAL redirect (missing state).</p>');
+  if (!state) return text('Invalid MAL redirect (missing state).');
 
   const { data: session, error: sessionError } = await supabaseAdmin
     .from('mal_oauth_sessions')
@@ -53,14 +61,14 @@ Deno.serve(async (req) => {
     .maybeSingle();
 
   if (sessionError || !session || session.used || new Date(session.expires_at) < new Date()) {
-    return html('<p>This MyAnimeList login link is no longer valid — please try again.</p>');
+    return text('This MyAnimeList login link is no longer valid — please try again.');
   }
   await supabaseAdmin.from('mal_oauth_sessions').update({ used: true }).eq('state', state);
 
   const finishError = (message: string) =>
     session.platform === 'mobile'
       ? redirect(`animetracker://auth?malError=${encodeURIComponent(message)}`)
-      : webFinish({ malError: message }, '/account');
+      : webFinish({ malError: message });
 
   if (malError || !code) return finishError(malError ?? 'MAL login was cancelled.');
 
@@ -80,7 +88,7 @@ Deno.serve(async (req) => {
       });
       if (error) throw error;
 
-      return session.platform === 'mobile' ? redirect('animetracker://auth?linked=1') : webFinish({ linked: '1' }, '/account');
+      return session.platform === 'mobile' ? redirect('animetracker://auth?linked=1') : webFinish({ linked: '1' });
     }
 
     // Sign-in variant — find the Supabase account this MAL identity already belongs to, or create
@@ -116,7 +124,7 @@ Deno.serve(async (req) => {
 
     return session.platform === 'mobile'
       ? redirect(`animetracker://auth?handoff=${handoffCode}`)
-      : webFinish({ handoff: handoffCode }, '/account');
+      : webFinish({ handoff: handoffCode });
   } catch (e) {
     return finishError(e instanceof Error ? e.message : 'MyAnimeList login failed.');
   }
