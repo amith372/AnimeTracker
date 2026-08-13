@@ -14,8 +14,8 @@
 // filteredList/filterCounts/statusFilter/searchQuery state and handlers as the mobile branch below
 // — see LibraryScreen's isWideWeb branch near the bottom of the render.
 import { Image } from 'expo-image';
-import { Redirect, useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { Redirect, useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ActivityIndicator, Button, Chip, Dialog, IconButton, Portal, Snackbar, Text } from 'react-native-paper';
@@ -69,7 +69,7 @@ export default function LibraryScreen() {
   const colors = useThemeColors();
   const { session, loading: sessionLoading } = useAccountSession();
   const isGuest = useIsGuest();
-  const [malLinked] = useMalLinkStatus();
+  const [malLinked, refreshMalLinked] = useMalLinkStatus();
   const hasImported = useHasCompletedInitialImport();
   const { series: seriesList, isLoading: libraryLoading, error: libraryError } = useLibrary();
   const router = useRouter();
@@ -93,6 +93,22 @@ export default function LibraryScreen() {
   // per-row button: removal is rare next to the tapping this list exists for, and a delete affordance
   // on every row is one mis-tap away from losing a show's whole watch history.
   const [pendingRemoval, setPendingRemoval] = useState<Series | null>(null);
+
+  // Re-read whether MyAnimeList is linked every time this screen comes back into focus.
+  //
+  // useMalLinkStatus fetches once per mount (there's no realtime source to subscribe to for it),
+  // but linking happens on the Account screen, which is *pushed on top* of this one — so the
+  // Library never unmounts and never re-fetched. The result was that someone who had just linked
+  // their account came back to a Library still convinced they hadn't: the import gate below didn't
+  // fire, so their MyAnimeList list was never offered for import, and all three MyAnimeList actions
+  // in the more-menu stayed hidden, until the app was restarted outright. Worst on web, where a
+  // brand-new account is most likely to link MyAnimeList as its first action and "just relaunch the
+  // app" isn't an instinct.
+  useFocusEffect(
+    useCallback(() => {
+      refreshMalLinked();
+    }, [refreshMalLinked]),
+  );
 
   // How many 184px cards fit across the measured grid width at the fixed 22px gap/28px padding —
   // same arithmetic a CSS repeat(auto-fill, minmax(184px,1fr)) grid would do, since FlatList only
