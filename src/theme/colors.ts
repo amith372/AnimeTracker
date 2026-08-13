@@ -13,6 +13,13 @@
 //
 // Note `textMuted` is deliberately no longer the same hex as `slate`, which it used to double as:
 // on warm paper a cool slate body text is precisely what reads as unconverted. See DESIGN.md.
+//
+// ── Light and dark ───────────────────────────────────────────────────────────
+// `colors` below is the LIGHT palette and is still the direct export, so anything reading a token
+// outside a React render (and any not-yet-converted screen) keeps working unchanged. Screens that
+// should follow the system appearance read the active palette through `useThemeColors()` /
+// `makeStyles()` in ./useTheme.ts instead; `darkColors` there is this object with only the
+// neutrals and `primary` swapped.
 export const colors = {
   primary: '#3B6EA5',
   primaryDark: '#26201B',

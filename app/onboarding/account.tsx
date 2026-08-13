@@ -16,9 +16,12 @@ import { isSupabaseConfigured } from '@/account/supabaseClient';
 import { logInWithEmail, logOutAccount, signUpWithEmail, useAccountSession } from '@/account/accountRepository';
 import { useIsGuest } from '@/account/guestMode';
 import { linkMalAccount, useMalLinkStatus } from '@/account/malLinkRepository';
-import { colors, radii, spacing } from '@/theme/colors';
+import { radii, spacing } from '@/theme/colors';
+import { makeStyles, useThemeColors } from '@/theme/useTheme';
 
 export default function AccountScreen() {
+  const styles = useStyles();
+  const colors = useThemeColors();
   const { session, loading } = useAccountSession();
   const isGuest = useIsGuest();
   const [malLinked, refreshMalLinked] = useMalLinkStatus();
@@ -242,7 +245,7 @@ export default function AccountScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   flex: { flex: 1 },
   container: { flexGrow: 1, padding: spacing.lg, gap: spacing.md, backgroundColor: colors.background },
   centerText: { textAlign: 'center', marginTop: spacing.xl },
@@ -252,4 +255,4 @@ const styles = StyleSheet.create({
   input: { backgroundColor: colors.surface },
   message: { color: colors.textMuted },
   button: { borderRadius: radii.pill },
-});
+}));

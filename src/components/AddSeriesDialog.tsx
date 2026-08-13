@@ -9,7 +9,8 @@ import { ScrollView, View, StyleSheet } from 'react-native';
 import { ActivityIndicator, Button, Dialog, Portal, RadioButton, Text } from 'react-native-paper';
 import { ADD_STATUS_CHOICES, addChoiceLabel, type AddChoice } from '@/domain/statusLabel';
 import { getSynopsis } from '@/repositories/SynopsisRepository';
-import { colors, spacing } from '@/theme/colors';
+import { spacing } from '@/theme/colors';
+import { makeStyles } from '@/theme/useTheme';
 import { dialogStyle } from '@/theme/dialog';
 import type { ReconcileSeries } from '@/domain/reconcileSeries';
 
@@ -27,6 +28,7 @@ export function AddSeriesDialog({
   onConfirm: (choice: AddChoice) => void;
   onCancel: () => void;
 }) {
+  const styles = useStyles();
   const [selected, setSelected] = useState<AddChoice>('PLAN');
   const [synopsis, setSynopsis] = useState<string | null>(null);
   const [synopsisLoading, setSynopsisLoading] = useState(false);
@@ -95,10 +97,10 @@ export function AddSeriesDialog({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   scrollArea: { maxHeight: 460, paddingHorizontal: spacing.lg },
   scrollContent: { paddingVertical: spacing.sm },
   synopsis: { color: colors.textMuted, lineHeight: 19, marginBottom: spacing.sm },
   synopsisSpinner: { alignSelf: 'flex-start', marginBottom: spacing.sm },
   actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 8 },
-});
+}));

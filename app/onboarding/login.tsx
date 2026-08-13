@@ -13,10 +13,13 @@ import { signInWithMal } from '@/account/malLinkRepository';
 import { continueAsGuest } from '@/account/guestMode';
 import { AtLogoMark } from '@/components/AtLogoMark';
 import { MalAttribution } from '@/components/MalAttribution';
-import { colors, radii } from '@/theme/colors';
+import { radii } from '@/theme/colors';
+import { makeStyles, useThemeColors } from '@/theme/useTheme';
 import { fontFamilies } from '@/theme/fonts';
 
 export default function LoginScreen() {
+  const styles = useStyles();
+  const colors = useThemeColors();
   const router = useRouter();
   // app/auth.tsx lands the user back here (a fresh mount) with `error` set when the MAL OAuth
   // redirect it received couldn't be turned into a session — see its header comment for why that
@@ -98,11 +101,11 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   container: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 16, backgroundColor: colors.background },
   title: { fontFamily: fontFamilies.displayBlack, color: colors.textPrimary },
   subtitle: { textAlign: 'center', color: colors.textMuted },
   error: { color: colors.red, textAlign: 'center' },
   loginButton: { borderRadius: radii.pill, minWidth: 240 },
   attribution: { position: 'absolute', bottom: 24 },
-});
+}));

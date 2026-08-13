@@ -8,10 +8,12 @@
 // color is never the only channel.
 import { StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
-import { colors, radii } from '@/theme/colors';
+import { radii } from '@/theme/colors';
+import { makeStyles } from '@/theme/useTheme';
 import { fontFamilies } from '@/theme/fonts';
 
 export function AiringBadge({ compact }: { compact?: boolean }) {
+  const styles = useStyles();
   return (
     <View style={styles.badge}>
       <View style={styles.dot} />
@@ -27,7 +29,7 @@ export function AiringBadge({ compact }: { compact?: boolean }) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -40,4 +42,4 @@ const styles = StyleSheet.create({
   },
   dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.green },
   label: { fontFamily: fontFamilies.bodySemiBold, fontSize: 11, lineHeight: 14, color: colors.green },
-});
+}));

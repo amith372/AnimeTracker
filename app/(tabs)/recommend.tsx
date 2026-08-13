@@ -43,7 +43,8 @@ import { fetchRecommendations, useCatchUp, type RecommendProgress } from '@/repo
 import { splitCatchUpByKind, splitRecommendationsByType, type CatchUpItem } from '@/domain/recommendations';
 import type { ReconcileSeries } from '@/domain/reconcileSeries';
 import { LinearGradient } from 'expo-linear-gradient';
-import { colors, logoGradient, radii, shadows, spacing } from '@/theme/colors';
+import { logoGradient, radii, shadows, spacing } from '@/theme/colors';
+import { makeStyles } from '@/theme/useTheme';
 import { dialogStyle } from '@/theme/dialog';
 import { fontFamilies } from '@/theme/fonts';
 import { useIsWideWeb } from '@/hooks/useWebLayout';
@@ -80,6 +81,7 @@ function nonEmptySections<T>(sections: { title: string; data: T[] }[]): { title:
 }
 
 export default function RecommendScreen() {
+  const styles = useStyles();
   const router = useRouter();
   // The screen paints its own background so the sticky section headers below can match it exactly.
   // Left to the navigator's default, the header band reads as a lighter stripe over a greyer page.
@@ -441,6 +443,7 @@ function CatchUpKindTabs({
   active: string | undefined;
   onSelect: (title: string) => void;
 }) {
+  const styles = useStyles();
   // One kind is not a choice — a lone tab would just be a label wearing a border.
   if (sections.length < 2) return null;
   return (
@@ -479,6 +482,7 @@ function CatchUpKindTabs({
  * a sticky header over a transparent background lets the cards scroll visibly through the text.
  */
 function SectionHeader({ title }: { title: string }) {
+  const styles = useStyles();
   const theme = useTheme();
   return (
     <View style={[styles.sectionHeader, { backgroundColor: theme.colors.background }]}>
@@ -490,6 +494,7 @@ function SectionHeader({ title }: { title: string }) {
 /** One skipped season or film, shown under its parent series' cover so it's clear which show it
  * belongs to — a movie's own title ("Mugen Train") often doesn't name the series at all. */
 function CatchUpCard({ item, onPress }: { item: CatchUpItem; onPress: () => void }) {
+  const styles = useStyles();
   return (
     <Card style={styles.card} onPress={onPress}>
       <Card.Content style={styles.cardContent}>
@@ -522,6 +527,7 @@ function CatchUpCard({ item, onPress }: { item: CatchUpItem; onPress: () => void
  * once the grouping has collapsed a whole sequel chain into a single row.
  */
 function RecommendationCard({ series, onPress }: { series: ReconcileSeries; onPress: () => void }) {
+  const styles = useStyles();
   const seasonCount = series.entries.filter((e) => e.kind === 'TV_SEASON').length;
   const subtitle = [
     series.type === 'STANDALONE_MOVIE' ? 'Movie' : 'TV',
@@ -588,6 +594,7 @@ function WebCatchUpSections({
   empty: boolean;
   onPress: (item: CatchUpItem) => void;
 }) {
+  const styles = useStyles();
   const activeSection = sections.find((s) => s.title === active) ?? sections[0];
   if (sections.length === 0) {
     return (
@@ -636,6 +643,7 @@ function WebCatchUpSections({
  * effectively invisible. Catch up keeps its rows precisely because it's short enough to fit.
  */
 function WebForYouSections({ series, onPress }: { series: ReconcileSeries[]; onPress: (s: ReconcileSeries) => void }) {
+  const styles = useStyles();
   const split = splitRecommendationsByType(series);
   const sections = nonEmptySections([
     { title: 'Series', data: split.shows },
@@ -680,6 +688,7 @@ function WebForYouSections({ series, onPress }: { series: ReconcileSeries[]; onP
  * the system uses.
  */
 function WebRecCard({ coverUrl, title, meta, onPress }: { coverUrl: string | null; title: string; meta?: string; onPress: () => void }) {
+  const styles = useStyles();
   const [hovered, hoverHandlers] = useHover();
   return (
     <Pressable
@@ -717,6 +726,7 @@ function ForYouList({
   onPressCard: (s: ReconcileSeries) => void;
   isWideWeb: boolean;
 }) {
+  const styles = useStyles();
   if (state.kind === 'LOADING') {
     return (
       <View style={styles.center}>
@@ -776,7 +786,7 @@ function ForYouList({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   container: { flex: 1 },
   header: {
     flexDirection: 'row',
@@ -890,4 +900,4 @@ const styles = StyleSheet.create({
   webCardCover: { width: '100%', height: 222, borderRadius: radii.md, backgroundColor: colors.coverPlaceholder },
   webCardTitle: { fontSize: 14, marginTop: 10, width: '100%' },
   webCardMeta: { fontFamily: fontFamilies.bodyRegular, fontSize: 12.5, color: colors.textMuted, marginTop: 2 },
-});
+}));

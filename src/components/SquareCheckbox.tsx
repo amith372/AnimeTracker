@@ -3,7 +3,7 @@
 // everywhere else in the app (Library filters, Reconcile); this isn't a global Checkbox restyle.
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Pressable } from 'react-native';
-import { colors } from '@/theme/colors';
+import { useThemeColors } from '@/theme/useTheme';
 
 export function SquareCheckbox({
   checked,
@@ -14,6 +14,7 @@ export function SquareCheckbox({
   onPress: () => void;
   accessibilityLabel?: string;
 }) {
+  const colors = useThemeColors();
   return (
     <Pressable
       onPress={onPress}

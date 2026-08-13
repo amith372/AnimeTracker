@@ -24,7 +24,8 @@ import { statusLabel } from '@/domain/statusLabel';
 import { SeriesTitleText } from '@/components/SeriesTitleText';
 import { SquareCheckbox } from '@/components/SquareCheckbox';
 import { GradientProgressBar } from '@/components/GradientProgressBar';
-import { colors, radii, spacing } from '@/theme/colors';
+import { radii, spacing } from '@/theme/colors';
+import { makeStyles, useThemeColors } from '@/theme/useTheme';
 import { dialogStyle } from '@/theme/dialog';
 import type { ReconcileEntry, ReconcileSeries } from '@/domain/reconcileSeries';
 
@@ -36,6 +37,8 @@ type ScreenState =
   | { kind: 'SAVING' };
 
 export default function ReconcileScreen() {
+  const styles = useStyles();
+  const colors = useThemeColors();
   const [state, setState] = useState<ScreenState>({ kind: 'FETCHING_LIST' });
   const [saveError, setSaveError] = useState<string | null>(null);
   // Confirming a *replace* — see replaceConfirmDialog. Only ever shown when there's an existing
@@ -270,6 +273,7 @@ export default function ReconcileScreen() {
 }
 
 function StatusView({ message, progressFraction }: { message: string; progressFraction?: number }) {
+  const styles = useStyles();
   return (
     <View style={styles.center}>
       {progressFraction !== undefined ? (
@@ -299,6 +303,8 @@ function SeriesGroup({
   onToggleExpanded: () => void;
   onToggleEntry: (seriesRootMalId: number, entryMalId: number) => void;
 }) {
+  const styles = useStyles();
+  const colors = useThemeColors();
   const status = deriveSeriesStatus(series.manualStatus, series.entries);
   const entryCount = series.entries.length;
   return (
@@ -335,6 +341,7 @@ function SeriesGroup({
 }
 
 function EntryRow({ entry, onPress }: { entry: ReconcileEntry; onPress: () => void }) {
+  const styles = useStyles();
   return (
     <View style={styles.entryRow}>
       <SquareCheckbox checked={entry.watchState === 'WATCHED'} onPress={onPress} accessibilityLabel={entry.title} />
@@ -350,7 +357,7 @@ function EntryRow({ entry, onPress }: { entry: ReconcileEntry; onPress: () => vo
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12, backgroundColor: colors.background },
   error: { textAlign: 'center' },
@@ -371,4 +378,4 @@ const styles = StyleSheet.create({
   cover: { width: 48, height: 68, borderRadius: radii.sm, backgroundColor: colors.border },
   entryRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 52, paddingHorizontal: 20, paddingVertical: spacing.xs },
   entryText: { flex: 1 },
-});
+}));

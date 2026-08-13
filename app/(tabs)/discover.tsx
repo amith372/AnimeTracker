@@ -7,7 +7,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { BackHandler, FlatList, Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ActivityIndicator, Button, Searchbar, Text } from 'react-native-paper';
+import { ActivityIndicator, Button, Text } from 'react-native-paper';
+import { AppSearchbar } from '@/components/AppSearchbar';
 import { useHover } from '@/hooks/useHover';
 import { AddSeriesDialog } from '@/components/AddSeriesDialog';
 import { MalAttribution } from '@/components/MalAttribution';
@@ -20,7 +21,8 @@ import {
   type DiscoverState,
 } from '@/repositories/DiscoverRepository';
 import { currentSeason, nextSeason } from '@/domain/seasonTiming';
-import { colors, logoGradient, radii, shadows, spacing } from '@/theme/colors';
+import { logoGradient, radii, shadows, spacing } from '@/theme/colors';
+import { makeStyles, useThemeColors } from '@/theme/useTheme';
 import { fontFamilies } from '@/theme/fonts';
 import { useIsWideWeb } from '@/hooks/useWebLayout';
 import type { AddChoice } from '@/domain/statusLabel';
@@ -36,6 +38,7 @@ const PREVIEW_FETCH_COUNT = 14;
 type Section = { key: string; label: string; query: DiscoverQuery };
 
 export default function DiscoverScreen() {
+  const styles = useStyles();
   const router = useRouter();
   const isWideWeb = useIsWideWeb();
   const [searchText, setSearchText] = useState('');
@@ -108,14 +111,13 @@ export default function DiscoverScreen() {
         <Text style={[styles.heroSubtitle, isWideWeb && styles.webHeroSubtitle]}>
           Search anything, or start from what&apos;s airing.
         </Text>
-        <Searchbar
+        <AppSearchbar
           placeholder="Search anime"
           value={searchText}
           onChangeText={setSearchText}
           onSubmitEditing={() => setSubmittedQuery(searchText.trim())}
           onClearIconPress={() => setSubmittedQuery('')}
           style={[styles.searchbar, isWideWeb && styles.webSearchbar]}
-          inputStyle={styles.searchbarInput}
         />
       </LinearGradient>
 
@@ -178,6 +180,8 @@ export default function DiscoverScreen() {
  * row it had replaced. This is also what the Android back handler above mirrors.
  */
 function SubHeader({ label, onBack, style }: { label: string; onBack: () => void; style?: ViewStyle }) {
+  const styles = useStyles();
+  const colors = useThemeColors();
   const [hovered, hoverHandlers] = useHover();
   return (
     <View style={[styles.subHeader, style]}>
@@ -199,6 +203,7 @@ function SubHeader({ label, onBack, style }: { label: string; onBack: () => void
 }
 
 function SectionRow({ section, onViewAll, onAdd }: { section: Section; onViewAll: () => void; onAdd: (s: ReconcileSeries) => void }) {
+  const styles = useStyles();
   const isWideWeb = useIsWideWeb();
   const [state, retry] = useDiscoverResults(section.query, PREVIEW_FETCH_COUNT);
   const preview = state.kind === 'READY' ? state.series.slice(0, PREVIEW_COUNT) : [];
@@ -249,6 +254,7 @@ function ResultsGrid({
   onEndReached?: () => void;
   loadingMore?: boolean;
 }) {
+  const styles = useStyles();
   const isWideWeb = useIsWideWeb();
   if (state.kind === 'LOADING') {
     return (
@@ -298,7 +304,7 @@ function ResultsGrid({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   container: { flex: 1, backgroundColor: colors.background },
   // EXPERIMENT — the hero. Rounded only at the bottom on mobile, matching the Series Detail
   // banner's existing 30px "big media moment" exception rather than inventing a second treatment.
@@ -314,12 +320,10 @@ const styles = StyleSheet.create({
   // White at 88% rather than a grey: on a saturated gradient a neutral grey goes muddy, while
   // translucent white keeps the hue underneath and stays legible across all three stops.
   heroSubtitle: { fontFamily: fontFamilies.bodyRegular, fontSize: 13.5, color: 'rgba(255,255,255,0.88)', marginTop: 2 },
-  searchbar: { marginTop: spacing.lg, borderRadius: radii.pill, backgroundColor: colors.surface, borderWidth: 0, ...shadows.md },
-  // minHeight:0 is load-bearing, not cosmetic — the same guard the Library screen's searchbar
-  // already carries. Paper sizes the inner TextInput's minHeight for its default 56px bar, so
-  // forcing a shorter height on the container leaves the input taller than its own box and the
-  // icon and placeholder sit above centre instead of in it.
-  searchbarInput: { fontFamily: fontFamilies.bodyRegular, minHeight: 0 },
+  // Only what's specific to this screen — the shared shape (radius, surface, and the load-bearing
+  // minHeight:0 on the input) lives in AppSearchbar now. No border, because this one sits inside
+  // the gradient hero where an outline reads as a seam.
+  searchbar: { marginTop: spacing.lg, borderWidth: 0, ...shadows.md },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
   error: { textAlign: 'center' },
   subHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
@@ -363,4 +367,4 @@ const styles = StyleSheet.create({
   webSectionTitle: { fontFamily: fontFamilies.bodyBold, fontSize: 17 },
   webSectionList2: { paddingHorizontal: 4, gap: 18 },
   webGrid: { padding: 4, gap: 18 },
-});
+}));

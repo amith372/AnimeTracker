@@ -33,7 +33,8 @@ import { SquareCheckbox } from '@/components/SquareCheckbox';
 import { EntryImageDialog } from '@/components/EntryImageDialog';
 import { DetailHeroCard } from '@/components/web/DetailHeroCard';
 import { WebShell } from '@/components/web/WebShell';
-import { colors, radii, spacing } from '@/theme/colors';
+import { radii, spacing } from '@/theme/colors';
+import { makeStyles, useThemeColors } from '@/theme/useTheme';
 import { dialogStyle } from '@/theme/dialog';
 import { statusDotColor } from '@/theme/statusColors';
 import { MANUAL_STATUS_CHIP_LABELS } from '@/theme/statusChipLabels';
@@ -53,6 +54,8 @@ const LIKEABLE_STATUS_KINDS: Series['status']['kind'][] = ['WATCHED', 'WATCHED_P
 const EDITABLE_STATUS_CHOICES: ManualStatus[] = [...MANUAL_STATUS_CHOICES, 'NONE'];
 
 export default function SeriesDetailScreen() {
+  const styles = useStyles();
+  const colors = useThemeColors();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { series, isLoading: libraryLoading, error: libraryError } = useSeries(id);
   const router = useRouter();
@@ -384,6 +387,8 @@ function EntryRow({
   onOpenInfo: () => void;
   runWrite: (write: () => Promise<void>) => void;
 }) {
+  const styles = useStyles();
+  const colors = useThemeColors();
   const watched = entry.watchState === 'WATCHED';
   const wontWatch = entry.watchState === 'WONT_WATCH';
   const toggleWatched = () => runWrite(() => setEntryWatchState(entry.id, watched ? 'UNWATCHED' : 'WATCHED'));
@@ -449,6 +454,7 @@ function ArcListRow({
   onOpenInfo: () => void;
   runWrite: (write: () => Promise<void>) => void;
 }) {
+  const styles = useStyles();
   const watchedKeys = new Set(entry.watchedArcKeys ?? []);
 
   return (
@@ -493,6 +499,7 @@ function ArcListRow({
 /** One pressable status choice in the wide-web status column — active/onPress logic identical to
  * the mobile status chip row, with hover feedback added (see colors.hoverWash). */
 function WebStatusChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  const styles = useStyles();
   const [hovered, hoverHandlers] = useHover();
   return (
     <Pressable
@@ -508,7 +515,7 @@ function WebStatusChip({ label, active, onPress }: { label: string; active: bool
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   container: { flex: 1, backgroundColor: colors.background },
   banner: { paddingBottom: spacing.xl, borderBottomLeftRadius: 30, borderBottomRightRadius: 30 },
   bannerTopRow: { flexDirection: 'row', justifyContent: 'space-between' },
@@ -564,4 +571,4 @@ const styles = StyleSheet.create({
   webStatusChipTextActive: { color: '#fff' },
   webStatusFootnote: { fontFamily: fontFamilies.bodyRegular, fontSize: 11, lineHeight: 17.6, color: colors.textFaint, marginTop: 20 },
   webToast: { alignSelf: 'center', borderRadius: radii.lg, backgroundColor: colors.primaryDark },
-});
+}));

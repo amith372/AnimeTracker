@@ -22,7 +22,8 @@ import { SeriesTitleText } from '@/components/SeriesTitleText';
 import { EntryImageDialog, type EntryImageTarget } from '@/components/EntryImageDialog';
 import { DetailHeroCard } from '@/components/web/DetailHeroCard';
 import { WebShell } from '@/components/web/WebShell';
-import { colors, radii, spacing } from '@/theme/colors';
+import { radii, spacing } from '@/theme/colors';
+import { makeStyles, useThemeColors } from '@/theme/useTheme';
 import { ADD_CHOICE_CHIP_LABELS } from '@/theme/statusChipLabels';
 import { dialogStyle } from '@/theme/dialog';
 import { fontFamilies } from '@/theme/fonts';
@@ -30,6 +31,8 @@ import { useIsWideWeb } from '@/hooks/useWebLayout';
 import type { ReconcileEntry, ReconcileSeries } from '@/domain/reconcileSeries';
 
 export default function SeriesPreviewScreen() {
+  const styles = useStyles();
+  const colors = useThemeColors();
   const { data } = useLocalSearchParams<{ data: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -219,6 +222,7 @@ export default function SeriesPreviewScreen() {
  * no checkbox or won't-watch control, just what the season/movie is. Tapping the title still opens
  * the info popup, same as the real Detail screen. */
 function PreviewEntryRow({ entry, kindNumber, onOpenInfo }: { entry: ReconcileEntry; kindNumber: number; onOpenInfo: () => void }) {
+  const styles = useStyles();
   const kindLabel = entry.kind === 'MOVIE' ? `Movie ${kindNumber}` : `Season ${kindNumber}`;
   const detail =
     entry.kind === 'MOVIE' ? "doesn't count toward X/Y" : `${entry.episodeCount} episode${entry.episodeCount === 1 ? '' : 's'}`;
@@ -238,7 +242,7 @@ function PreviewEntryRow({ entry, kindNumber, onOpenInfo }: { entry: ReconcileEn
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   container: { flex: 1, backgroundColor: colors.background },
   banner: { paddingBottom: spacing.xl, borderBottomLeftRadius: 30, borderBottomRightRadius: 30 },
   bannerTopRow: { flexDirection: 'row', justifyContent: 'space-between' },
@@ -275,4 +279,4 @@ const styles = StyleSheet.create({
   webStatusChipText: { fontFamily: fontFamilies.bodySemiBold, fontSize: 13.5, color: colors.textMuted },
   webAddingSpinner: { marginTop: 12 },
   webToast: { alignSelf: 'center', borderRadius: radii.lg, backgroundColor: colors.primaryDark },
-});
+}));

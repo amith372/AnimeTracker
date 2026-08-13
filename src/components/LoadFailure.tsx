@@ -12,7 +12,8 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { StyleSheet, View } from 'react-native';
 import { Button, Text } from 'react-native-paper';
-import { colors, spacing } from '@/theme/colors';
+import { spacing } from '@/theme/colors';
+import { makeStyles, useThemeColors } from '@/theme/useTheme';
 
 export function LoadFailure({
   message,
@@ -27,6 +28,8 @@ export function LoadFailure({
   secondaryLabel?: string;
   onSecondary?: () => void;
 }) {
+  const styles = useStyles();
+  const colors = useThemeColors();
   return (
     <View style={styles.container}>
       {/* Muted rather than red: this is a transient "try again", not a destructive error, and the
@@ -48,9 +51,9 @@ export function LoadFailure({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   container: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.md },
   // textPrimary, not textFaint: this is the only thing on screen and has to be readable — textFaint
   // on the page background is well under the 4.5:1 contrast floor.
   message: { textAlign: 'center', color: colors.textPrimary, maxWidth: 340 },
-});
+}));

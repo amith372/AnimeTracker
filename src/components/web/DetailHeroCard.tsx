@@ -8,7 +8,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import type { ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
-import { colors, radii, shadows, spacing } from '@/theme/colors';
+import { radii, shadows, spacing } from '@/theme/colors';
+import { makeStyles, useThemeColors } from '@/theme/useTheme';
 import { fontFamilies } from '@/theme/fonts';
 import { useHover } from '@/hooks/useHover';
 
@@ -36,6 +37,8 @@ export function DetailHeroCard({
   /** The two-column body (entries list + status/action column) rendered below the header. */
   children: ReactNode;
 }) {
+  const styles = useStyles();
+  const colors = useThemeColors();
   const [backHovered, backHoverHandlers] = useHover();
   return (
     <ScrollView style={styles.page} contentContainerStyle={styles.pageContent}>
@@ -80,7 +83,7 @@ export function DetailHeroCard({
 
 const CARD_MAX_WIDTH = 1040;
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   page: { flex: 1, backgroundColor: colors.background },
   pageContent: { alignItems: 'center', paddingHorizontal: 32, paddingVertical: 24 },
   backLink: { alignSelf: 'flex-start', width: '100%', maxWidth: CARD_MAX_WIDTH, marginBottom: spacing.md },
@@ -98,4 +101,4 @@ const styles = StyleSheet.create({
   statusPillText: { fontFamily: fontFamilies.bodyBold, fontSize: 13, color: '#fff' },
   genres: { fontFamily: fontFamilies.bodyRegular, fontSize: 13.5, lineHeight: 22, color: colors.heroMutedText },
   body: { flexDirection: 'row', gap: 36, padding: 34, alignItems: 'flex-start' },
-});
+}));

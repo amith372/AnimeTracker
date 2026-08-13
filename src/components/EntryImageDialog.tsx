@@ -11,7 +11,8 @@ import { Image } from 'expo-image';
 import { ActivityIndicator, Dialog, Portal, Text } from 'react-native-paper';
 import { SeriesTitleText } from './SeriesTitleText';
 import { getEntryPreview } from '@/repositories/EntryImageRepository';
-import { colors, radii, spacing } from '@/theme/colors';
+import { radii, spacing } from '@/theme/colors';
+import { makeStyles } from '@/theme/useTheme';
 import { dialogStyle } from '@/theme/dialog';
 
 export interface EntryImageTarget {
@@ -23,6 +24,7 @@ export function EntryImageDialog({ entry, onDismiss }: { entry: EntryImageTarget
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [synopsis, setSynopsis] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const styles = useStyles();
 
   useEffect(() => {
     if (!entry) return;
@@ -86,10 +88,10 @@ export function EntryImageDialog({ entry, onDismiss }: { entry: EntryImageTarget
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   scrollArea: { maxHeight: 460, paddingHorizontal: spacing.lg },
   scrollContent: { paddingVertical: spacing.sm, gap: spacing.lg },
   imageBox: { alignItems: 'center', justifyContent: 'center', minHeight: 220 },
   image: { width: 200, height: 280, borderRadius: radii.md, backgroundColor: colors.border },
   synopsis: { color: colors.textMuted, lineHeight: 21 },
-});
+}));

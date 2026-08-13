@@ -14,7 +14,7 @@ import { PaperProvider, Text } from 'react-native-paper';
 import { isSupabaseConfigured } from '@/account/supabaseClient';
 import { queryClient } from '@/repositories/queryClient';
 import { startLibraryRealtime } from '@/repositories/realtime';
-import { paperTheme } from '@/theme/theme';
+import { usePaperTheme } from '@/theme/theme';
 import { fontsToLoad } from '@/theme/fonts';
 
 // Paper renders its icons (checkboxes, chips, etc.) through this callback rather than
@@ -28,6 +28,7 @@ export default function RootLayout() {
   // fontError deliberately doesn't block rendering below — falling back to the system font beats
   // never showing the app at all if a font fails to load.
   const [fontsLoaded, fontError] = useFonts(fontsToLoad);
+  const theme = usePaperTheme();
 
   // Realtime -> query-invalidation wiring (src/repositories/realtime.ts) replaces the old
   // Phase 9/10 outbox/pull sync engine entirely — there's no local mirror to reconcile anymore,
@@ -61,8 +62,10 @@ export default function RootLayout() {
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider>
         <SafeAreaView style={{ flex: 1 }} edges={['bottom', 'left', 'right']}>
-          <PaperProvider theme={paperTheme} settings={{ icon: PaperIcon }}>
-            <StatusBar style="dark" />
+          <PaperProvider theme={theme} settings={{ icon: PaperIcon }}>
+            {/* "auto" rather than a hardcoded "dark": the bar's icons have to invert with the
+                appearance, or they vanish into whichever background they're sitting on. */}
+            <StatusBar style="auto" />
             <Stack screenOptions={{ headerTitleAlign: 'center' }}>
               {/* The bottom-tab group (Library/Discover/For you) is its own nested navigator with
                   its own header handling — headerShown false here so it doesn't get a second,

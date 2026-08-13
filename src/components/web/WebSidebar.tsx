@@ -9,7 +9,8 @@ import { Pressable, StyleSheet, Text as NativeText, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { AtLogoMark } from '@/components/AtLogoMark';
 import { MalAttribution } from '@/components/MalAttribution';
-import { colors, logoGradient, radii, spacing } from '@/theme/colors';
+import { logoGradient, radii, spacing } from '@/theme/colors';
+import { makeStyles, useThemeColors } from '@/theme/useTheme';
 import { fontFamilies } from '@/theme/fonts';
 import { WEB_SIDEBAR_WIDTH } from '@/hooks/useWebLayout';
 import { useHover } from '@/hooks/useHover';
@@ -31,6 +32,7 @@ const NAV_ITEMS = [
 ] as const;
 
 export function WebSidebar() {
+  const styles = useStyles();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -53,6 +55,8 @@ export function WebSidebar() {
 }
 
 function NavRow({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  const styles = useStyles();
+  const colors = useThemeColors();
   const [hovered, hoverHandlers] = useHover();
   return (
     <Pressable
@@ -69,7 +73,7 @@ function NavRow({ label, active, onPress }: { label: string; active: boolean; on
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   sidebar: {
     position: 'absolute',
     top: 0,
@@ -99,4 +103,4 @@ const styles = StyleSheet.create({
   navDot: { width: 7, height: 7, borderRadius: 2, flexShrink: 0 },
   navLabel: { fontFamily: fontFamilies.bodySemiBold, fontSize: 14 },
   footer: { marginTop: 'auto', paddingHorizontal: spacing.md, paddingBottom: spacing.lg },
-});
+}));

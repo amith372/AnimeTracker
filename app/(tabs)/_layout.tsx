@@ -16,13 +16,14 @@
 import { Tabs } from 'expo-router';
 import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors } from '@/theme/colors';
+import { useThemeColors } from '@/theme/useTheme';
 import { fontFamilies } from '@/theme/fonts';
 import { DiscoverTabIcon, ForYouTabIcon, LibraryTabIcon } from '@/components/TabBarIcon';
 import { WebSidebar } from '@/components/web/WebSidebar';
 import { useIsWideWeb, WEB_SIDEBAR_WIDTH } from '@/hooks/useWebLayout';
 
 export default function TabsLayout() {
+  const colors = useThemeColors();
   const isWideWeb = useIsWideWeb();
 
   return (

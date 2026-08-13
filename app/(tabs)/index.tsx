@@ -18,7 +18,8 @@ import { Redirect, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { ActivityIndicator, Button, Chip, Dialog, IconButton, Portal, Searchbar, Snackbar, Text } from 'react-native-paper';
+import { ActivityIndicator, Button, Chip, Dialog, IconButton, Portal, Snackbar, Text } from 'react-native-paper';
+import { AppSearchbar } from '@/components/AppSearchbar';
 import { useIsGuest } from '@/account/guestMode';
 import { useAccountSession } from '@/account/accountRepository';
 import { useMalLinkStatus } from '@/account/malLinkRepository';
@@ -34,7 +35,8 @@ import { STATUS_FILTER_KINDS, statusKindLabel, statusLabel } from '@/domain/stat
 import { hasVisibleNewSeasonAlert, type Series } from '@/domain/series';
 import { buildPushTargets } from '@/domain/malPush';
 import { statusDotColor } from '@/theme/statusColors';
-import { colors, radii, shadows, spacing } from '@/theme/colors';
+import { radii, shadows, spacing } from '@/theme/colors';
+import { makeStyles, useThemeColors } from '@/theme/useTheme';
 import { dialogStyle } from '@/theme/dialog';
 import { fontFamilies } from '@/theme/fonts';
 import { useIsWideWeb } from '@/hooks/useWebLayout';
@@ -63,6 +65,8 @@ const GRID_GAP = 22;
 const GRID_PADDING = 28;
 
 export default function LibraryScreen() {
+  const styles = useStyles();
+  const colors = useThemeColors();
   const { session, loading: sessionLoading } = useAccountSession();
   const isGuest = useIsGuest();
   const [malLinked] = useMalLinkStatus();
@@ -351,12 +355,12 @@ export default function LibraryScreen() {
         <View style={styles.webHeader}>
           <AtLogoMark size={34} />
           <Text style={styles.webHeaderTitle}>Library</Text>
-          <Searchbar
+          <AppSearchbar
             placeholder="Search your library"
             value={searchQuery}
             onChangeText={setSearchQuery}
             style={styles.webSearchbar}
-            inputStyle={styles.searchbarInput}
+            onSurface
           />
           {(syncing || pushing) && <ActivityIndicator style={styles.headerSpinner} />}
           <Text style={styles.webHeaderCount}>
@@ -445,12 +449,11 @@ export default function LibraryScreen() {
         {(syncing || pushing) && <ActivityIndicator style={styles.headerSpinner} />}
         <IconButton icon="dots-vertical" onPress={() => setMoreMenuVisible(true)} />
       </View>
-      <Searchbar
+      <AppSearchbar
         placeholder="Search your library"
         value={searchQuery}
         onChangeText={setSearchQuery}
         style={styles.searchbar}
-        inputStyle={styles.searchbarInput}
       />
       {/* Chips, not a dropdown/menu — Paper's anchored Menu measures its position wrong on this
           RN/Fabric version, landing the item list thousands of px off-screen. A plain Chip row has
@@ -542,6 +545,8 @@ export default function LibraryScreen() {
 }
 
 function SeriesRow({ series, onPress, onLongPress }: { series: Series; onPress: () => void; onLongPress: () => void }) {
+  const styles = useStyles();
+  const colors = useThemeColors();
   const isNew = hasVisibleNewSeasonAlert(series);
   return (
     <Pressable
@@ -590,6 +595,7 @@ function LibraryGridCard({
   onPress: () => void;
   onLongPress: () => void;
 }) {
+  const styles = useStyles();
   const isNew = hasVisibleNewSeasonAlert(series);
   const [hovered, hoverHandlers] = useHover();
   return (
@@ -645,6 +651,8 @@ function WebFilterRow({
   active: boolean;
   onPress: () => void;
 }) {
+  const styles = useStyles();
+  const colors = useThemeColors();
   const [hovered, hoverHandlers] = useHover();
   return (
     <Pressable
@@ -664,13 +672,13 @@ function WebFilterRow({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   container: { flex: 1, backgroundColor: colors.background },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
   headerTitle: { flex: 1, fontFamily: fontFamilies.displayBold, color: colors.textPrimary },
   headerSpinner: { marginRight: spacing.xs },
-  searchbar: { marginHorizontal: spacing.lg, marginTop: spacing.sm, borderRadius: radii.pill, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, elevation: 0 },
-  searchbarInput: { fontFamily: fontFamilies.bodyRegular, minHeight: 0 },
+  // Placement only — the shared shape lives in AppSearchbar.
+  searchbar: { marginHorizontal: spacing.lg, marginTop: spacing.sm },
   filterRow: { marginTop: spacing.md, flexGrow: 0, flexShrink: 0, minHeight: 42 },
   // Same flexGrow/flexShrink/minHeight guards as filterRow above — a horizontal ScrollView next to
   // a long FlatList gets squeezed to a sliver without them (see filterRow's comment).
@@ -715,7 +723,7 @@ const styles = StyleSheet.create({
   webContainer: { flex: 1, backgroundColor: colors.background },
   webHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: 32, paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: colors.border },
   webHeaderTitle: { fontFamily: fontFamilies.webSerifBold, fontSize: 24, color: colors.textPrimary },
-  webSearchbar: { flex: 1, maxWidth: 440, borderRadius: radii.pill, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, elevation: 0, height: 42 },
+  webSearchbar: { flex: 1, maxWidth: 440, height: 42 },
   webHeaderCount: { fontFamily: fontFamilies.bodyMedium, fontSize: 13, color: colors.textMuted },
   webBody: { flex: 1, flexDirection: 'row' },
   webFilterColumn: { width: 200, flexShrink: 0, flexDirection: 'column', borderRightWidth: 1, borderRightColor: colors.border },
@@ -759,4 +767,4 @@ const styles = StyleSheet.create({
   gridCardTitle: { fontSize: 14.5, marginTop: 11, color: colors.textPrimary },
   gridCardStatus: { fontFamily: fontFamilies.bodySemiBold, fontSize: 12.5, color: colors.textMuted },
   webToast: { alignSelf: 'center', borderRadius: radii.lg, backgroundColor: colors.primaryDark },
-});
+}));

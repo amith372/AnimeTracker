@@ -15,10 +15,11 @@
 import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { WebSidebar } from '@/components/web/WebSidebar';
-import { colors } from '@/theme/colors';
+import { makeStyles } from '@/theme/useTheme';
 import { WEB_SIDEBAR_WIDTH } from '@/hooks/useWebLayout';
 
 export function WebShell({ children }: { children: ReactNode }) {
+  const styles = useStyles();
   return (
     <View style={styles.root}>
       {/* Absolutely positioned (see WebSidebar's own styles), hence the matching marginLeft below
@@ -29,7 +30,7 @@ export function WebShell({ children }: { children: ReactNode }) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   root: { flex: 1, backgroundColor: colors.background },
   content: { flex: 1, marginLeft: WEB_SIDEBAR_WIDTH },
-});
+}));
