@@ -261,12 +261,17 @@ export default function RecommendScreen() {
       <SegmentedButtons
         value={tab}
         onValueChange={(value) => setTab(value as Tab)}
-        style={styles.tabs}
+        style={[styles.tabs, isWideWeb && styles.webTabs]}
         buttons={[
-          { value: 'CATCH_UP', label: `Catch up${catchUp.length > 0 ? ` (${catchUp.length})` : ''}`, icon: 'play-circle-outline' },
+          {
+            value: 'CATCH_UP',
+            label: `Catch up${catchUp.length > 0 ? ` (${catchUp.length})` : ''}`,
+            icon: 'play-circle-outline',
+            style: styles.tabButton,
+          },
           // "Recommended", not "For you" — the screen itself is already titled "For you", and the
           // same words twice read as a breadcrumb to nowhere rather than a choice between two lists.
-          { value: 'FOR_YOU', label: 'Recommended', icon: 'star-outline' },
+          { value: 'FOR_YOU', label: 'Recommended', icon: 'star-outline', style: styles.tabButton },
         ]}
       />
 
@@ -845,6 +850,11 @@ const useStyles = makeStyles((colors) => ({
   headerTitle: { fontFamily: fontFamilies.displayBold, color: colors.textPrimary },
   headerSubtitle: { fontFamily: fontFamilies.bodyRegular, fontSize: 13, color: colors.textMuted, marginTop: 2 },
   tabs: { marginHorizontal: 12, marginTop: 12 },
+  // Equal halves. Left to itself the control sizes each segment to its own label, so "Catch up (4)"
+  // took noticeably more room than "Recommended" and the split looked like a progress bar caught
+  // mid-fill rather than a choice between two peers. flex:1 zeroes the content-derived basis, so
+  // the two divide the width evenly whatever the count in the label happens to be.
+  tabButton: { flex: 1 },
   // See CatchUpKindTabs for why the three flex properties are load-bearing rather than decorative.
   kindTabs: { flexGrow: 0, flexShrink: 0, minHeight: 52, marginTop: spacing.sm },
   kindTabsContent: { paddingHorizontal: 12, gap: spacing.sm, alignItems: 'center' },
@@ -884,6 +894,15 @@ const useStyles = makeStyles((colors) => ({
 
   // --- Wide web ---
   webContainer: { paddingHorizontal: 24 },
+  // A two-option toggle stretched across a 1400px window reads as a banner, not a control — the
+  // selected half alone was wider than the entire list it filters. Capped and pulled left instead
+  // of centred, so its left edge lands on the same 32px as the "For you" title above it and the two
+  // read as one column. Wide web only: on a phone the full-bleed control is the right size already.
+  // width:'100%' is load-bearing, not redundant with maxWidth. alignSelf:'flex-start' alone makes
+  // this container shrink-wrap its content, and since the two segments have flex:1 (a zeroed
+  // basis), "shrink-wrap" resolves to their *minimum* width — icon plus an ellipsis. Sizing to the
+  // parent first and capping second is what gives the cap something to cap.
+  webTabs: { width: '100%', maxWidth: 520, alignSelf: 'flex-start', marginHorizontal: 8 },
   // Negative margin cancels webContainer's 24px gutter so the band spans the full content width,
   // the way a header should — matching the Library's wide-web header, which is full-bleed because
   // its own container carries no horizontal padding.
