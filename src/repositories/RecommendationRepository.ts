@@ -20,6 +20,7 @@ import {
 } from '@/domain/recommendations';
 import type { ReconcileSeries } from '@/domain/reconcileSeries';
 import { fetchDetailsAndGroup, type DiscoverProgress } from './DiscoverRepository';
+import { useMemo } from 'react';
 import { getAllSeriesOnce, useLibrary } from './AnimeRepository';
 
 export type RecommendProgress =
@@ -66,7 +67,13 @@ const MAX_CANDIDATE_DETAILS = 80;
  */
 export function useCatchUp(): { items: CatchUpItem[]; isLoading: boolean; error: Error | null } {
   const { series, isLoading, error } = useLibrary();
-  return { items: getCatchUpEntries(series), isLoading, error };
+  // Memoized on `series`, whose identity is stable between renders thanks to TanStack Query's
+  // structural sharing. Without this, getCatchUpEntries built a fresh array on every render, which
+  // the Recommendations screen then fed into a genre-options memo and a prune effect — a new
+  // identity each pass defeated the memo and re-ran the effect constantly (see the guard in
+  // recommend.tsx, which exists to stop that turning into an update loop).
+  const items = useMemo(() => getCatchUpEntries(series), [series]);
+  return { items, isLoading, error };
 }
 
 /** Runs the full MAL-based + genre-based recommendation pipeline and reports progress as it goes.

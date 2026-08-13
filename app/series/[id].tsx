@@ -188,6 +188,7 @@ export default function SeriesDetailScreen() {
         coverUrl={series.coverUrl}
         title={series.title}
         statusText={statusLabel(series.status)}
+        statusColor={statusDotColor(series.status.kind)}
         genres={series.genres.join(' · ')}
         onBack={() => router.back()}
         topRight={
@@ -397,7 +398,13 @@ function EntryRow({
   const subtitle = wontWatch ? `${kindLabel} · Won't watch` : `${kindLabel} · ${detail}`;
 
   return (
-    <Pressable style={styles.entryRow} onPress={onOpenInfo}>
+    <Pressable
+      style={styles.entryRow}
+      onPress={onOpenInfo}
+      accessibilityRole="button"
+      accessibilityLabel={`${entry.title}, ${subtitle}`}
+      accessibilityHint="Opens the full title, cover art and summary"
+    >
       <SquareCheckbox checked={watched} onPress={toggleWatched} accessibilityLabel={`Mark ${entry.title} as watched`} />
       <View style={styles.entryText}>
         <Text variant="bodyLarge" style={wontWatch ? styles.wontWatchTitle : styles.entryTitle} numberOfLines={1}>
@@ -412,6 +419,9 @@ function EntryRow({
         icon={wontWatch ? 'close-circle' : 'close-circle-outline'}
         iconColor={wontWatch ? colors.red : colors.textFaint}
         size={22}
+        // Paper sizes an IconButton's container from its icon, which at 22 lands well under the
+        // 44pt/48dp minimum. The glyph stays 22; the tappable area doesn't.
+        style={styles.iconButtonTarget}
         onPress={toggleWontWatch}
         accessibilityLabel={wontWatch ? `Un-skip ${entry.title}` : `Mark ${entry.title} as won't watch`}
       />
@@ -443,7 +453,13 @@ function ArcListRow({
 
   return (
     <View>
-      <Pressable style={styles.entryRow} onPress={onOpenInfo}>
+      <Pressable
+        style={styles.entryRow}
+        onPress={onOpenInfo}
+        accessibilityRole="button"
+        accessibilityLabel={`${entry.title}, season ${kindNumber}, ${watchedKeys.size} of ${arcs.length} arcs watched`}
+        accessibilityHint="Opens the full title, cover art and summary"
+      >
         <View style={styles.entryText}>
           <Text variant="bodyLarge" style={styles.entryTitle} numberOfLines={1}>
             {entry.title}
@@ -479,7 +495,14 @@ function ArcListRow({
 function WebStatusChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
   const [hovered, hoverHandlers] = useHover();
   return (
-    <Pressable onPress={onPress} {...hoverHandlers} style={[styles.webStatusChip, active && styles.webStatusChipActive, !active && hovered && styles.webStatusChipHovered]}>
+    <Pressable
+      onPress={onPress}
+      {...hoverHandlers}
+      accessibilityRole="radio"
+      accessibilityState={{ selected: active, checked: active }}
+      accessibilityLabel={label}
+      style={[styles.webStatusChip, active && styles.webStatusChipActive, !active && hovered && styles.webStatusChipHovered]}
+    >
       <Text style={[styles.webStatusChipText, active && styles.webStatusChipTextActive]}>{label}</Text>
     </Pressable>
   );
@@ -497,8 +520,10 @@ const styles = StyleSheet.create({
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.16)', borderRadius: radii.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   statusDot: { width: 7, height: 7, borderRadius: 4 },
   statusPillText: { color: '#fff', fontFamily: fontFamilies.bodyBold },
-  genres: { color: '#D3E3F3' },
-  statusChipRow: { marginTop: spacing.lg, flexGrow: 0, flexShrink: 0, minHeight: 34 },
+  genres: { color: colors.heroMutedText },
+  // 44 rather than 34 — these chips are the status editor, and were below both platforms' minimum
+  // touch target. The row grows with them so nothing clips at larger text sizes.
+  statusChipRow: { marginTop: spacing.lg, flexGrow: 0, flexShrink: 0, minHeight: 44 },
   entryList: { flex: 1 },
   statusChipRowContent: { paddingHorizontal: spacing.lg, gap: spacing.sm },
   statusChip: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
@@ -512,6 +537,7 @@ const styles = StyleSheet.create({
   sectionLabel: { color: colors.textFaint, letterSpacing: 1 },
   sectionCount: { color: colors.textFaint },
   entryRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 60, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
+  iconButtonTarget: { width: 48, height: 48, margin: 0 },
   arcRow: { paddingLeft: spacing.xl },
   entryText: { flex: 1 },
   entryTitle: { color: colors.textPrimary },

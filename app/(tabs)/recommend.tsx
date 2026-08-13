@@ -795,10 +795,12 @@ const styles = StyleSheet.create({
   headerSubtitle: { fontFamily: fontFamilies.bodyRegular, fontSize: 13, color: colors.textMuted, marginTop: 2 },
   tabs: { marginHorizontal: 12, marginTop: 12 },
   // See CatchUpKindTabs for why the three flex properties are load-bearing rather than decorative.
-  kindTabs: { flexGrow: 0, flexShrink: 0, minHeight: 40, marginTop: spacing.sm },
+  kindTabs: { flexGrow: 0, flexShrink: 0, minHeight: 52, marginTop: spacing.sm },
   kindTabsContent: { paddingHorizontal: 12, gap: spacing.sm, alignItems: 'center' },
   kindTab: {
-    minHeight: 34,
+    // 44, not 34 — these are the primary control for Catch up and were under both platforms'
+    // minimum. minHeight so they grow rather than clip when system text scales.
+    minHeight: 44,
     justifyContent: 'center',
     paddingHorizontal: 14,
     borderRadius: radii.pill,

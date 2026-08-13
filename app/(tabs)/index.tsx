@@ -127,6 +127,13 @@ export default function LibraryScreen() {
   // they commit to it. Same decision logic the push itself uses (CLAUDE.md §8), just previewed.
   const pushTargetCount = useMemo(() => seriesList.flatMap(buildPushTargets).length, [seriesList]);
 
+  // Memoized because it sits on the typing path: the wide-web header renders it beside the search
+  // box, so an unmemoized nested reduce over every series *and* every entry ran on each keystroke.
+  const watchedEntryCount = useMemo(
+    () => seriesList.reduce((n, s) => n + s.entries.filter((e) => e.watchState === 'WATCHED').length, 0),
+    [seriesList],
+  );
+
   async function handleSync() {
     setMoreMenuVisible(false);
     setSyncing(true);
@@ -225,6 +232,7 @@ export default function LibraryScreen() {
           {malLinked && (
             <Pressable
               style={styles.moreMenuRow}
+              accessibilityRole="menuitem"
               onPress={() => {
                 setMoreMenuVisible(false);
                 router.push('/onboarding/reconcile?mode=additive');
@@ -237,7 +245,7 @@ export default function LibraryScreen() {
           {/* Nothing to sync without MyAnimeList linked, so the refresh action is meaningless
               (and runMonthlySync itself is a no-op) otherwise — hidden rather than shown-but-dead. */}
           {malLinked && (
-            <Pressable style={styles.moreMenuRow} onPress={handleSync}>
+            <Pressable style={styles.moreMenuRow} accessibilityRole="menuitem" onPress={handleSync}>
               <MaterialCommunityIcons name="refresh" size={22} color={colors.textPrimary} />
               {/* "Check for new seasons", not "Sync now" — it sat next to "Check MyAnimeList for
                   new shows" and the two were indistinguishable by name, even though one re-reads
@@ -251,6 +259,7 @@ export default function LibraryScreen() {
           {malLinked && (
             <Pressable
               style={styles.moreMenuRow}
+              accessibilityRole="menuitem"
               onPress={() => {
                 setMoreMenuVisible(false);
                 setPushConfirmVisible(true);
@@ -267,6 +276,7 @@ export default function LibraryScreen() {
               "Log in" item to show only when signed out; Account itself branches on isGuest. */}
           <Pressable
             style={styles.moreMenuRow}
+            accessibilityRole="menuitem"
             onPress={() => {
               setMoreMenuVisible(false);
               router.push('/onboarding/account');
@@ -350,7 +360,7 @@ export default function LibraryScreen() {
           />
           {(syncing || pushing) && <ActivityIndicator style={styles.headerSpinner} />}
           <Text style={styles.webHeaderCount}>
-            {seriesList.length} series · {seriesList.reduce((n, s) => n + s.entries.filter((e) => e.watchState === 'WATCHED').length, 0)} entries watched
+            {seriesList.length} series · {watchedEntryCount} entries watched
           </Text>
           <IconButton icon="dots-vertical" onPress={() => setMoreMenuVisible(true)} />
         </View>
@@ -534,7 +544,17 @@ export default function LibraryScreen() {
 function SeriesRow({ series, onPress, onLongPress }: { series: Series; onPress: () => void; onLongPress: () => void }) {
   const isNew = hasVisibleNewSeasonAlert(series);
   return (
-    <Pressable style={styles.card} onPress={onPress} onLongPress={onLongPress} delayLongPress={500}>
+    <Pressable
+      style={styles.card}
+      onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={500}
+      accessibilityRole="button"
+      accessibilityLabel={[series.title, statusLabel(series.status), isNew ? 'New season available' : null]
+        .filter(Boolean)
+        .join(', ')}
+      accessibilityHint="Opens the series. Long press to remove it from your library."
+    >
       <Image source={series.coverUrl ?? undefined} style={styles.cover} contentFit="cover" />
       <View style={styles.cardText}>
         <SeriesTitleText variant="titleMedium" numberOfLines={1}>
@@ -547,7 +567,9 @@ function SeriesRow({ series, onPress, onLongPress }: { series: Series; onPress: 
           </Text>
         </View>
         {isNew && (
-          <Chip compact style={styles.newBadge} textStyle={styles.newBadgeText}>
+          // The badge is decoration for a screen reader — the row's own accessibilityLabel already
+          // says "New season available", so letting this announce again just repeats it.
+          <Chip compact style={styles.newBadge} textStyle={styles.newBadgeText} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
             New season!
           </Chip>
         )}
@@ -576,13 +598,22 @@ function LibraryGridCard({
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={500}
+      accessibilityRole="button"
+      // The status and the new-season badge are visual; spelling them into the label is what makes
+      // the card say the same thing to a screen reader that it says on screen.
+      accessibilityLabel={[series.title, statusLabel(series.status), isNew ? 'New season available' : null]
+        .filter(Boolean)
+        .join(', ')}
+      accessibilityHint="Opens the series. Long press to remove it from your library."
       {...hoverHandlers}
     >
       <View style={styles.gridCoverWrap}>
         <Image source={series.coverUrl ?? undefined} style={styles.gridCover} contentFit="cover" />
         {isNew && (
           <View style={styles.gridNewBadge}>
-            <Text style={styles.gridNewBadgeText}>NEW SEASON</Text>
+            <Text style={styles.gridNewBadgeText} maxFontSizeMultiplier={1.3}>
+              NEW SEASON
+            </Text>
           </View>
         )}
       </View>
@@ -616,7 +647,16 @@ function WebFilterRow({
 }) {
   const [hovered, hoverHandlers] = useHover();
   return (
-    <Pressable onPress={onPress} {...hoverHandlers} style={[styles.webFilterRow, (active || hovered) && styles.webFilterRowActive]}>
+    <Pressable
+      onPress={onPress}
+      {...hoverHandlers}
+      accessibilityRole="tab"
+      accessibilityState={{ selected: active }}
+      // Without the count folded in, the screen reader announces "Watching 3" as one flat string
+      // with no hint that the 3 is a tally rather than part of the name.
+      accessibilityLabel={count === undefined ? label : `${label}, ${count} series`}
+      style={[styles.webFilterRow, active && styles.webFilterRowActive, !active && hovered && styles.webFilterRowHovered]}
+    >
       <View style={[styles.webFilterDot, { backgroundColor: dotColor }]} />
       <Text style={[styles.webFilterLabel, { color: active ? colors.textPrimary : colors.textMuted }]}>{label}</Text>
       {count !== undefined && <Text style={styles.webFilterCount}>{count}</Text>}
@@ -646,7 +686,7 @@ const styles = StyleSheet.create({
   // reads as mostly empty space at the full dialog width.
   moreMenuDialog: { alignSelf: 'center', width: '90%', maxWidth: 320, marginHorizontal: 0 },
   moreMenuContent: { gap: spacing.xs },
-  moreMenuRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 48, paddingVertical: spacing.sm },
+  moreMenuRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 48, paddingVertical: spacing.sm, paddingHorizontal: spacing.xs, borderRadius: radii.sm },
   list: { flex: 1 },
   listContent: { padding: spacing.lg, gap: spacing.sm, flexGrow: 1 },
   card: {
@@ -665,7 +705,9 @@ const styles = StyleSheet.create({
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
   statusText: { fontFamily: fontFamilies.bodyRegular, color: colors.textMuted },
-  newBadge: { alignSelf: 'flex-start', backgroundColor: colors.amberTint, height: 24 },
+  // minHeight, not height: a fixed height crops its own label the moment system text scaling grows
+  // it. The chip can get taller; the text must not be cut.
+  newBadge: { alignSelf: 'flex-start', backgroundColor: colors.amberTint, minHeight: 24 },
   newBadgeText: { fontFamily: fontFamilies.bodySemiBold, color: colors.amber, fontSize: 11, lineHeight: 14 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80 },
 
@@ -680,8 +722,14 @@ const styles = StyleSheet.create({
   webFilterColumnContent: { padding: spacing.lg, gap: 2 },
   webScopeBlock: { marginTop: spacing.lg },
   webFilterHeading: { fontFamily: fontFamilies.bodySemiBold, fontSize: 11, letterSpacing: 1.4, color: colors.textFaint, marginBottom: spacing.sm },
-  webFilterRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 36, paddingHorizontal: 10, borderRadius: radii.sm },
+  // 44 rather than 36: this is a real control, and the row is as small as a touch target gets on
+  // the layout that also runs on a narrow-web touch device.
+  webFilterRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44, paddingHorizontal: 10, borderRadius: radii.sm },
   webFilterRowActive: { backgroundColor: colors.hoverWash },
+  // Distinct from the active state. These used to share one style, so a mouse user genuinely could
+  // not tell which filter was applied from the one merely under the cursor — and with selection
+  // conveyed by background alone, that made the current filter unknowable.
+  webFilterRowHovered: { backgroundColor: colors.coverPlaceholder },
   webFilterDot: { width: 7, height: 7, borderRadius: 4, flexShrink: 0 },
   webFilterLabel: { flex: 1, fontFamily: fontFamilies.bodyMedium, fontSize: 13.5 },
   webFilterCount: { fontFamily: fontFamilies.bodySemiBold, fontSize: 12, color: colors.textFaint },
@@ -704,6 +752,9 @@ const styles = StyleSheet.create({
   gridCoverWrap: { aspectRatio: 3 / 4, borderRadius: radii.lg, backgroundColor: colors.coverPlaceholder, overflow: 'hidden', ...shadows.md },
   gridCover: { width: '100%', height: '100%' },
   gridNewBadge: { position: 'absolute', top: 10, left: 10, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 6, backgroundColor: colors.primary },
+  // 10px is already at the platform floor, so this one caps its scaling rather than growing: it's a
+  // 4-character overlay badge sitting on cover art, and it has nowhere to grow into. The row's
+  // accessibilityLabel carries the same information for anyone who needs the text larger.
   gridNewBadgeText: { fontFamily: fontFamilies.bodyBold, fontSize: 10, letterSpacing: 0.4, color: '#fff' },
   gridCardTitle: { fontSize: 14.5, marginTop: 11, color: colors.textPrimary },
   gridCardStatus: { fontFamily: fontFamilies.bodySemiBold, fontSize: 12.5, color: colors.textMuted },

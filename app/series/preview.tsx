@@ -248,7 +248,7 @@ const styles = StyleSheet.create({
   bannerTitle: { color: '#fff' },
   ratingPill: { alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.16)', borderRadius: radii.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   ratingPillText: { color: '#fff', fontFamily: fontFamilies.bodyBold },
-  genres: { color: '#D3E3F3' },
+  genres: { color: colors.heroMutedText },
   addPrompt: { color: colors.textMuted, paddingHorizontal: spacing.lg, paddingTop: spacing.lg },
   statusChipRow: { marginTop: spacing.sm, flexGrow: 0, flexShrink: 0, minHeight: 34 },
   entryList: { flex: 1 },

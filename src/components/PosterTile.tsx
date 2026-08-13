@@ -20,7 +20,14 @@ export function PosterTile({ series, onPress }: { series: ReconcileSeries; onPre
   const [hovered, hoverHandlers] = useHover();
 
   return (
-    <Pressable style={[styles.tile, hovered && styles.tileHovered]} onPress={onPress} {...hoverHandlers}>
+    <Pressable
+      style={[styles.tile, hovered && styles.tileHovered]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={subtitle ? `${series.title}, ${subtitle}` : series.title}
+      accessibilityHint="Add this show to your library"
+      {...hoverHandlers}
+    >
       <Image source={series.coverUrl ?? undefined} style={styles.tileCover} contentFit="cover" />
       <SeriesTitleText variant="bodyMedium" numberOfLines={2} style={styles.tileTitle}>
         {series.title}

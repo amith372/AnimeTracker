@@ -3,29 +3,16 @@
 // direction, which matches the base interactive prototype the doc converged on). Kept out of
 // src/domain/ deliberately: that layer is pure business logic with zero presentation awareness
 // (see statusLabel.ts, which is labels-only, no color) — colors are a UI concern and belong here.
-// ─────────────────────────────────────────────────────────────────────────────
-// EXPERIMENT — the "warm register". One commit, meant to be judged and then kept
-// or reverted wholesale. Nothing else in the app is aware this happened: every
-// screen reads these same token names, which is what lets a palette swap reach
-// the whole app at once and leave in one `git revert`.
 //
-// What changed, and what deliberately did not:
-//   - The NEUTRALS warmed and deepened. Cool slate/fog (#F8F9FA, #0F172A) became
-//     warm paper and warm ink. This is where the whole "warmer" reading comes
-//     from, and it costs nothing semantically because neutrals carry no meaning.
-//   - `primary` and all six STATUS colors are byte-identical. The status hues are
-//     the system's semantic core (One Status, One Color) and re-tinting them
-//     would change what the app *says*, not how it looks. Control Blue is also
-//     the safe side of the Borrowed-Blue Ban — warming it would drift toward
-//     MyAnimeList's own navy, which is contractual, not taste (guardrail #4).
-//   - `textMuted` is no longer the same hex as `slate`. DESIGN.md notes those
-//     doubled deliberately; in a warm register a cool slate body text is exactly
-//     what reads "unfinished", so they part company here. Slate-the-status keeps
-//     its value.
+// The neutrals are warm — paper and ink, not fog and slate. That is where all of the system's
+// temperature lives, and deliberately the only place: a neutral carries no meaning, so warming one
+// costs nothing semantically, while `primary` and the six status hues are left byte-identical
+// because re-tinting those would change what the app *says*. Control Blue additionally sits on the
+// safe side of DESIGN.md's Borrowed-Blue Ban — warming it would drift toward MyAnimeList's own
+// navy, which is contractual rather than taste (CLAUDE.md guardrail #4).
 //
-// Side effect worth keeping either way: textFaint went from #94A3B8 (~2.5:1 on
-// the page background, failing AA) to a warm grey that clears 4.5:1.
-// ─────────────────────────────────────────────────────────────────────────────
+// Note `textMuted` is deliberately no longer the same hex as `slate`, which it used to double as:
+// on warm paper a cool slate body text is precisely what reads as unconverted. See DESIGN.md.
 export const colors = {
   primary: '#3B6EA5',
   primaryDark: '#26201B',
@@ -33,6 +20,10 @@ export const colors = {
   // close-but-distinct blue from `primary`, named so it stops being a magic hex duplicated across
   // app/series/[id].tsx, app/series/preview.tsx, and src/components/web/DetailHeroCard.tsx.
   heroGradientEnd: '#4778AC',
+  // Muted text *on* the blue hero gradient — the genres line under a series title. A pale tint of
+  // the gradient rather than a grey, which would go muddy on colour. Named for the same reason
+  // heroGradientEnd was: it was hand-typed as #D3E3F3 in three files.
+  heroMutedText: '#D3E3F3',
   green: '#10B981',
   amber: '#F59E0B',
   violet: '#8B5CF6',
@@ -67,7 +58,8 @@ export const colors = {
 } as const;
 
 /**
- * EXPERIMENT — axis 2. A real depth scale, replacing the borders-only system.
+ * The depth scale. Works *with* the hairline border and the background/surface contrast, never
+ * instead of them — see DESIGN.md's Depth-With-Borders rule.
  *
  * Every step carries a vertical offset and a soft blur: light comes from above, so a shadow falls
  * below. A zero-offset shadow is a glow, which is decoration pretending to be depth.

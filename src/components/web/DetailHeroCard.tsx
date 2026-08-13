@@ -16,6 +16,7 @@ export function DetailHeroCard({
   coverUrl,
   title,
   statusText,
+  statusColor,
   genres,
   topRight,
   onBack,
@@ -25,6 +26,9 @@ export function DetailHeroCard({
   title: string;
   /** Status pill text — omitted entirely for the not-yet-tracked preview screen. */
   statusText?: string;
+  /** The status's own hue, from statusDotColor. Omitted by the preview screen, whose pill shows a
+   * MAL rating rather than a watch-status, so there is no status for a dot to mean. */
+  statusColor?: string;
   genres: string;
   /** Heart (Detail) or info (Preview) button, rendered top-right of the gradient header. */
   topRight?: ReactNode;
@@ -35,7 +39,13 @@ export function DetailHeroCard({
   const [backHovered, backHoverHandlers] = useHover();
   return (
     <ScrollView style={styles.page} contentContainerStyle={styles.pageContent}>
-      <Pressable onPress={onBack} {...backHoverHandlers} style={styles.backLink}>
+      <Pressable
+        onPress={onBack}
+        {...backHoverHandlers}
+        accessibilityRole="button"
+        accessibilityLabel="Back to library"
+        style={styles.backLink}
+      >
         <Text style={[styles.backLinkText, backHovered && styles.backLinkTextHovered]}>‹ Back to library</Text>
       </Pressable>
       <View style={styles.card}>
@@ -49,7 +59,12 @@ export function DetailHeroCard({
               </Text>
               {statusText != null && (
                 <View style={styles.statusPill}>
-                  <View style={styles.statusDot} />
+                  {/* The dot only renders when it can carry a real status hue. A fixed pale blue
+                      stood here for every one of the six statuses, which made the system's
+                      signature component say nothing on the one screen that is entirely about
+                      status — and sat close enough to Sky Blue (Watched X/Y) to actively mislead. */}
+                  {statusColor != null && <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+                  }
                   <Text style={styles.statusPillText}>{statusText}</Text>
                 </View>
               )}
@@ -79,8 +94,8 @@ const styles = StyleSheet.create({
   headerText: { flex: 1, minWidth: 0, paddingTop: 6, gap: 12 },
   title: { fontFamily: fontFamilies.webSerifBold, fontSize: 28, lineHeight: 34, color: '#fff' },
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 9, alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.16)', borderRadius: radii.sm, paddingHorizontal: 14, paddingVertical: 8 },
-  statusDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#BFE0FF' },
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
   statusPillText: { fontFamily: fontFamilies.bodyBold, fontSize: 13, color: '#fff' },
-  genres: { fontFamily: fontFamilies.bodyRegular, fontSize: 13.5, lineHeight: 22, color: '#D3E3F3' },
+  genres: { fontFamily: fontFamilies.bodyRegular, fontSize: 13.5, lineHeight: 22, color: colors.heroMutedText },
   body: { flexDirection: 'row', gap: 36, padding: 34, alignItems: 'flex-start' },
 });

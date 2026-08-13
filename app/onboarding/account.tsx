@@ -10,7 +10,7 @@
 // src/account/guestMode.ts), and signed-out. The guest branch is what lets someone who started
 // without an account upgrade in place, keeping everything they already tracked.
 import { useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { Button, Text, TextInput } from 'react-native-paper';
 import { isSupabaseConfigured } from '@/account/supabaseClient';
 import { logInWithEmail, logOutAccount, signUpWithEmail, useAccountSession } from '@/account/accountRepository';
@@ -91,7 +91,8 @@ export default function AccountScreen() {
   // added is lost. The only way to lose it is "Leave guest mode" below.
   if (session && isGuest) {
     return (
-      <ScrollView contentContainerStyle={styles.container}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <Text variant="titleMedium" style={styles.title}>
           Browsing as a guest
         </Text>
@@ -147,6 +148,7 @@ export default function AccountScreen() {
           Leave guest mode (discards this list)
         </Button>
       </ScrollView>
+      </KeyboardAvoidingView>
     );
   }
 
@@ -185,7 +187,12 @@ export default function AccountScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    // KeyboardAvoidingView, because this screen is a password field near the bottom of a scroll
+    // view: on iOS nothing moves out of the keyboard's way on its own, so the field being typed
+    // into and the button that submits it could both sit behind it. Android's adjustResize already
+    // handles this, hence the platform-conditional behavior rather than a blanket 'padding'.
+    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <Text variant="titleMedium" style={styles.title}>
         Create an account, or log in to an existing one
       </Text>
@@ -231,10 +238,12 @@ export default function AccountScreen() {
         Create account
       </Button>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
   container: { flexGrow: 1, padding: spacing.lg, gap: spacing.md, backgroundColor: colors.background },
   centerText: { textAlign: 'center', marginTop: spacing.xl },
   title: { color: colors.textPrimary },

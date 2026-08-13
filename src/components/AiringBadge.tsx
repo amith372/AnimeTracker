@@ -15,7 +15,14 @@ export function AiringBadge({ compact }: { compact?: boolean }) {
   return (
     <View style={styles.badge}>
       <View style={styles.dot} />
-      {!compact && <Text style={styles.label}>Currently airing</Text>}
+      {/* Capped rather than uncapped: this badge sits inline at the end of an entry row beside a
+          title and a button, so unbounded growth pushes the row's real content out. 1.4 keeps it
+          legible without letting it take the row over. */}
+      {!compact && (
+        <Text style={styles.label} maxFontSizeMultiplier={1.4}>
+          Currently airing
+        </Text>
+      )}
     </View>
   );
 }

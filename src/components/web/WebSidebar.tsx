@@ -55,7 +55,14 @@ export function WebSidebar() {
 function NavRow({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
   const [hovered, hoverHandlers] = useHover();
   return (
-    <Pressable onPress={onPress} {...hoverHandlers} style={[styles.navRow, (active || hovered) && styles.navRowActive]}>
+    <Pressable
+      onPress={onPress}
+      {...hoverHandlers}
+      accessibilityRole="link"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={label}
+      style={[styles.navRow, active && styles.navRowActive, !active && hovered && styles.navRowHovered]}
+    >
       <View style={[styles.navDot, { backgroundColor: active ? colors.primary : colors.checkboxUnchecked }]} />
       <Text style={[styles.navLabel, { color: active ? colors.textPrimary : colors.textMuted }]}>{label}</Text>
     </Pressable>
@@ -86,6 +93,9 @@ const styles = StyleSheet.create({
     borderRadius: radii.sm + 2,
   },
   navRowActive: { backgroundColor: colors.hoverWash },
+  // A weaker wash than the active row's, so the current route stays distinguishable from whatever
+  // the cursor happens to be over — these previously shared one style.
+  navRowHovered: { backgroundColor: colors.coverPlaceholder },
   navDot: { width: 7, height: 7, borderRadius: 2, flexShrink: 0 },
   navLabel: { fontFamily: fontFamilies.bodySemiBold, fontSize: 14 },
   footer: { marginTop: 'auto', paddingHorizontal: spacing.md, paddingBottom: spacing.lg },
