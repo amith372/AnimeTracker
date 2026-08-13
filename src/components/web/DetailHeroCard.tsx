@@ -19,6 +19,7 @@ export function DetailHeroCard({
   statusText,
   statusColor,
   genres,
+  summary,
   topRight,
   onBack,
   children,
@@ -31,6 +32,9 @@ export function DetailHeroCard({
    * MAL rating rather than a watch-status, so there is no status for a dot to mean. */
   statusColor?: string;
   genres: string;
+  /** Optional blurb rendered under the genres line. Only the Preview screen passes one: on the real
+   * Detail screen you already know the show, so a plot summary there is filler. */
+  summary?: ReactNode;
   /** Heart (Detail) or info (Preview) button, rendered top-right of the gradient header. */
   topRight?: ReactNode;
   onBack: () => void;
@@ -72,6 +76,7 @@ export function DetailHeroCard({
                 </View>
               )}
               {genres.length > 0 && <Text style={styles.genres}>{genres}</Text>}
+              {summary}
             </View>
           </View>
         </LinearGradient>

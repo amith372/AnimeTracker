@@ -9,7 +9,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ActivityIndicator, Chip, Dialog, IconButton, Portal, Snackbar, Text } from 'react-native-paper';
@@ -44,19 +44,46 @@ export default function SeriesPreviewScreen() {
   const [imagePopupEntry, setImagePopupEntry] = useState<EntryImageTarget | null>(null);
   const [infoVisible, setInfoVisible] = useState(false);
   const [synopsis, setSynopsis] = useState<string | null>(null);
-  const [synopsisLoading, setSynopsisLoading] = useState(false);
+  // Distinct from `synopsis != null` because "loaded, and MAL has no summary for this one" is a
+  // real outcome that has to read differently from "still fetching" — the blurb below renders
+  // nothing at all in that case rather than leaving a permanent skeleton on the banner.
+  const [synopsisLoaded, setSynopsisLoaded] = useState(false);
+
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
+  // Fetched on mount rather than only when the info button is tapped, because the summary is now
+  // part of the page itself — the first thing you want about a show you've never heard of is what
+  // it's about. Costs nothing extra: getAnimeDetailCached already holds this row for any show that
+  // reached this screen via a recommendation (CLAUDE.md guardrail #3).
+  useEffect(() => {
+    let cancelled = false;
+    getSynopsis(series.rootMalId).then((text) => {
+      if (cancelled) return;
+      setSynopsis(text);
+      setSynopsisLoaded(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [series.rootMalId]);
+
+  /** The blurb under the genres line — three lines on the banner, tapping opens the full text.
+   * Rendered on both the mobile banner and the wide-web hero, so it lives here rather than being
+   * written twice. */
+  function SummaryBlurb() {
+    if (!synopsisLoaded || synopsis === null) return null;
+    return (
+      <Pressable onPress={() => setInfoVisible(true)} accessibilityRole="button" accessibilityLabel="Read the full summary">
+        <Text variant="bodySmall" style={styles.summary} numberOfLines={3}>
+          {synopsis}
+        </Text>
+      </Pressable>
+    );
+  }
+
   function openInfo() {
     setInfoVisible(true);
-    if (synopsis === null && !synopsisLoading) {
-      setSynopsisLoading(true);
-      getSynopsis(series.rootMalId).then((text) => {
-        setSynopsis(text ?? 'No summary available.');
-        setSynopsisLoading(false);
-      });
-    }
   }
 
   // Picking a status here doesn't edit anything — it's the moment this show actually joins the
@@ -82,6 +109,7 @@ export default function SeriesPreviewScreen() {
         title={series.title}
         statusText={series.rating != null ? `★ ${series.rating.toFixed(2)}` : undefined}
         genres={series.genres.join(' · ')}
+        summary={<SummaryBlurb />}
         onBack={() => router.back()}
         topRight={<IconButton icon="information-outline" iconColor="#fff" accessibilityLabel="Show summary" onPress={openInfo} />}
       >
@@ -118,7 +146,7 @@ export default function SeriesPreviewScreen() {
           </Dialog.Title>
           <Dialog.ScrollArea style={styles.synopsisScrollArea}>
             <ScrollView contentContainerStyle={styles.synopsisContent}>
-              {synopsisLoading ? <ActivityIndicator /> : <Text variant="bodyMedium">{synopsis}</Text>}
+              {!synopsisLoaded ? <ActivityIndicator /> : <Text variant="bodyMedium">{synopsis ?? 'No summary available.'}</Text>}
             </ScrollView>
           </Dialog.ScrollArea>
         </Dialog>
@@ -156,6 +184,7 @@ export default function SeriesPreviewScreen() {
                 {series.genres.join(' · ')}
               </Text>
             )}
+            <SummaryBlurb />
           </View>
         </View>
       </LinearGradient>
@@ -202,10 +231,10 @@ export default function SeriesPreviewScreen() {
           </Dialog.Title>
           <Dialog.ScrollArea style={styles.synopsisScrollArea}>
             <ScrollView contentContainerStyle={styles.synopsisContent}>
-              {synopsisLoading ? (
+              {!synopsisLoaded ? (
                 <ActivityIndicator />
               ) : (
-                <Text variant="bodyMedium">{synopsis}</Text>
+                <Text variant="bodyMedium">{synopsis ?? 'No summary available.'}</Text>
               )}
             </ScrollView>
           </Dialog.ScrollArea>
@@ -253,6 +282,10 @@ const useStyles = makeStyles((colors) => ({
   ratingPill: { alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.16)', borderRadius: radii.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   ratingPillText: { color: '#fff', fontFamily: fontFamilies.bodyBold },
   genres: { color: colors.heroMutedText },
+  // Sits on the blue banner, so it takes the same pale tint the genres line does rather than a grey
+  // (which goes muddy on colour). A hair tighter than the default line height: three lines of body
+  // text is already a lot of banner, and this has to leave the cover art room to breathe.
+  summary: { color: colors.heroMutedText, lineHeight: 18 },
   addPrompt: { color: colors.textMuted, paddingHorizontal: spacing.lg, paddingTop: spacing.lg },
   statusChipRow: { marginTop: spacing.sm, flexGrow: 0, flexShrink: 0, minHeight: 34 },
   entryList: { flex: 1 },
