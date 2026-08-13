@@ -481,12 +481,16 @@ function CatchUpKindTabs({
  * The background is taken from the theme rather than hardcoded because it *must* be opaque —
  * a sticky header over a transparent background lets the cards scroll visibly through the text.
  */
-function SectionHeader({ title }: { title: string }) {
+function SectionHeader({ title, count }: { title: string; count: number }) {
   const styles = useStyles();
   const theme = useTheme();
   return (
     <View style={[styles.sectionHeader, { backgroundColor: theme.colors.background }]}>
-      <Text variant="titleSmall">{title}</Text>
+      {/* Counted, matching the wide-web section labels and the Catch up kind tabs — "how much is
+          in here" is the same question a header has to answer on either layout. */}
+      <Text variant="titleSmall">
+        {title} ({count})
+      </Text>
     </View>
   );
 }
@@ -522,20 +526,29 @@ function CatchUpCard({ item, onPress }: { item: CatchUpItem; onPress: () => void
 }
 
 /**
- * One recommended *series* (or standalone movie) — never an individual season. The subtitle spells
- * out which it is, since "3 seasons" vs "Movie" is the main thing that tells them apart at a glance
- * once the grouping has collapsed a whole sequel chain into a single row.
+ * "TV · Spring 2019 · 3 seasons" — what a recommended series *is*, at a glance. Shared by the mobile
+ * card and its wide-web counterpart so the two can't drift into describing the same show differently
+ * (the web card used to omit this line entirely, and showed strictly less than the phone did).
  */
-function RecommendationCard({ series, onPress }: { series: ReconcileSeries; onPress: () => void }) {
-  const styles = useStyles();
+function recommendationSubtitle(series: ReconcileSeries): string {
   const seasonCount = series.entries.filter((e) => e.kind === 'TV_SEASON').length;
-  const subtitle = [
+  return [
     series.type === 'STANDALONE_MOVIE' ? 'Movie' : 'TV',
     series.seasonLabel,
     seasonCount > 1 ? `${seasonCount} seasons` : null,
   ]
     .filter(Boolean)
     .join(' · ');
+}
+
+/**
+ * One recommended *series* (or standalone movie) — never an individual season. The subtitle spells
+ * out which it is, since "3 seasons" vs "Movie" is the main thing that tells them apart at a glance
+ * once the grouping has collapsed a whole sequel chain into a single row.
+ */
+function RecommendationCard({ series, onPress }: { series: ReconcileSeries; onPress: () => void }) {
+  const styles = useStyles();
+  const subtitle = recommendationSubtitle(series);
 
   return (
     <Card style={styles.card} onPress={onPress}>
@@ -624,6 +637,7 @@ function WebCatchUpSections({
               coverUrl={item.series.coverUrl}
               title={item.series.title}
               meta={item.entry.title}
+              genres={item.series.genres.join(' · ')}
               onPress={() => onPress(item)}
             />
           ))}
@@ -662,7 +676,13 @@ function WebForYouSections({ series, onPress }: { series: ReconcileSeries[]; onP
                 key={item.rootMalId}
                 coverUrl={item.coverUrl}
                 title={item.title}
-                meta={item.rating != null ? `★ ${item.rating.toFixed(2)}` : undefined}
+                // Rating and the "TV · 3 seasons" descriptor share one line here rather than the
+                // mobile card's badge-plus-subtitle pair — a 158px column has no room beside the
+                // title for a badge, but the information is the same.
+                meta={[item.rating != null ? `★ ${item.rating.toFixed(2)}` : null, recommendationSubtitle(item)]
+                  .filter(Boolean)
+                  .join(' · ')}
+                genres={item.genres.join(' · ')}
                 onPress={() => onPress(item)}
               />
             ))}
@@ -687,7 +707,21 @@ function WebForYouSections({ series, onPress }: { series: ReconcileSeries[]; onP
  * cancellation) and the padding real. Hover is the same 0.92 opacity dip every other poster card in
  * the system uses.
  */
-function WebRecCard({ coverUrl, title, meta, onPress }: { coverUrl: string | null; title: string; meta?: string; onPress: () => void }) {
+function WebRecCard({
+  coverUrl,
+  title,
+  meta,
+  genres,
+  onPress,
+}: {
+  coverUrl: string | null;
+  title: string;
+  meta?: string;
+  /** Pre-joined genre list, mirroring the mobile cards' own genre line. Omitted when the show has
+   * no genres, rather than rendering an empty row. */
+  genres?: string;
+  onPress: () => void;
+}) {
   const styles = useStyles();
   const [hovered, hoverHandlers] = useHover();
   return (
@@ -705,6 +739,13 @@ function WebRecCard({ coverUrl, title, meta, onPress }: { coverUrl: string | nul
       {meta != null && (
         <Text numberOfLines={1} style={styles.webCardMeta}>
           {meta}
+        </Text>
+      )}
+      {/* Two lines, matching the mobile cards — a show often carries three or four genres, and one
+          line truncated mid-word says less than it costs. */}
+      {genres != null && genres.length > 0 && (
+        <Text numberOfLines={2} style={styles.webCardGenres}>
+          {genres}
         </Text>
       )}
     </Pressable>
@@ -771,7 +812,7 @@ function ForYouList({
       keyExtractor={(s) => String(s.rootMalId)}
       contentContainerStyle={styles.list}
       stickySectionHeadersEnabled
-      renderSectionHeader={({ section }) => <SectionHeader title={section.title} />}
+      renderSectionHeader={({ section }) => <SectionHeader title={section.title} count={section.data.length} />}
       renderItem={({ item }) => <RecommendationCard series={item} onPress={() => onPressCard(item)} />}
       ListEmptyComponent={
         <View style={styles.center}>
@@ -900,4 +941,7 @@ const useStyles = makeStyles((colors) => ({
   webCardCover: { width: '100%', height: 222, borderRadius: radii.md, backgroundColor: colors.coverPlaceholder },
   webCardTitle: { fontSize: 14, marginTop: 10, width: '100%' },
   webCardMeta: { fontFamily: fontFamilies.bodyRegular, fontSize: 12.5, color: colors.textMuted, marginTop: 2 },
+  // A step down from webCardMeta, not the same size: genres are the least important line on the
+  // card, and giving them equal weight made the three lines read as one undifferentiated block.
+  webCardGenres: { fontFamily: fontFamilies.bodyRegular, fontSize: 11.5, lineHeight: 15, color: colors.textFaint, marginTop: 3 },
 }));

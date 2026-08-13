@@ -31,6 +31,7 @@ import { AiringBadge } from '@/components/AiringBadge';
 import { SeriesTitleText } from '@/components/SeriesTitleText';
 import { SquareCheckbox } from '@/components/SquareCheckbox';
 import { EntryImageDialog } from '@/components/EntryImageDialog';
+import { MalAttribution } from '@/components/MalAttribution';
 import { DetailHeroCard } from '@/components/web/DetailHeroCard';
 import { WebShell } from '@/components/web/WebShell';
 import { radii, spacing } from '@/theme/colors';
@@ -363,6 +364,11 @@ export default function SeriesDetailScreen() {
       />
       <EntryImageDialog entry={imagePopupEntry} onDismiss={() => setImagePopupEntry(null)} />
       {removeConfirmDialog}
+      {/* This screen displays MAL data (cover art, episode counts, synopsis) and was the only one
+          in the app carrying no attribution line — guardrail #4 asks for it wherever that data is
+          shown, not just on the list screens. The wide-web branch above says the same thing in its
+          status column footnote. */}
+      <MalAttribution />
       <Snackbar visible={errorMessage !== null} onDismiss={() => setErrorMessage(null)} duration={4000}>
         {errorMessage}
       </Snackbar>

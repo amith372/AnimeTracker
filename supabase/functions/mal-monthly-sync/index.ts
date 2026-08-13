@@ -6,7 +6,7 @@
 // with no per-device network call or wake-up needed at all.
 //
 // Two callers, same core logic (syncUserSeries):
-//  - A signed-in user's own "Sync now" button (src/repositories/SyncRepository.ts) — runs just
+//  - A signed-in user's own "Check for new seasons" button (src/repositories/SyncRepository.ts) — runs just
 //    that one account, synchronously, so the UI can show a result immediately.
 //  - A Postgres pg_cron job (see the migration this ships with) — has no user session, so it sends
 //    the public anon key as `Authorization` (satisfies the gateway's default JWT check, same as any

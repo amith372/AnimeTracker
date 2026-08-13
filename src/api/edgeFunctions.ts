@@ -64,7 +64,7 @@ export function callMalPush(targets: { malId: number; status: 'plan_to_watch' | 
   return invoke('mal-push', { targets });
 }
 
-/** Phase 11: runs monthly sync for just the calling user, synchronously — the "Sync now" button's
+/** Phase 11: runs monthly sync for just the calling user, synchronously — the "Check for new seasons" button's
  * path. A scheduled pg_cron job calls the same Edge Function for every linked account instead;
  * see supabase/functions/mal-monthly-sync's header comment. */
 export function callMalMonthlySync(): Promise<{ seriesWithNewSeasons: number }> {

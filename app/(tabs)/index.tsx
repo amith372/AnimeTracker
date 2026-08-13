@@ -161,12 +161,12 @@ export default function LibraryScreen() {
         if (progress.kind !== 'DONE') return;
         setSyncMessage(
           progress.failed > 0
-            ? `Updated ${progress.updated} on MyAnimeList, ${progress.failed} failed`
-            : `Updated ${progress.updated} on MyAnimeList`,
+            ? `Exported ${progress.updated} to MyAnimeList, ${progress.failed} failed`
+            : `Exported ${progress.updated} to MyAnimeList`,
         );
       });
     } catch (e) {
-      setSyncMessage(userFacingMessage(e, "Couldn't update MyAnimeList. Your list wasn't changed."));
+      setSyncMessage(userFacingMessage(e, "Couldn't export to MyAnimeList. Your list wasn't changed."));
     } finally {
       setPushing(false);
     }
@@ -227,12 +227,12 @@ export default function LibraryScreen() {
     <Portal>
       <Dialog visible={moreMenuVisible} onDismiss={() => setMoreMenuVisible(false)} style={styles.moreMenuDialog}>
         <Dialog.Content style={styles.moreMenuContent}>
-          {/* Distinct from "Sync now" below, which only re-walks series already in the library
+          {/* Distinct from "Check for new seasons" below, which only re-walks series already in the library
               looking for new seasons and never re-reads the MyAnimeList list itself — so a show
               added on myanimelist.net after onboarding was invisible to the app entirely. This is
               the only thing besides onboarding that reads that list. No confirmation dialog: the
               additive sync only ever inserts whole new series (see runAdditiveSync), so unlike
-              "Update MyAnimeList" there's nothing here to undo. */}
+              "Export to MyAnimeList" there's nothing here to undo. */}
           {malLinked && (
             <Pressable
               style={styles.moreMenuRow}
@@ -251,9 +251,10 @@ export default function LibraryScreen() {
           {malLinked && (
             <Pressable style={styles.moreMenuRow} accessibilityRole="menuitem" onPress={handleSync}>
               <MaterialCommunityIcons name="refresh" size={22} color={colors.textPrimary} />
-              {/* "Check for new seasons", not "Sync now" — it sat next to "Check MyAnimeList for
-                  new shows" and the two were indistinguishable by name, even though one re-reads
-                  the MAL list and this one only walks existing series for new seasons. */}
+              {/* "Check for new seasons", not "Sync now" — it sits next to "Check for new shows"
+                  above, and a name like "Sync now" gave no way to tell the two apart, even though
+                  that one re-reads the MAL list and this one only walks existing series for new
+                  seasons. The shows/seasons contrast is what carries the distinction now. */}
               <Text variant="bodyLarge">Check for new seasons</Text>
             </Pressable>
           )}
@@ -270,7 +271,7 @@ export default function LibraryScreen() {
               }}
             >
               <MaterialCommunityIcons name="cloud-upload-outline" size={22} color={colors.textPrimary} />
-              <Text variant="bodyLarge">Update MyAnimeList</Text>
+              <Text variant="bodyLarge">Export to MyAnimeList</Text>
             </Pressable>
           )}
           {/* Phase 7's app-account system — see app/onboarding/account.tsx, which is also where
@@ -331,18 +332,18 @@ export default function LibraryScreen() {
   const pushConfirmDialog = (
     <Portal>
       <Dialog visible={pushConfirmVisible} onDismiss={() => setPushConfirmVisible(false)} style={dialogStyle}>
-        <Dialog.Title>Update MyAnimeList?</Dialog.Title>
+        <Dialog.Title>Export to MyAnimeList?</Dialog.Title>
         <Dialog.Content>
           <Text variant="bodyMedium">
             {pushTargetCount === 0
-              ? 'Nothing to update — no Plan to watch, Watched, or Currently watching shows to push.'
-              : `This will update ${pushTargetCount} entr${pushTargetCount === 1 ? 'y' : 'ies'} on your real MyAnimeList account, to match your Plan to watch, Watched, and Currently watching shows here. Dropped and Watched-forgot shows are left alone.`}
+              ? 'Nothing to export — no Plan to watch, Watched, or Currently watching shows to send.'
+              : `This will export ${pushTargetCount} entr${pushTargetCount === 1 ? 'y' : 'ies'} to your real MyAnimeList account, to match your Plan to watch, Watched, and Currently watching shows here. Dropped and Watched-forgot shows are left alone.`}
           </Text>
         </Dialog.Content>
         <Dialog.Actions>
           <Button onPress={() => setPushConfirmVisible(false)}>Cancel</Button>
           <Button onPress={handlePushToMal} disabled={pushTargetCount === 0}>
-            Update
+            Export
           </Button>
         </Dialog.Actions>
       </Dialog>
@@ -443,9 +444,17 @@ export default function LibraryScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <AtLogoMark size={36} />
-        <Text variant="headlineSmall" style={styles.headerTitle}>
-          Library
-        </Text>
+        {/* Title over a stats line, the same two-line header shape the For you screen uses — the
+            wide-web layout has room to sit this count out on the header row, which a phone doesn't,
+            so it goes under the title rather than being dropped. */}
+        <View style={styles.headerText}>
+          <Text variant="headlineSmall" style={styles.headerTitle}>
+            Library
+          </Text>
+          <Text style={styles.headerCount}>
+            {seriesList.length} series · {watchedEntryCount} entries watched
+          </Text>
+        </View>
         {(syncing || pushing) && <ActivityIndicator style={styles.headerSpinner} />}
         <IconButton icon="dots-vertical" onPress={() => setMoreMenuVisible(true)} />
       </View>
@@ -618,7 +627,7 @@ function LibraryGridCard({
         {isNew && (
           <View style={styles.gridNewBadge}>
             <Text style={styles.gridNewBadgeText} maxFontSizeMultiplier={1.3}>
-              NEW SEASON
+              New season!
             </Text>
           </View>
         )}
@@ -675,7 +684,11 @@ function WebFilterRow({
 const useStyles = makeStyles((colors) => ({
   container: { flex: 1, backgroundColor: colors.background },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
-  headerTitle: { flex: 1, fontFamily: fontFamilies.displayBold, color: colors.textPrimary },
+  // flex:1 moved off the title and onto its wrapper — the title is no longer the header's only
+  // stretchy child now that the stats line sits under it.
+  headerText: { flex: 1, minWidth: 0 },
+  headerTitle: { fontFamily: fontFamilies.displayBold, color: colors.textPrimary },
+  headerCount: { fontFamily: fontFamilies.bodyRegular, fontSize: 13, color: colors.textMuted, marginTop: 2 },
   headerSpinner: { marginRight: spacing.xs },
   // Placement only — the shared shape lives in AppSearchbar.
   searchbar: { marginHorizontal: spacing.lg, marginTop: spacing.sm },
@@ -761,8 +774,10 @@ const useStyles = makeStyles((colors) => ({
   gridCover: { width: '100%', height: '100%' },
   gridNewBadge: { position: 'absolute', top: 10, left: 10, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 6, backgroundColor: colors.primary },
   // 10px is already at the platform floor, so this one caps its scaling rather than growing: it's a
-  // 4-character overlay badge sitting on cover art, and it has nowhere to grow into. The row's
+  // short overlay badge sitting on cover art, and it has nowhere to grow into. The card's
   // accessibilityLabel carries the same information for anyone who needs the text larger.
+  // Wording matches the mobile row's chip ("New season!") rather than an all-caps variant — the
+  // same nudge shouldn't be phrased two ways depending on which layout you happen to be looking at.
   gridNewBadgeText: { fontFamily: fontFamilies.bodyBold, fontSize: 10, letterSpacing: 0.4, color: '#fff' },
   gridCardTitle: { fontSize: 14.5, marginTop: 11, color: colors.textPrimary },
   gridCardStatus: { fontFamily: fontFamilies.bodySemiBold, fontSize: 12.5, color: colors.textMuted },
