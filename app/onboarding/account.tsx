@@ -38,12 +38,22 @@ export default function AccountScreen() {
     setMessage(null);
     const result = await signUpWithEmail(email.trim(), password);
     setBusy(false);
+    if (!result.success) {
+      setMessage(result.message);
+      return;
+    }
+    // Only mention email when a confirmation is genuinely pending — signUpWithEmail reads that off
+    // the response rather than guessing. With confirmation off the session is live already and
+    // useAccountSession has swapped this screen to its signed-in branch by now, so the guest wording
+    // ("your list is saved") is the only message that still has somewhere to show.
+    if (!result.needsConfirmation) {
+      setMessage(isGuest ? 'Account created — your list is saved to it.' : 'Account created — you’re signed in.');
+      return;
+    }
     setMessage(
-      result.success
-        ? isGuest
-          ? 'Account created — your list is saved to it. Check your email if a confirmation is needed.'
-          : 'Account created — check your email to confirm, then log in.'
-        : result.message,
+      isGuest
+        ? 'Almost there — confirm the link we emailed you to finish setting up your account.'
+        : 'Account created — check your email to confirm, then log in.',
     );
   }
 
