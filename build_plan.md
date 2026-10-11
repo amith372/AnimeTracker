@@ -34,7 +34,12 @@ never read off what the implementation returned.
 
 ## Current state, 2026-10-11
 
-Plan 1's steps 0–3 are done and checked. **Step 4 is next.**
+Plan 1's steps 0–3 are done and checked. **Steps 4 and 5 are built and committed but NOT yet
+checked** (`09246c2`, `3f15df8`) — do not rebuild them. They are kept below, with their checks, so
+a session that reads this file doesn't mistake committed work for unbuilt work; the moment the user
+confirms both checks they compress to one line each and get pushed. **Step 5½ is the next thing to
+build.**
+
 `prd/1-recommendation-variety.md` is signed off in shape and has no open questions left that block
 a step. Plan 3 was added 2026-10-11 and is unscheduled.
 
@@ -58,8 +63,10 @@ Carried forward from finished work. None of these is a defect, and none is sched
   weighted by what you liked" is a real if blunt signal, and step 3's negative half is built to be
   frequency-sensitive on its own terms. Fixing it is a behaviour change to the positive half and
   wants its own step, probably folded into step 5 when the other taste axes land.
-- **Two Supabase-side items from Phase 12 are still unverified**: anonymous sign-ins enabled, and
-  the Render static site connected. The third is settled — `20260812000000_direct_postgres.sql` is
+- **One Supabase-side item from Phase 12 is still unverified**: the Render static site connected.
+  Anonymous sign-ins are confirmed **enabled** (2026-10-11, by signing one in against the live
+  project — it returned `is_anonymous: true`; the throwaway user `178e75f9…` is still in
+  `auth.users` and is a natural first subject for step 5½'s delete action). The migration is settled — `20260812000000_direct_postgres.sql` is
   applied on the remote, and the CLI migration history (empty, because the schema was applied
   outside the CLI) was repaired to match, 2026-10-11, so step 5½'s migration pushes normally.
   Never `db push` these expecting a no-op: `create policy` and `cron.schedule` are not idempotent.
@@ -76,13 +83,13 @@ Step 1 — diversify the final list · **done 2026-10-11**
 Step 2 — broaden the candidate pool · **done 2026-10-11**
 Step 3 — learn from dropped series · **done 2026-10-11**
 
-### Step 4 — Minimum-episodes filter · **next**
+### Step 4 — Minimum-episodes filter · **built 2026-10-11, awaiting the user's check**
 Preset chips (Any / 12+ / 24+ / 50+) beside the genre filter on "For you" only; counting rule
 (TV seasons only, unknown counts kept) as a pure predicate in `src/domain/`.
 **Check:** set 50+ — only long series remain, Movies section untouched. Failure: movies vanishing, or
 an airing show with no published count hidden.
 
-### Step 5 — More taste axes and the obscurity signal
+### Step 5 — More taste axes and the obscurity signal · **built 2026-10-11, awaiting the user's check**
 `studios`, `source`, `num_list_users` added to `DETAIL_FIELDS` in **both** `mal-anime-detail` and
 `mal-import`, byte-identical, with `DETAIL_CACHE_VERSION` bumped to v5 in the same commit. Studio /
 source / era affinity alongside genre — and no theme or demographic axis, which the PRD's step-0
@@ -90,7 +97,7 @@ answer shows are already inside `genres`.
 **Check:** recommendations shift toward studios and sources you favour. Failure: genre-only
 behaviour unchanged — the new fields are reading `undefined`, i.e. the cache version wasn't bumped.
 
-### Step 5½ — Privacy notice, consent, and delete everything
+### Step 5½ — Privacy notice, consent, and delete everything · **next to build**
 Lands before step 6, because that is the first step that sends data out of the app. A
 `service_role` Edge Function deleting the account's rows and its `auth.users` record; a ~150-word
 notice screen; `privacy_consented_at` on `user_library_meta`. **Leaves `api_cache` alone and never
