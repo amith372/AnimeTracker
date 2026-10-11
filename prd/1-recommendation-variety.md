@@ -248,9 +248,20 @@ account's data means hand-written SQL in the Supabase dashboard.
   onboarding for new accounts and once on next launch for existing ones; the app is gated behind it
   because §4(f) ties consent to the policy generally, not to one feature. Step 6 additionally
   refuses to send anything if it is null, so a bug in the gate can't leak a library.
-- Tests: the delete function removes every table's rows for the acting user and **no other user's**
-  (two seeded accounts, assert the second survives); `api_cache` row count is unchanged by a
-  delete; the payload builder in step 6 throws if consent is null.
+- Tests — **amended 2026-10-11, because the original shape of this bullet is not buildable here.**
+  It asked for two seeded accounts asserting the second survives, and an unchanged `api_cache` row
+  count. Both need a real Postgres, and this repo has no harness for one: Jest covers pure
+  `src/domain/` logic only, and a local Supabase needs Docker, which isn't running on the dev
+  machine. Rather than stand up that machinery for one function, the coverage splits in two:
+  - **The two-account assertion becomes the user-run check below**, against the live project. That
+    is what the check already describes, and it is the only place the real behaviour can be
+    observed at all.
+  - **A Jest test reads the Edge Function's own source** and asserts `api_cache` appears nowhere in
+    it and all five owned tables do — the same trick `__tests__/detailFields.test.ts` uses for the
+    two `DETAIL_FIELDS` strings. It catches the regression that actually matters and that a manual
+    check never will: someone adds a per-user table later and forgets to delete it, or wires
+    `api_cache` in by mistake. A comment saying "don't touch api_cache" does not fail a build.
+  - The payload builder in step 6 throws if consent is null — unchanged, and a pure-domain test.
 - **Check:** on a throwaway second account, read the notice, accept, confirm the app opens. Then
   press delete, confirm the account is gone, confirm signing in again starts from onboarding — and
   confirm your *own* account's library is untouched. Then check MAL's website and confirm that
@@ -288,12 +299,13 @@ account's data means hand-written SQL in the Supabase dashboard.
 ## Open questions
 
 1. ~~A privacy policy is owed regardless of this work.~~ **Settled 2026-10-11 — in scope, see step
-   5½.** The user asked for the notice, the consent and the delete action to be built. One thing
-   still undecided inside it: whether a **guest** (anonymous) account sees the consent gate too.
-   Arguments both ways — a guest is a real `auth.uid()` writing real rows, so the same logic
-   applies; but a consent wall in front of "just let me try it" is the friction guest mode exists
-   to avoid. Default taken in step 5½ is **yes, guests see it too**, on the grounds that a guest
-   can link MAL and can reach step 6. Say if you'd rather exempt them.
+   5½, and now fully settled.** The user asked for the notice, the consent and the delete action to
+   be built, and confirmed the same day that **guests see the consent gate too**. The argument that
+   won: a guest is a real `auth.uid()` writing real rows, can link MAL, and can reach step 6, so
+   every reason the gate exists applies to them unchanged. The argument against — that a consent
+   wall in front of "just let me try it" is exactly the friction guest mode exists to remove — is
+   real but loses, and the cost of it is a known, accepted one rather than an oversight. Nothing in
+   step 5½ special-cases anonymous sessions.
 2. **`groupIntoSeries` drops `ova`/`ona`/`special` entirely.** A model asked for discovery will
    suggest ONAs, which silently produce no row. Not in scope, but step 7's yield will be quietly
    lower because of it.

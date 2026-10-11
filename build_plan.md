@@ -35,8 +35,8 @@ never read off what the implementation returned.
 ## Current state, 2026-10-11
 
 Plan 1's steps 0–3 are done and checked. **Step 4 is next.**
-`prd/1-recommendation-variety.md` is signed off in shape; the one open question inside it (step 5½,
-guests and the consent gate) blocks only that step. Plan 3 was added 2026-10-11 and is unscheduled.
+`prd/1-recommendation-variety.md` is signed off in shape and has no open questions left that block
+a step. Plan 3 was added 2026-10-11 and is unscheduled.
 
 Last shipped before this plan existed: Phase 12's direct-Postgres cutover and web build
 (2026-08-12), plus the UI fixes in commits up to `244f20f`. `PLAN.md` holds that history.
@@ -90,12 +90,12 @@ answer shows are already inside `genres`.
 **Check:** recommendations shift toward studios and sources you favour. Failure: genre-only
 behaviour unchanged — the new fields are reading `undefined`, i.e. the cache version wasn't bumped.
 
-### Step 5½ — Privacy notice, consent, and delete everything · **blocked on one answer**
+### Step 5½ — Privacy notice, consent, and delete everything
 Lands before step 6, because that is the first step that sends data out of the app. A
 `service_role` Edge Function deleting the account's rows and its `auth.users` record; a ~150-word
 notice screen; `privacy_consented_at` on `user_library_meta`. **Leaves `api_cache` alone and never
 touches the user's MAL list** — the dialog says both.
-**Blocked on:** do guest (anonymous) accounts see the consent gate? PRD default is yes.
+Guests see the gate too, confirmed 2026-10-11 — nothing special-cases an anonymous session.
 **Check:** on a throwaway second account — read the notice, accept, app opens; delete, account gone,
 re-signin starts at onboarding; your own library untouched; that account's MAL list still intact on
 MAL's own site.
