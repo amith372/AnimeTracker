@@ -116,12 +116,18 @@ export async function fetchRecommendations(
   const malTally = tallyMalRecommendations(
     sourceSeries.map((s) => ({ liked: s.liked, recommended: recommendedBySeries.get(s.id) ?? [] })),
   );
-  const genreAffinity = buildGenreAffinity(sourceSeries.map((s) => ({ liked: s.liked, genres: s.genres })));
+  // Dropped series feed two different things now: the exclusion set below, and the negative half
+  // of the genre profile. Exclusion only ever removed the dropped shows themselves and their
+  // relatives, which left the app unable to learn anything from a drop - the single strongest
+  // signal the user gives it about what they don't want.
+  const droppedSeries = allSeries.filter((s) => s.manualStatus === 'DROPPED');
+  const genreAffinity = buildGenreAffinity(
+    sourceSeries.map((s) => ({ liked: s.liked, genres: s.genres })),
+    droppedSeries.map((s) => ({ genres: s.genres })),
+  );
 
   const trackedMalIds = new Set(allSeries.flatMap((s) => s.entries.map((e) => e.malId)));
-  const droppedMalIds = new Set(
-    allSeries.filter((s) => s.manualStatus === 'DROPPED').flatMap((s) => s.entries.map((e) => e.malId)),
-  );
+  const droppedMalIds = new Set(droppedSeries.flatMap((s) => s.entries.map((e) => e.malId)));
 
   // Which candidates are worth a detail call. The cheap exclusions (already tracked, or itself a
   // dropped series) need no fetch, so they're applied to each source series' own recommendations

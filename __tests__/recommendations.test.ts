@@ -540,3 +540,159 @@ describe('selectCandidatePool', () => {
     expect(selectCandidatePool([pool([1, 5])], 0)).toEqual([]);
   });
 });
+
+describe('buildGenreAffinity with dropped series', () => {
+  // Every number below is derived on paper from the two rules in buildGenreAffinity:
+  //   positive(tag) = sum of carrying series' weights / number of carrying watched series
+  //                   (weight 1, or LIKED_WEIGHT = 3 for a liked series)
+  //   penalty(tag)  = droppedWeight x dropped / (watched + dropped)
+  // All of these pass droppedWeight explicitly as 1.0 so the expectations stay pinned to a stated
+  // value rather than to whatever the production default becomes.
+  const watched = (...genres: string[]) => ({ liked: false, genres });
+
+  test('a tag only ever dropped is penalised; one only ever watched is untouched', () => {
+    // Action: positive 1/1 = 1, never dropped          -> 1
+    // Gag Comedy: never watched so positive 0, dropped 1/1 = 1 -> 0 - 1 = -1
+    const affinity = buildGenreAffinity([watched('Action')], [{ genres: ['Gag Comedy'] }], 1.0);
+    expect(affinity.get('Action')).toBeCloseTo(1);
+    expect(affinity.get('Gag Comedy')).toBeCloseTo(-1);
+  });
+
+  test('the penalty is a drop rate, not a drop count', () => {
+    // The distinction this design turns on. A count cannot tell these two libraries apart - both
+    // are just "Isekai appears among the dropped series" - yet they mean opposite things.
+    const twentyWatched = Array.from({ length: 20 }, () => watched('Isekai'));
+    const twentyDropped = Array.from({ length: 20 }, () => ({ genres: ['Isekai'] }));
+
+    // Watched 20, dropped 1: positive 1, rate 1/21 -> 1 - 1/21 = 20/21
+    const mostlyFinished = buildGenreAffinity(twentyWatched, [{ genres: ['Isekai'] }], 1.0);
+    expect(mostlyFinished.get('Isekai')).toBeCloseTo(20 / 21);
+
+    // Watched 1, dropped 20: positive 1, rate 20/21 -> 1 - 20/21 = 1/21
+    const mostlyAbandoned = buildGenreAffinity([watched('Isekai')], twentyDropped, 1.0);
+    expect(mostlyAbandoned.get('Isekai')).toBeCloseTo(1 / 21);
+  });
+
+  test('a broad tag the user mostly finishes survives being dropped once', () => {
+    // The PRD's step-0 warning in test form: MAL's flat genre list puts Shounen beside real taste
+    // tags, so a user who drops one shonen among the ten they finish must not lose Shounen.
+    // Shounen:    positive 9/9 = 1, rate 1/10 = 0.1 -> 0.9
+    // Gag Comedy: positive 0,       rate 1/1   = 1   -> -1
+    const nine = Array.from({ length: 9 }, () => watched('Shounen'));
+    const affinity = buildGenreAffinity(nine, [{ genres: ['Shounen', 'Gag Comedy'] }], 1.0);
+    expect(affinity.get('Shounen')).toBeCloseTo(0.9);
+    expect(affinity.get('Gag Comedy')).toBeCloseTo(-1);
+  });
+
+  test('a tag with any watched series is never driven negative at the default weight', () => {
+    // The guarantee DROPPED_GENRE_WEIGHT = 1.0 exists to preserve. Dropped 99 times against a
+    // single finished series is as lopsided as a real library can get, and it still only
+    // neutralises: positive 1, rate 99/100 = 0.99 -> 0.01, above zero rather than below it.
+    const ninetyNine = Array.from({ length: 99 }, () => ({ genres: ['Shounen'] }));
+    const affinity = buildGenreAffinity([watched('Shounen')], ninetyNine, 1.0);
+    expect(affinity.get('Shounen')).toBeCloseTo(0.01);
+    expect(affinity.get('Shounen')!).toBeGreaterThan(0);
+  });
+
+  test('no dropped series leaves the profile exactly as it was', () => {
+    // A: liked(3) + unliked(1) over 2 carrying series -> 4/2 = 2.  B: 1/1 = 1.
+    const sources = [
+      { liked: true, genres: ['A'] },
+      { liked: false, genres: ['A', 'B'] },
+    ];
+    for (const affinity of [buildGenreAffinity(sources), buildGenreAffinity(sources, [], 1.0)]) {
+      expect(affinity.get('A')).toBeCloseTo(2);
+      expect(affinity.get('B')).toBeCloseTo(1);
+      expect(affinity.size).toBe(2);
+    }
+  });
+
+  test('a series repeating a tag cannot push the penalty past its ceiling', () => {
+    // Deduped per dropped series, so this is one drop of Gag Comedy, not three: positive 0,
+    // rate 1/1 = 1 -> -1. Undeduped it would read 3/3, still -1 here, but a tag that was also
+    // watched would exceed the bound the weight is chosen to guarantee.
+    const affinity = buildGenreAffinity(
+      [watched('Shounen')],
+      [{ genres: ['Shounen', 'Shounen', 'Shounen'] }],
+      1.0,
+    );
+    // positive 1, rate 1/2 = 0.5 -> 0.5. Counting the repeat would give 3/4 and 0.25.
+    expect(affinity.get('Shounen')).toBeCloseTo(0.5);
+  });
+});
+
+describe('rankCandidates with a negative genre profile', () => {
+  test('a dropped tag sinks a candidate the ranking would otherwise have put top', () => {
+    // The PRD's test for this step. Candidate 1 has the stronger MAL tally AND shares the user's
+    // one watched tag, so it ranks first on the old profile; it also carries a tag that only ever
+    // appears in a dropped series, which is the thing the old profile could not see.
+    const watchedSources = [{ liked: false, genres: ['Psychological'] }];
+    const dropped = [{ genres: ['Gag Comedy'] }];
+    const candidates: RecommendationCandidate[] = [
+      { id: 1, genres: ['Psychological', 'Gag Comedy'], relatedIds: [] },
+      { id: 2, genres: ['Psychological'], relatedIds: [] },
+    ];
+    const tally = new Map([
+      [1, 10],
+      [2, 5],
+    ]);
+
+    // Without the negative half: affinity { Psychological: 1 }.
+    //   raw genre  1 -> (1 + 0)/2 = 0.5   2 -> 1/1 = 1      (Gag Comedy unknown, reads 0)
+    //   normalized 1 -> 0.5               2 -> 1
+    //   raw MAL    1 -> 10                2 -> 5    => normalized 1 -> 1, 2 -> 0.5
+    //   score      1 -> 0.6(1) + 0.4(0.5) = 0.80
+    //              2 -> 0.6(0.5) + 0.4(1) = 0.70
+    const before = rankCandidates(candidates, tally, buildGenreAffinity(watchedSources));
+    expect(before.map((r) => r.id)).toEqual([1, 2]);
+    expect(before[0].score).toBeCloseTo(0.8);
+    expect(before[1].score).toBeCloseTo(0.7);
+
+    // With it: affinity { Psychological: 1, Gag Comedy: -1 }.
+    //   raw genre  1 -> (1 + -1)/2 = 0    2 -> 1    => normalized (max 1) 1 -> 0, 2 -> 1
+    //   MAL unchanged.
+    //   score      1 -> 0.6(1) + 0.4(0)   = 0.60
+    //              2 -> 0.6(0.5) + 0.4(1) = 0.70   => 2 now first
+    const after = rankCandidates(candidates, tally, buildGenreAffinity(watchedSources, dropped, 1.0));
+    expect(after.map((r) => r.id)).toEqual([2, 1]);
+    expect(after.find((r) => r.id === 1)!.score).toBeCloseTo(0.6);
+    expect(after.find((r) => r.id === 2)!.score).toBeCloseTo(0.7);
+  });
+
+  test('a condemned candidate cannot swamp the MAL half of the score', () => {
+    // Why normalize() floors at -1. The profile here is deliberately lopsided:
+    //   Mixed: positive 1, rate 19/20 = 0.95 -> 0.05   (watched once, dropped nineteen times)
+    //   Pure:  positive 0, rate 1/1   = 1    -> -1     (only ever dropped)
+    // So the best genre score in the pool is 0.05 while the worst is -1, and raw normalization
+    // would divide -1 by 0.05 to get -20. At 0.4 weight that is -8, which buries a MAL score that
+    // can only ever reach 0.6 - the exact scale mismatch normalize exists to prevent.
+    const nineteen = Array.from({ length: 19 }, () => ({ genres: ['Mixed'] }));
+    const affinity = buildGenreAffinity(
+      [{ liked: false, genres: ['Mixed'] }],
+      [...nineteen, { genres: ['Pure'] }],
+      1.0,
+    );
+    expect(affinity.get('Mixed')).toBeCloseTo(0.05);
+    expect(affinity.get('Pure')).toBeCloseTo(-1);
+
+    const candidates: RecommendationCandidate[] = [
+      { id: 1, genres: ['Mixed'], relatedIds: [] },
+      { id: 2, genres: ['Pure'], relatedIds: [] },
+    ];
+    //   normalized genre 1 -> 0.05/0.05 = 1     2 -> max(-1, -20) = -1
+    //   normalized MAL   1 -> 1/100 = 0.01      2 -> 1
+    //   score 1 -> 0.6(0.01) + 0.4(1)  = 0.406
+    //         2 -> 0.6(1)    + 0.4(-1) = 0.200  (still above zero, so it survives the filter)
+    const ranked = rankCandidates(
+      candidates,
+      new Map([
+        [1, 1],
+        [2, 100],
+      ]),
+      affinity,
+    );
+    expect(ranked.map((r) => r.id)).toEqual([1, 2]);
+    expect(ranked[0].score).toBeCloseTo(0.406);
+    expect(ranked[1].score).toBeCloseTo(0.2);
+  });
+});

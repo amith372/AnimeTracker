@@ -219,29 +219,93 @@ export interface GenreProfileSource {
   genres: string[];
 }
 
+/** A series the user dropped. No `liked` field - CLAUDE.md only lets a *watched* series be liked. */
+export interface DroppedProfileSource {
+  genres: string[];
+}
+
+// How hard a tag the user reliably bails on counts against a candidate.
+//
+// 1.0 is symmetric - a tag dropped every time it appeared is exactly as repellent (-1) as a tag
+// watched every time is attractive (+1) - but the real reason for it is that 1.0 is the largest
+// value preserving a guarantee worth having: a tag the user has watched *anything* in can be
+// neutralised but never inverted. The proof is short. A watched tag's positive term is at least 1,
+// and its drop rate is strictly below 1 whenever any carrying series was watched, so the result
+// stays strictly above `1 - droppedWeight`; at 1.0 that floor is 0. Above 1.0 a tag the user
+// mostly finishes can be driven negative, which is precisely the `Shounen` wipe-out the PRD's
+// step-0 finding warns about. So treat this as a ceiling, not just a starting value: if drops feel
+// over-weighted against the real library, tune it down, never up.
+const DROPPED_GENRE_WEIGHT = 1.0;
+
 /**
- * Builds a genre -> weight profile from the user's watched series, `liked` ones counting for more.
+ * Builds a genre -> weight profile from the user's watched series, minus what their *dropped*
+ * series say they bail on. `liked` watched series count for more.
  *
- * Each genre's raw weight is divided by how many of the user's series carry it — a
- * TF-IDF-style correction. Without it the profile mostly measures "is this anime mainstream":
- * nearly everything is tagged Action or Comedy, so those accumulate the largest weights and end up
- * dominating, which is the opposite of useful. Dividing through means a rare match (Psychological,
- * Historical) says more about taste than yet another Action hit.
+ * The positive half is a genre's accumulated weight divided by how many of the user's series carry
+ * it, so the value is the mean weight per carrying series. Note what that does and doesn't do: it
+ * cancels frequency rather than correcting for it, so in a library with no `liked` series every
+ * watched tag lands at exactly 1.0, and all the profile then distinguishes is which tags appear in
+ * the library at all (raised where the user liked the series carrying them). That is blunter than
+ * it looks and worth revisiting, but changing it alters the positive half's behaviour and is not
+ * this function's business today.
+ *
+ * The negative half is a drop *rate*, not a drop count: a tag's penalty is the share of the series
+ * carrying it that the user dropped, `dropped / (watched + dropped)`. A count would be frequency-
+ * blind in the way that actually hurts - dropping 1 Isekai out of 21 would read exactly like
+ * dropping 20 out of 21, since both are just "Isekai appears among your dropped series". The rate
+ * says the useful thing instead: how often, when you meet this kind of show, do you bail on it.
+ *
+ * That shape is also what protects the broad tags. MAL's `genres` is one flat list mixing Genres,
+ * Themes and Demographics (settled 2026-10-11 - see the PRD), so `Shounen` and `Award Winning` sit
+ * in it carrying almost no taste at all, and a careless negative profile would wipe out `Shounen`
+ * for a user who drops the occasional shonen among the fifty they finish. A rate cannot: a tag you
+ * mostly watch has a low drop rate by construction, so it stays strongly positive, while a tag you
+ * *only* ever dropped takes the full penalty.
+ *
+ * Per-tag values run from `-droppedWeight`, for a tag the user has *only* ever dropped, up to
+ * +LIKED_WEIGHT, for one where every carrying series was liked and none dropped. In between, any
+ * tag with at least one watched series stays strictly above `1 - droppedWeight` - at the default
+ * weight, strictly positive - so a drop can neutralise such a tag but never invert it. See
+ * DROPPED_GENRE_WEIGHT for why that bound is the reason the default is what it is. A tag the user
+ * has never met at all is absent from the map, which scoreGenreOverlap reads as 0.
+ *
+ * `droppedWeight` is a parameter for the same reason diversifyRanked's lambda is: so a test can
+ * state the value its expected numbers were derived from. Production always uses the default.
  */
-export function buildGenreAffinity(sources: GenreProfileSource[]): Map<string, number> {
+export function buildGenreAffinity(
+  sources: GenreProfileSource[],
+  dropped: DroppedProfileSource[] = [],
+  droppedWeight: number = DROPPED_GENRE_WEIGHT,
+): Map<string, number> {
   const weighted = new Map<string, number>();
-  const seriesCount = new Map<string, number>();
+  const watchedCount = new Map<string, number>();
   for (const source of sources) {
     const weight = source.liked ? LIKED_WEIGHT : DEFAULT_WEIGHT;
     for (const genre of source.genres) {
       weighted.set(genre, (weighted.get(genre) ?? 0) + weight);
-      seriesCount.set(genre, (seriesCount.get(genre) ?? 0) + 1);
+      watchedCount.set(genre, (watchedCount.get(genre) ?? 0) + 1);
+    }
+  }
+
+  const droppedCount = new Map<string, number>();
+  for (const source of dropped) {
+    // Deduped per series, unlike the positive loop above, which doesn't need it: there `weighted`
+    // and `watchedCount` are incremented together, so a repeated tag cancels in the division. A
+    // repeat here would inflate the numerator of a rate whose denominator counts series, pushing
+    // the penalty past its intended ceiling. MAL doesn't repeat a tag, but the two halves fail
+    // differently and only one of them fails safely.
+    for (const genre of new Set(source.genres)) {
+      droppedCount.set(genre, (droppedCount.get(genre) ?? 0) + 1);
     }
   }
 
   const affinity = new Map<string, number>();
-  for (const [genre, total] of weighted) {
-    affinity.set(genre, total / (seriesCount.get(genre) ?? 1));
+  for (const genre of new Set([...weighted.keys(), ...droppedCount.keys()])) {
+    const watched = watchedCount.get(genre) ?? 0;
+    const bailed = droppedCount.get(genre) ?? 0;
+    const positive = watched === 0 ? 0 : (weighted.get(genre) ?? 0) / watched;
+    const dropRate = bailed === 0 ? 0 : bailed / (watched + bailed);
+    affinity.set(genre, positive - droppedWeight * dropRate);
   }
   return affinity;
 }
@@ -285,8 +349,17 @@ const GENRE_WEIGHT = 0.4;
 /** Scales values to 0..1 against the largest one present, so a max-scoring candidate gets 1. */
 function normalize(values: Map<number, number>): Map<number, number> {
   const max = Math.max(0, ...values.values());
+  // Every candidate at or below zero: there is no positive reference to scale against, so this half
+  // contributes nothing and the other one decides. Only reachable on the genre side, and only for a
+  // user whose dropped series condemn every candidate in the pool.
   if (max === 0) return new Map(Array.from(values.keys(), (id) => [id, 0]));
-  return new Map(Array.from(values, ([id, value]) => [id, value / max]));
+  // Floored at -1 because a genre score can now be negative (see buildGenreAffinity) while `max` is
+  // whatever the best candidate managed, and those two are independent. A pool whose best candidate
+  // scores 0.05 and whose worst scores -1 would normalize the worst to -20, and 0.4 x -20 would
+  // swamp the MAL half entirely - destroying the scale-matching this function exists to provide.
+  // The floor keeps the output in -1..1, so either half can move a combined score by at most its
+  // own weight.
+  return new Map(Array.from(values, ([id, value]) => [id, Math.max(-1, value / max)]));
 }
 
 /**
@@ -315,6 +388,9 @@ export function rankCandidates(
       score:
         MAL_TALLY_WEIGHT * (normalizedMal.get(c.id) ?? 0) + GENRE_WEIGHT * (normalizedGenre.get(c.id) ?? 0),
     }))
+    // Drops no-signal candidates and, now that genre affinity can go negative, net-negative ones
+    // too: a candidate built from tags the user demonstrably bails on shouldn't be shown just
+    // because MAL's tally likes it. That is the whole point of learning from dropped series.
     .filter((r) => r.score > 0)
     .sort((a, b) => b.score - a.score);
 }

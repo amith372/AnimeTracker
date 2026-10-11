@@ -34,7 +34,7 @@ never read off what the implementation returned.
 
 ## Current state, 2026-10-11
 
-Steps 0 and 1 are done; step 2 is built and awaiting its check. `prd/1-recommendation-variety.md` is signed off in shape; the one
+Steps 0 and 1 are done; steps 2 and 3 are built and awaiting their checks. `prd/1-recommendation-variety.md` is signed off in shape; the one
 open question inside it (step 5½, guests and the consent gate) blocks only that step.
 
 Last shipped before this plan existed: Phase 12's direct-Postgres cutover and web build
@@ -48,6 +48,15 @@ Carried forward from finished work. None of these is a defect, and none is sched
   Fine for the library today, but it means an ONA recommendation silently produces no row — which
   will quietly lower step 7's yield. Its own piece of work if it ever matters.
 - **Phase 13's list-performance cleanup** is still open in `PLAN.md` and untouched by this plan.
+- **`buildGenreAffinity`'s positive half cancels tag frequency rather than correcting for it**
+  (found while building step 3). Dividing a tag's accumulated weight by how many of *the user's*
+  series carry it yields the mean weight per carrying series, so in a library with no `liked`
+  series every watched tag lands at exactly 1.0 and the profile only distinguishes which tags
+  appear at all. Its comment claims a TF-IDF-style correction, which needs the tag's frequency in
+  the *corpus*, not in the user's own list. Not a defect — "which tags appear in your library,
+  weighted by what you liked" is a real if blunt signal, and step 3's negative half is built to be
+  frequency-sensitive on its own terms. Fixing it is a behaviour change to the positive half and
+  wants its own step, probably folded into step 5 when the other taste axes land.
 - **Three Supabase-side items from Phase 12 may still be outstanding** — the
   `20260812000000_direct_postgres.sql` migration pushed, anonymous sign-ins enabled, and the Render
   static site connected. Confirm before step 5½, which adds a migration of its own.
@@ -69,10 +78,13 @@ the check below passes.
 **Check:** a show you'd expect from a less popular watched series appears. Failure: the list is
 still drawn from your two or three biggest shows.
 
-### Step 3 — Learn from dropped series
-Negative genre profile from `DROPPED` series, subtracted in scoring. Weight decided against the real
-library and stated in a comment. `genres` is the deep ~70–80 flat tag list (settled in the PRD), so
-the per-tag divisor is what has to stop a broad tag like `Shounen` being wiped out.
+### Step 3 — Learn from dropped series · **built 2026-10-11, awaiting the check**
+`buildGenreAffinity` now subtracts a drop *rate* per tag — `dropped / (watched + dropped)` ×
+`DROPPED_GENRE_WEIGHT` — rather than a drop count, which would read 1 dropped Isekai out of 21 the
+same as 20 out of 21. The weight is 1.0 because that is the largest value under which a tag with
+any watched series can be neutralised but never inverted, which is what makes the `Shounen`
+wipe-out structurally impossible rather than merely unlikely. `normalize` now floors at −1 so a
+condemned candidate can't swamp the MAL half. Compress this to one line once the check passes.
 **Check:** something you dropped the like of stops appearing. Failure: no change, or a genre you do
 still like gets wiped out.
 
