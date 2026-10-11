@@ -1,5 +1,6 @@
 import {
   buildGenreAffinity,
+  diversifyRanked,
   getCatchUpEntries,
   isExcludedCandidate,
   rankCandidates,
@@ -369,5 +370,101 @@ describe('rankCandidates', () => {
     const ranked = rankCandidates(candidates, new Map([[1, 9_999]]), new Map([['Action', 9_999]]));
     expect(ranked[0].score).toBeGreaterThan(0);
     expect(ranked[0].score).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('diversifyRanked', () => {
+  // One fixture, used by three lambdas. Every expected order below is worked out on paper from
+  // these numbers and the MMR rule `score - lambda x maxJaccard(to what's already picked)`; none
+  // of them is read off what the implementation returned.
+  //
+  // Jaccard similarities within the fixture:
+  //   a~b = 2/2 = 1      (identical sets)
+  //   a~c = 1/3          (share Action; union Action/Shounen/Comedy)
+  //   a~d = 0            (nothing shared)
+  //   a~e = 2/3          (share Action+Shounen; union of three)
+  //   c~e = 2/3          (share Action+Comedy; union of three)
+  //   b~c = 1/3, b~e = 2/3, d~anything = 0
+  const CANDIDATES = [
+    { id: 1, score: 1.0, genres: ['Action', 'Shounen'] },
+    { id: 2, score: 0.8, genres: ['Action', 'Shounen'] },
+    { id: 3, score: 0.7, genres: ['Action', 'Comedy'] },
+    { id: 4, score: 0.55, genres: ['Romance', 'Slice of Life'] },
+    { id: 5, score: 0.5, genres: ['Action', 'Shounen', 'Comedy'] },
+  ];
+
+  test('lambda 0 leaves pure score order untouched', () => {
+    // With no penalty the rule collapses to "highest score next", which is the input order.
+    expect(diversifyRanked(CANDIDATES, 0).map((c) => c.id)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  test('a moderate lambda promotes a different-genre candidate over a near-duplicate', () => {
+    // Derived by hand at lambda 0.3. Pick 1 outright (top score).
+    //   slot 2: 2 -> 0.8-0.3(1)=0.50 | 3 -> 0.7-0.3(1/3)=0.60 | 4 -> 0.55-0=0.55
+    //           5 -> 0.5-0.3(2/3)=0.30                                   => 3 (0.60)
+    //   slot 3: 2 -> 0.50 | 4 -> 0.55 | 5 -> 0.5-0.3(2/3)=0.30           => 4 (0.55)
+    //   slot 4: 2 -> 0.50 | 5 -> 0.30                                    => 2
+    //   slot 5: 5
+    expect(diversifyRanked(CANDIDATES, 0.3).map((c) => c.id)).toEqual([1, 3, 4, 2, 5]);
+  });
+
+  test('a strong lambda pushes the most distinct candidate straight to second place', () => {
+    // Same fixture at lambda 1.0.
+    //   slot 2: 2 -> 0.8-1=-0.20 | 3 -> 0.7-1/3=0.3667 | 4 -> 0.55 | 5 -> 0.5-2/3=-0.1667 => 4
+    //   slot 3: 2 -> -0.20 | 3 -> 0.3667 | 5 -> -0.1667                                    => 3
+    //   slot 4: 2 -> -0.20 | 5 -> -0.1667                                                  => 5
+    //   slot 5: 2
+    expect(diversifyRanked(CANDIDATES, 1.0).map((c) => c.id)).toEqual([1, 4, 3, 5, 2]);
+  });
+
+  test('nothing is dropped - the whole list comes back, only re-ordered', () => {
+    // The caller slices afterwards; diversification must not silently shorten the list.
+    const out = diversifyRanked(CANDIDATES, 0.3);
+    expect(out).toHaveLength(CANDIDATES.length);
+    expect(new Set(out.map((c) => c.id))).toEqual(new Set([1, 2, 3, 4, 5]));
+  });
+
+  test('a candidate with no genres is never penalized', () => {
+    // MAL does return empty genre arrays; "we know nothing about this one" must not read as
+    // "this is a duplicate of everything".
+    //   slot 2: 2 -> 0.9-0.3(1)=0.60 | 3 -> 0.8-0.3(0)=0.80 => 3
+    const out = diversifyRanked(
+      [
+        { id: 1, score: 1.0, genres: ['Action'] },
+        { id: 2, score: 0.9, genres: ['Action'] },
+        { id: 3, score: 0.8, genres: [] },
+      ],
+      0.3,
+    );
+    expect(out.map((c) => c.id)).toEqual([1, 3, 2]);
+  });
+
+  test('identical candidates keep their input order', () => {
+    // Every slot after the first is a dead tie (0.5-0.3 = 0.2 for both), and a tie must fall to
+    // the earlier candidate so the list is stable rather than reshuffling run to run.
+    const out = diversifyRanked(
+      [
+        { id: 1, score: 0.5, genres: ['X'] },
+        { id: 2, score: 0.5, genres: ['X'] },
+        { id: 3, score: 0.5, genres: ['X'] },
+      ],
+      0.3,
+    );
+    expect(out.map((c) => c.id)).toEqual([1, 2, 3]);
+  });
+
+  test('a list too short to diversify comes back as-is', () => {
+    const two = [
+      { id: 1, score: 0.5, genres: ['X'] },
+      { id: 2, score: 0.4, genres: ['X'] },
+    ];
+    expect(diversifyRanked(two, 0.3).map((c) => c.id)).toEqual([1, 2]);
+    expect(diversifyRanked([], 0.3)).toEqual([]);
+  });
+
+  test('the production default diversifies rather than passing the list through', () => {
+    // Guards the wiring, not a specific lambda: whatever DIVERSITY_LAMBDA is, it must be non-zero,
+    // or every test above is testing a function the app never really applies.
+    expect(diversifyRanked(CANDIDATES).map((c) => c.id)).not.toEqual([1, 2, 3, 4, 5]);
   });
 });

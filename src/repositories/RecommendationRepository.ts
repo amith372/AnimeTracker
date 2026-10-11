@@ -9,6 +9,7 @@ import { type AnimeDetailDto } from '@/api/malDataApi';
 import { getAnimeDetailCached, getAnimeRecommendationsCached } from './apiCache';
 import {
   buildGenreAffinity,
+  diversifyRanked,
   getCatchUpEntries,
   isExcludedCandidate,
   isRecommendationSource,
@@ -173,14 +174,27 @@ export async function fetchRecommendations(
       };
     });
   const survivors = candidates.filter((c) => !isExcludedCandidate(c, trackedMalIds, droppedMalIds));
-  const ranked = rankCandidates(survivors, malTally, genreAffinity).slice(0, MAX_RECOMMENDATIONS);
+  const genresById = new Map(survivors.map((c) => [c.id, c.genres]));
+  // Diversify *before* the slice, not after: MMR's whole job is to decide which candidates make
+  // the cut, so running it on an already-trimmed list would only reshuffle sixty near-duplicates
+  // instead of pulling a different one up into them.
+  const ranked = diversifyRanked(
+    rankCandidates(survivors, malTally, genreAffinity).map((r) => ({
+      ...r,
+      genres: genresById.get(r.id) ?? [],
+    })),
+  ).slice(0, MAX_RECOMMENDATIONS);
 
   if (ranked.length === 0) {
     onProgress({ kind: 'READY', series: [] });
     return;
   }
 
-  const scoreById = new Map(ranked.map((r) => [r.id, r.score]));
+  // The ordering key the final sort uses, since grouping below doesn't preserve order. It is
+  // *position* in the diversified list (earlier = larger), not the raw score: diversifyRanked
+  // deliberately promotes a lower-scoring candidate above a higher-scoring near-duplicate, and
+  // re-sorting by score afterwards would quietly undo every bit of that.
+  const orderById = new Map(ranked.map((r, index) => [r.id, ranked.length - index]));
   const nodesToGroup = ranked.map((r) => ({ id: r.id, title: detailById.get(r.id)!.title }));
 
   let grouped: ReconcileSeries[] | null = null;
@@ -222,11 +236,13 @@ export async function fetchRecommendations(
   );
 
   // groupIntoSeries doesn't preserve rank order (it groups by connected component), so re-sort
-  // the grouped rows by the best score among their constituent MAL ids.
-  const series = recommendable.sort((a, b) => bestScore(b, scoreById) - bestScore(a, scoreById));
+  // the grouped rows by the best ordering key among their constituent MAL ids.
+  const series = recommendable.sort((a, b) => bestOrderKey(b, orderById) - bestOrderKey(a, orderById));
   onProgress({ kind: 'READY', series });
 }
 
-function bestScore(series: ReconcileSeries, scoreById: Map<number, number>): number {
-  return Math.max(0, ...series.entries.map((e) => scoreById.get(e.malId) ?? 0));
+/** The best (largest) ordering key among a grouped series' entries — grouping collapses several
+ * ranked candidates into one row, and the row belongs where its strongest member ranked. */
+function bestOrderKey(series: ReconcileSeries, orderById: Map<number, number>): number {
+  return Math.max(0, ...series.entries.map((e) => orderById.get(e.malId) ?? 0));
 }

@@ -249,3 +249,102 @@ export function rankCandidates(
     .filter((r) => r.score > 0)
     .sort((a, b) => b.score - a.score);
 }
+
+// How hard diversification pushes back against a one-note list. Each slot's pick is scored
+// `score − lambda × maxSimilarity(to what's already picked)`, so lambda is denominated in the same
+// 0..1 units rankCandidates emits: at 0.3, a candidate whose genres are *identical* to something
+// already picked gives up 0.3 of its score, while a genuinely different one gives up nothing.
+//
+// 0.3 rather than something larger because the scores coming out of rankCandidates are bunched —
+// the gap between rank 1 and rank 20 is often less than 0.2 — so a lambda near 1 would reorder
+// almost entirely on novelty and start promoting candidates the user has no signal for at all.
+// That is the failure mode the step's check watches for ("top entries now obviously worse fits").
+const DIVERSITY_LAMBDA = 0.3;
+
+/** A ranked candidate plus the genres diversification judges similarity on. */
+export interface DiversifiableCandidate {
+  id: number;
+  score: number;
+  genres: string[];
+}
+
+/**
+ * Genre overlap between two candidates as a Jaccard index — shared genres over total distinct
+ * genres, 0 (nothing in common) to 1 (identical sets).
+ *
+ * Jaccard rather than a raw count of shared genres because the count rewards breadth: two 8-genre
+ * shows sharing 3 tags would look more alike than two 2-genre shows sharing both, which is
+ * backwards. A candidate with no genres at all scores 0 against everything rather than NaN — MAL
+ * does return empty genre arrays, and the safe reading of "we know nothing about this one" is
+ * "don't penalize it", matching how isUnreleased and the episode filter both fail toward showing
+ * things rather than hiding them.
+ */
+function genreSimilarity(a: string[], b: string[]): number {
+  if (a.length === 0 || b.length === 0) return 0;
+  const setA = new Set(a);
+  const setB = new Set(b);
+  let shared = 0;
+  for (const genre of setA) if (setB.has(genre)) shared++;
+  const union = setA.size + setB.size - shared;
+  return union === 0 ? 0 : shared / union;
+}
+
+/**
+ * Re-orders an already-ranked list so the top of it isn't one genre cluster — greedy MMR (maximal
+ * marginal relevance).
+ *
+ * Why this exists: rankCandidates is pure score order, and score is "how well does this one fit
+ * the profile". Each individual answer is right and the list as a whole is useless — a library
+ * with three shonen in it scores sixty shonen highest, so the user scrolls sixty variations of
+ * what they've already watched. Diversity is a property of the *list*, which no per-candidate
+ * score can express, so it has to be imposed at selection time.
+ *
+ * The algorithm: take the highest scorer outright, then fill each remaining slot with whichever
+ * candidate maximizes `score − lambda × maxSimilarity(to everything already picked)`. Similarity
+ * is against the *most* similar pick, not the average — the question being asked is "is this
+ * basically a repeat of something up there already", and one near-duplicate is enough for it to be.
+ *
+ * Nothing is dropped; the whole list comes back re-ordered, so the caller's own slice decides how
+ * much of it is shown. Ties fall to the higher raw score, which is the input order, making this
+ * stable: identical candidates keep their relative positions instead of shuffling run to run.
+ *
+ * O(n²) in the candidate count, which is bounded by MAX_CANDIDATE_DETAILS (80) — a few thousand
+ * set comparisons, nowhere near worth optimizing.
+ *
+ * `lambda` is a parameter rather than only a constant so a test can state the value its expected
+ * order was derived from on paper; production always uses the default.
+ */
+export function diversifyRanked<T extends DiversifiableCandidate>(
+  ranked: T[],
+  lambda: number = DIVERSITY_LAMBDA,
+): T[] {
+  if (ranked.length <= 2) return [...ranked];
+
+  const remaining = [...ranked];
+  // The input is already score-sorted, so the first element is the outright best fit and is taken
+  // as-is: MMR has nothing to be diverse against yet, and the top pick should be the one the
+  // profile actually likes most.
+  const picked: T[] = [remaining.shift()!];
+
+  while (remaining.length > 0) {
+    let bestIndex = 0;
+    let bestValue = -Infinity;
+    for (let i = 0; i < remaining.length; i++) {
+      const candidate = remaining[i];
+      let maxSimilarity = 0;
+      for (const chosen of picked) {
+        const similarity = genreSimilarity(candidate.genres, chosen.genres);
+        if (similarity > maxSimilarity) maxSimilarity = similarity;
+      }
+      const value = candidate.score - lambda * maxSimilarity;
+      // Strictly greater, so a tie keeps the earlier (higher-scoring) candidate — see "stable" above.
+      if (value > bestValue) {
+        bestValue = value;
+        bestIndex = i;
+      }
+    }
+    picked.push(remaining.splice(bestIndex, 1)[0]);
+  }
+
+  return picked;
+}
