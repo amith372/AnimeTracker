@@ -1,14 +1,17 @@
 // Recommendations (Phase 6) — CLAUDE.md §7. Two independent halves feed one ranked candidate
 // list: a MAL-based tally (how often each candidate shows up across every non-dropped watched
-// series' own `recommendations`) and a genre-affinity score (how well a candidate's genres match
-// a profile built from those same series). `liked` series count for more in both halves. The
+// series' own `recommendations`) and a taste profile built from those same series — genre
+// affinity, plus studio, source-material and era affinity since plan 1 step 5. `liked` series
+// count for more in every half, and dropped series count against the genre one. The
 // "Catch up" list is unrelated and purely local — no MAL calls, no ranking, just unwatched TV
 // seasons inside series that are already Watched/Watched X/Y.
 import { mapWithConcurrency } from '@/api/concurrency';
 import { type AnimeDetailDto } from '@/api/malDataApi';
 import { getAnimeDetailCached, getAnimeRecommendationsCached } from './apiCache';
 import {
+  buildEraCentre,
   buildGenreAffinity,
+  buildTagAffinity,
   diversifyRanked,
   getCatchUpEntries,
   isExcludedCandidate,
@@ -94,21 +97,32 @@ export async function fetchRecommendations(
   onProgress({ kind: 'FETCHING_SOURCES', completed: 0, total: sourceSeries.length });
   let sourcesCompleted = 0;
   const recommendedBySeries = new Map<string, RecommendedRef[]>();
+  // The studio/source/era half of the taste profile. The `series` table stores `genres` and no
+  // other metadata, so unlike genre these have to come from MAL — one cached `anime/{rootMalId}`
+  // detail call per watched series, made here in the stage that was already fetching per source
+  // series rather than as a stage of its own. Cheap on a warm cache (mal-import writes the very
+  // same `detail:` keys for every entry in the user's list), and the whole cost of a cold one is
+  // this stage going from one call per source series to two.
+  const detailBySeries = new Map<string, AnimeDetailDto>();
   // Best-effort here too — a series whose recommendations can't be fetched just contributes
   // nothing to the tally/profile, rather than failing every other series' contribution too.
+  // Both calls are independent and either can fail alone, hence allSettled rather than one try:
+  // a series whose detail is missing should still contribute to the MAL tally, and vice versa.
   await mapWithConcurrency(sourceSeries, SOURCE_FETCH_CONCURRENCY, async (series) => {
-    try {
-      const result = await getAnimeRecommendationsCached(series.rootMalId, { bypass: opts?.bypassCache });
+    const [recs, detail] = await Promise.allSettled([
+      getAnimeRecommendationsCached(series.rootMalId, { bypass: opts?.bypassCache }),
+      getAnimeDetailCached(series.rootMalId, { bypass: opts?.bypassCache }),
+    ]);
+    if (recs.status === 'fulfilled') {
       recommendedBySeries.set(
         series.id,
-        (result.recommendations ?? []).map((r) => ({
+        (recs.value.recommendations ?? []).map((r) => ({
           id: r.node.id,
           numRecommendations: r.num_recommendations ?? 0,
         })),
       );
-    } catch {
-      // Dropped — see comment above.
     }
+    if (detail.status === 'fulfilled') detailBySeries.set(series.id, detail.value);
     sourcesCompleted++;
     onProgress({ kind: 'FETCHING_SOURCES', completed: sourcesCompleted, total: sourceSeries.length });
   });
@@ -124,6 +138,20 @@ export async function fetchRecommendations(
   const genreAffinity = buildGenreAffinity(
     sourceSeries.map((s) => ({ liked: s.liked, genres: s.genres })),
     droppedSeries.map((s) => ({ genres: s.genres })),
+  );
+  // The axes added beyond genre, all built from the detail fetched above and all positive-only —
+  // see buildTagAffinity for why the drop signal stays genre-only. A series whose detail call
+  // failed simply contributes nothing to these, the same way it already contributes nothing to the
+  // tally.
+  const tasteSources = sourceSeries.map((s) => ({ liked: s.liked, detail: detailBySeries.get(s.id) }));
+  const studioAffinity = buildTagAffinity(
+    tasteSources.map((s) => ({ liked: s.liked, tags: (s.detail?.studios ?? []).map((st) => st.name) })),
+  );
+  const sourceAffinity = buildTagAffinity(
+    tasteSources.map((s) => ({ liked: s.liked, tags: s.detail?.source ? [s.detail.source] : [] })),
+  );
+  const eraCentre = buildEraCentre(
+    tasteSources.map((s) => ({ liked: s.liked, startYear: s.detail?.start_season?.year ?? null })),
   );
 
   const trackedMalIds = new Set(allSeries.flatMap((s) => s.entries.map((e) => e.malId)));
@@ -177,6 +205,9 @@ export async function fetchRecommendations(
         id,
         genres: (detail.genres ?? []).map((g) => g.name),
         relatedIds: (detail.related_anime ?? []).map((r) => r.node.id),
+        studios: (detail.studios ?? []).map((s) => s.name),
+        source: detail.source ?? null,
+        startYear: detail.start_season?.year ?? null,
       };
     });
   const survivors = candidates.filter((c) => !isExcludedCandidate(c, trackedMalIds, droppedMalIds));
@@ -185,7 +216,11 @@ export async function fetchRecommendations(
   // the cut, so running it on an already-trimmed list would only reshuffle sixty near-duplicates
   // instead of pulling a different one up into them.
   const ranked = diversifyRanked(
-    rankCandidates(survivors, malTally, genreAffinity).map((r) => ({
+    rankCandidates(survivors, malTally, genreAffinity, {
+      studios: studioAffinity,
+      sources: sourceAffinity,
+      eraCentre,
+    }).map((r) => ({
       ...r,
       genres: genresById.get(r.id) ?? [],
     })),

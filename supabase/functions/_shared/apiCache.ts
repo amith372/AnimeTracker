@@ -3,7 +3,7 @@
 // the one place that makes the most MAL calls by far: mal-import, which fetches one `anime/{id}`
 // per list entry plus the whole related-anime closure on top.
 //
-// Deliberately uses the SAME key space and TTL as the client (`detail:v4:{id}`), because
+// Deliberately uses the SAME key space and TTL as the client (`detail:v5:{id}`), because
 // mal-import and mal-anime-detail request byte-identical `fields` — so an import warms the cache
 // for Discover/Recommendations/preview and vice versa. If those two field lists ever diverge, the
 // version segment here must diverge too, or one side reads the other's rows with fields missing
@@ -15,7 +15,7 @@
 import { supabaseAdmin } from './supabaseAdmin.ts';
 
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days — must match src/repositories/apiCache.ts
-const DETAIL_CACHE_VERSION = 'v4'; // must match the client's DETAIL_CACHE_VERSION
+const DETAIL_CACHE_VERSION = 'v5'; // must match the client's DETAIL_CACHE_VERSION
 // Keeps the `key=in.(...)` filter from growing an unbounded URL; PostgREST takes these as a query
 // string, so a single select with 500+ ids risks a 414 rather than just being slow.
 const SELECT_CHUNK = 200;
@@ -24,7 +24,7 @@ function detailCacheKey(id: number): string {
   return `detail:${DETAIL_CACHE_VERSION}:${id}`;
 }
 
-/** Parses the numeric id back out of a `detail:v4:123` key, so a batched select can be re-keyed. */
+/** Parses the numeric id back out of a `detail:v5:123` key, so a batched select can be re-keyed. */
 function idFromDetailCacheKey(key: string): number | null {
   const id = Number(key.slice(key.lastIndexOf(':') + 1));
   return Number.isFinite(id) ? id : null;

@@ -7,7 +7,7 @@ import { malGetPublic } from '../_shared/malProxy.ts';
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { describeError } from '../_shared/errors.ts';
 
-const DETAIL_FIELDS = 'related_anime,media_type,num_episodes,genres,main_picture,title,alternative_titles,status,start_season,mean,synopsis';
+const DETAIL_FIELDS = 'related_anime,media_type,num_episodes,genres,main_picture,title,alternative_titles,status,start_season,mean,synopsis,studios,source,num_list_users';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return handleOptions();

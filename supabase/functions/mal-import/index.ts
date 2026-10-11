@@ -53,7 +53,7 @@ async function mapWithConcurrency<T, R>(items: T[], concurrency: number, fn: (it
 
 // Must stay byte-identical to mal-anime-detail's DETAIL_FIELDS — that's what lets both share the
 // same api_cache rows (see _shared/apiCache.ts).
-const DETAIL_FIELDS = 'related_anime,media_type,num_episodes,genres,main_picture,title,alternative_titles,status,start_season,mean,synopsis';
+const DETAIL_FIELDS = 'related_anime,media_type,num_episodes,genres,main_picture,title,alternative_titles,status,start_season,mean,synopsis,studios,source,num_list_users';
 
 /** The user's whole MAL list, following `paging.next` to the end. Needs their own bearer token. */
 async function fetchWholeList(accessToken: string): Promise<AnimeListEntryDto[]> {

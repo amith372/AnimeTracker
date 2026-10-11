@@ -47,9 +47,14 @@ async function cached<T>(key: string, fetcher: () => Promise<T>, opts?: { bypass
 // cached under the old key is still valid JSON, so nothing would refetch it and the new fields
 // would silently read as undefined for up to a full TTL. v2 added `alternative_titles` (English
 // titles); v3 added `mean` (MAL's rating, shown on Recommendations cards); v4 added `synopsis`
-// (the not-yet-tracked-show preview screen's info popup). Stale rows from an older version simply
-// age out and get pruned by the migration's daily cron job.
-const DETAIL_CACHE_VERSION = 'v4';
+// (the not-yet-tracked-show preview screen's info popup); v5 added `studios`, `source` and
+// `num_list_users` (the taste axes beyond genre, and the obscurity signal). Stale rows from an
+// older version simply age out and get pruned by the migration's daily cron job.
+//
+// `num_list_users` has no reader yet — it is step 7's obscurity ceiling and the PRD's success
+// criterion 8. It is requested now anyway, because the alternative is bumping the version a second
+// time later and throwing away a warm 30-day cache twice for one feature.
+const DETAIL_CACHE_VERSION = 'v5';
 
 /** Cache-first `GET /anime/{id}` — used by Import, Discover and Recommendations. */
 export function getAnimeDetailCached(id: number, opts?: { bypass?: boolean }): Promise<AnimeDetailDto> {

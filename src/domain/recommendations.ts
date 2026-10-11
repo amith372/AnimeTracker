@@ -314,7 +314,7 @@ const DROPPED_GENRE_WEIGHT = 1.0;
  * tag with at least one watched series stays strictly above `1 - droppedWeight` - at the default
  * weight, strictly positive - so a drop can neutralise such a tag but never invert it. See
  * DROPPED_GENRE_WEIGHT for why that bound is the reason the default is what it is. A tag the user
- * has never met at all is absent from the map, which scoreGenreOverlap reads as 0.
+ * has never met at all is absent from the map, which scoreTagOverlap reads as 0.
  *
  * `droppedWeight` is a parameter for the same reason diversifyRanked's lambda is: so a test can
  * state the value its expected numbers were derived from. Production always uses the default.
@@ -324,13 +324,49 @@ export function buildGenreAffinity(
   dropped: DroppedProfileSource[] = [],
   droppedWeight: number = DROPPED_GENRE_WEIGHT,
 ): Map<string, number> {
+  return buildTagAffinity(
+    sources.map((s) => ({ liked: s.liked, tags: s.genres })),
+    dropped.map((s) => ({ tags: s.genres })),
+    droppedWeight,
+  );
+}
+
+/** One watched series' tags on whichever axis is being profiled. */
+export interface TagProfileSource {
+  liked: boolean;
+  tags: string[];
+}
+
+/** One dropped series' tags. No `liked` — CLAUDE.md only lets a *watched* series be liked. */
+export interface DroppedTagSource {
+  tags: string[];
+}
+
+/**
+ * The affinity maths behind every tag-shaped taste axis — genre, studio and source all run through
+ * this. `buildGenreAffinity` above is the genre-specific entry point and carries the full
+ * explanation of both halves; this is the same algorithm with the axis's name taken out of it.
+ *
+ * Studio and source pass no dropped series, so their profiles are positive-only. That is
+ * deliberate and is what the PRD scopes to this step: the negative half was built for genre
+ * specifically, where a drop *rate* over a deep ~70-tag vocabulary says something real. Over the
+ * handful of studios a library touches, the same rate would be computed from one or two series and
+ * would mostly be noise, and `source` has a vocabulary of about ten values, so a single dropped
+ * light-novel adaptation would condemn a quarter of everything MAL has. Both axes can grow a
+ * negative half later if the positive one proves out; neither gets one on no evidence.
+ */
+export function buildTagAffinity(
+  sources: TagProfileSource[],
+  dropped: DroppedTagSource[] = [],
+  droppedWeight: number = DROPPED_GENRE_WEIGHT,
+): Map<string, number> {
   const weighted = new Map<string, number>();
   const watchedCount = new Map<string, number>();
   for (const source of sources) {
     const weight = source.liked ? LIKED_WEIGHT : DEFAULT_WEIGHT;
-    for (const genre of source.genres) {
-      weighted.set(genre, (weighted.get(genre) ?? 0) + weight);
-      watchedCount.set(genre, (watchedCount.get(genre) ?? 0) + 1);
+    for (const tag of source.tags) {
+      weighted.set(tag, (weighted.get(tag) ?? 0) + weight);
+      watchedCount.set(tag, (watchedCount.get(tag) ?? 0) + 1);
     }
   }
 
@@ -341,31 +377,78 @@ export function buildGenreAffinity(
     // repeat here would inflate the numerator of a rate whose denominator counts series, pushing
     // the penalty past its intended ceiling. MAL doesn't repeat a tag, but the two halves fail
     // differently and only one of them fails safely.
-    for (const genre of new Set(source.genres)) {
-      droppedCount.set(genre, (droppedCount.get(genre) ?? 0) + 1);
+    for (const tag of new Set(source.tags)) {
+      droppedCount.set(tag, (droppedCount.get(tag) ?? 0) + 1);
     }
   }
 
   const affinity = new Map<string, number>();
-  for (const genre of new Set([...weighted.keys(), ...droppedCount.keys()])) {
-    const watched = watchedCount.get(genre) ?? 0;
-    const bailed = droppedCount.get(genre) ?? 0;
-    const positive = watched === 0 ? 0 : (weighted.get(genre) ?? 0) / watched;
+  for (const tag of new Set([...weighted.keys(), ...droppedCount.keys()])) {
+    const watched = watchedCount.get(tag) ?? 0;
+    const bailed = droppedCount.get(tag) ?? 0;
+    const positive = watched === 0 ? 0 : (weighted.get(tag) ?? 0) / watched;
     const dropRate = bailed === 0 ? 0 : bailed / (watched + bailed);
-    affinity.set(genre, positive - droppedWeight * dropRate);
+    affinity.set(tag, positive - droppedWeight * dropRate);
   }
   return affinity;
 }
 
+// How many years apart two anime have to be before they count as entirely different eras. 15 is
+// one viewing generation: a 2010 show and a 2025 show share almost no production conventions, art
+// pipeline or source-material fashion, while a 2010 and a 2018 show plainly do. Linear decay
+// between the two, so nothing is a cliff.
+const ERA_SPAN_YEARS = 15;
+
 /**
- * How well one candidate's genres line up with the user's affinity profile — the *mean* affinity
- * across its genres, not the sum. Summing rewarded candidates simply for carrying more tags: an
- * 8-genre show would out-score a 2-genre show mechanically, regardless of how well either matched.
+ * The user's era centre — the `liked`-weighted mean start year of their watched series, or null
+ * when not one of them has a year on it.
+ *
+ * Era is handled as a number rather than as tags (a decade bucket, say), unlike every other axis
+ * here, for a reason worth stating: era is the one taste axis that is genuinely *ordinal*. 2014 is
+ * nearly 2015 in a way that Madhouse is not nearly Bones, so bucketing throws away precisely the
+ * information that makes the axis useful, and puts a cliff at a boundary (1999/2000) that means
+ * nothing to anybody. A centre plus a distance keeps the ordering and has no boundary at all.
+ *
+ * It also has no negative half, and not only for the reasons given on buildTagAffinity: nobody
+ * drops a show for being from 2013. A drop carries information about its genre and maybe its
+ * studio; its year is incidental.
  */
-export function scoreGenreOverlap(candidateGenres: string[], affinity: Map<string, number>): number {
-  if (candidateGenres.length === 0) return 0;
-  const total = candidateGenres.reduce((sum, genre) => sum + (affinity.get(genre) ?? 0), 0);
-  return total / candidateGenres.length;
+export function buildEraCentre(sources: { liked: boolean; startYear: number | null }[]): number | null {
+  let weightedSum = 0;
+  let totalWeight = 0;
+  for (const source of sources) {
+    if (source.startYear === null) continue;
+    const weight = source.liked ? LIKED_WEIGHT : DEFAULT_WEIGHT;
+    weightedSum += weight * source.startYear;
+    totalWeight += weight;
+  }
+  return totalWeight === 0 ? null : weightedSum / totalWeight;
+}
+
+/**
+ * How close one candidate's year is to the user's era centre: 1 at the centre, falling linearly to
+ * 0 at ERA_SPAN_YEARS away and staying there.
+ *
+ * Returns 0, not a negative number, for anything beyond the span. The other axes can go negative
+ * only where the user has demonstrably bailed on something (see buildTagAffinity); being old is
+ * not evidence of anything, so the worst an era mismatch can do is contribute nothing.
+ */
+export function scoreEraCloseness(startYear: number | null, centre: number | null): number {
+  if (startYear === null || centre === null) return 0;
+  return Math.max(0, 1 - Math.abs(startYear - centre) / ERA_SPAN_YEARS);
+}
+
+/**
+ * How well one candidate's tags line up with the user's affinity profile on that axis — the *mean*
+ * affinity across its tags, not the sum. Summing rewarded candidates simply for carrying more
+ * tags: an 8-genre show would out-score a 2-genre show mechanically, regardless of how well either
+ * matched. Named for tags rather than genres because all three tag-shaped axes score through it —
+ * genres, studios, and `source` as a one-element list.
+ */
+export function scoreTagOverlap(candidateTags: string[], affinity: Map<string, number>): number {
+  if (candidateTags.length === 0) return 0;
+  const total = candidateTags.reduce((sum, tag) => sum + (affinity.get(tag) ?? 0), 0);
+  return total / candidateTags.length;
 }
 
 export interface RecommendationCandidate {
@@ -373,6 +456,12 @@ export interface RecommendationCandidate {
   genres: string[];
   /** Other MAL ids this candidate is directly related to (prequel/sequel/side-story/etc.). */
   relatedIds: number[];
+  /** The three axes added alongside genre. All optional, because MAL genuinely omits each of them
+   * on some anime — and because a candidate built before the v5 detail cache simply hasn't got
+   * them. An absent value makes its axis contribute nothing to this candidate, never a penalty. */
+  studios?: string[];
+  source?: string | null;
+  startYear?: number | null;
 }
 
 /** A candidate is excluded if it's already tracked, or it's a dropped series' relative — CLAUDE.md's
@@ -389,9 +478,33 @@ export function isExcludedCandidate(
 
 // How much each half of CLAUDE.md §7 contributes once both are on a 0..1 scale. The MAL tally is
 // weighted higher because it reflects what real MAL users said about shows this user actually
-// watched, whereas genre affinity is a much blunter instrument.
+// watched, whereas an affinity profile is a much blunter instrument.
+//
+// This split is deliberately *unchanged* by the step that added the studio/source/era axes: that
+// step is about how the taste half is computed, not about how much of the answer taste gets to
+// decide. Re-tuning both at once would leave no way to tell which change moved the list.
 const MAL_TALLY_WEIGHT = 0.6;
-const GENRE_WEIGHT = 0.4;
+const TASTE_WEIGHT = 0.4;
+
+// How the taste half divides between its axes. Relative weights, renormalized over whichever axes
+// there is actually data for (see rankCandidates), so these are ratios rather than shares.
+//
+//   genre  0.55 — the majority, and it stays the majority. It is the only axis with a deep
+//                 vocabulary (~70-80 tags once Themes and Demographics are counted, settled
+//                 2026-10-11) and the only one with a negative half that has been reasoned about
+//                 and tested. This step adds colour; it does not hand over the wheel.
+//   studio 0.20 — a real signal, because a studio is a house style, but a thin one: most studios
+//                 appear once or twice in a library, so a match is as likely to be coincidence as
+//                 taste.
+//   source 0.15 — about ten possible values, so coarse by construction. Worth having as "this
+//                 user finishes manga adaptations and bails on light-novel ones", not as a fine
+//                 discriminator.
+//   era    0.10 — the weakest, and the most incidental: it largely records *when the user started
+//                 watching anime* rather than what they like. It breaks ties and nothing more.
+//
+// Starting values, tuned against nothing yet — PRD open question 4. They are stated here rather
+// than silently inlined precisely so the next person can move them with the reasoning in view.
+const AXIS_WEIGHTS = { genre: 0.55, studio: 0.2, source: 0.15, era: 0.1 } as const;
 
 /** Scales values to 0..1 against the largest one present, so a max-scoring candidate gets 1. */
 function normalize(values: Map<number, number>): Map<number, number> {
@@ -409,32 +522,95 @@ function normalize(values: Map<number, number>): Map<number, number> {
   return new Map(Array.from(values, ([id, value]) => [id, Math.max(-1, value / max)]));
 }
 
+/** The taste axes beyond genre. Genre stays a separate positional argument to rankCandidates
+ * rather than joining this: it is the one axis that is always present, the one with a negative
+ * half, and the only one the ranking had before these three were added. */
+export interface TasteAxes {
+  studios?: Map<string, number>;
+  sources?: Map<string, number>;
+  /** From buildEraCentre — a year, not a map, because era is ordinal rather than categorical. */
+  eraCentre?: number | null;
+}
+
 /**
- * Combines the MAL tally and genre-overlap scores, drops anything with no signal at all, and sorts
+ * Combines the MAL tally with the taste profile, drops anything with no signal at all, and sorts
  * best-first. Candidates should already be exclusion-filtered (see isExcludedCandidate).
  *
- * Both halves are normalized to 0..1 *before* being combined, which matters more than it looks:
- * the two are naturally on wildly different scales (a MAL tally lands in the single digits while
- * raw genre affinity summed into the hundreds), so adding them raw let genre silently swamp the
- * MAL signal almost entirely — the feature was effectively genre-only ranking despite the spec
- * describing two contributions. Normalizing first is what makes the weights below mean anything.
+ * Every half is normalized to 0..1 *before* being combined, which matters more than it looks: they
+ * are naturally on wildly different scales (a MAL tally lands in the single digits while raw genre
+ * affinity summed into the hundreds), so adding them raw let genre silently swamp the MAL signal
+ * almost entirely — the feature was effectively genre-only ranking despite the spec describing two
+ * contributions. Normalizing first is what makes the weights mean anything.
+ *
+ * **An axis with no data to judge on is dropped and its weight redistributed** across the axes
+ * that do have data, rather than contributing a flat zero. The difference is not cosmetic: a
+ * library whose candidates carry no studio credits would otherwise hand a fifth of the taste half
+ * to an axis that says nothing about anybody, quietly shrinking the genre signal for no reason.
+ * The redistribution is also what makes this change inert where it has no input — before the v5
+ * detail cache lands, `studios`/`source` read as undefined and the ranking is *exactly* the
+ * previous genre-only one, which is the failure mode the step's own check is written to detect.
+ *
+ * "Has data to judge on" means both halves of the judgement: the user's profile for that axis is
+ * non-empty, *and* at least one candidate carries a value on it. Either alone ranks nothing.
  */
 export function rankCandidates(
   candidates: RecommendationCandidate[],
   malTally: Map<number, number>,
   genreAffinity: Map<string, number>,
+  taste: TasteAxes = {},
 ): { id: number; score: number }[] {
   const rawMal = new Map(candidates.map((c) => [c.id, malTally.get(c.id) ?? 0]));
-  const rawGenre = new Map(candidates.map((c) => [c.id, scoreGenreOverlap(c.genres, genreAffinity)]));
+
+  // Each axis contributes a weight and a normalized per-candidate score, or nothing at all.
+  const axes: { weight: number; scores: Map<number, number> }[] = [];
+  function addAxis(
+    weight: number,
+    profileHasData: boolean,
+    candidateHasValue: (c: RecommendationCandidate) => boolean,
+    score: (c: RecommendationCandidate) => number,
+  ) {
+    if (!profileHasData || !candidates.some(candidateHasValue)) return;
+    axes.push({ weight, scores: normalize(new Map(candidates.map((c) => [c.id, score(c)]))) });
+  }
+
+  addAxis(
+    AXIS_WEIGHTS.genre,
+    genreAffinity.size > 0,
+    (c) => c.genres.length > 0,
+    (c) => scoreTagOverlap(c.genres, genreAffinity),
+  );
+  addAxis(
+    AXIS_WEIGHTS.studio,
+    (taste.studios?.size ?? 0) > 0,
+    (c) => (c.studios?.length ?? 0) > 0,
+    (c) => scoreTagOverlap(c.studios ?? [], taste.studios!),
+  );
+  addAxis(
+    AXIS_WEIGHTS.source,
+    (taste.sources?.size ?? 0) > 0,
+    (c) => c.source != null && c.source !== '',
+    (c) => scoreTagOverlap(c.source ? [c.source] : [], taste.sources!),
+  );
+  addAxis(
+    AXIS_WEIGHTS.era,
+    taste.eraCentre != null,
+    (c) => c.startYear != null,
+    (c) => scoreEraCloseness(c.startYear ?? null, taste.eraCentre ?? null),
+  );
+
+  const axisWeightTotal = axes.reduce((sum, a) => sum + a.weight, 0);
   const normalizedMal = normalize(rawMal);
-  const normalizedGenre = normalize(rawGenre);
 
   return candidates
-    .map((c) => ({
-      id: c.id,
-      score:
-        MAL_TALLY_WEIGHT * (normalizedMal.get(c.id) ?? 0) + GENRE_WEIGHT * (normalizedGenre.get(c.id) ?? 0),
-    }))
+    .map((c) => {
+      // No axes at all is a real case — a library with no profile yet — and the MAL tally then
+      // decides the whole ranking rather than everything collapsing to zero.
+      const tasteScore =
+        axisWeightTotal === 0
+          ? 0
+          : axes.reduce((sum, a) => sum + (a.weight / axisWeightTotal) * (a.scores.get(c.id) ?? 0), 0);
+      return { id: c.id, score: MAL_TALLY_WEIGHT * (normalizedMal.get(c.id) ?? 0) + TASTE_WEIGHT * tasteScore };
+    })
     // Drops no-signal candidates and, now that genre affinity can go negative, net-negative ones
     // too: a candidate built from tags the user demonstrably bails on shouldn't be shown just
     // because MAL's tally likes it. That is the whole point of learning from dropped series.

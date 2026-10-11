@@ -17,6 +17,12 @@ export interface GenreDto {
   name: string;
 }
 
+/** One animation studio credited on an anime. Same shape as GenreDto — MAL returns `{id, name}`
+ * for both and only the name is a taste signal worth keeping. */
+export interface StudioDto {
+  name: string;
+}
+
 export interface MainPictureDto {
   medium?: string;
   large?: string;
@@ -54,6 +60,18 @@ export interface AnimeDetailDto {
   mean?: number;
   /** Plot summary — only fetched for the not-yet-tracked-show preview screen's info popup. */
   synopsis?: string;
+  /** Who animated it. A taste axis in its own right (a studio is a house style), see
+   * buildStudioAffinity. Absent for anime MAL has no studio credited on. */
+  studios?: StudioDto[];
+  /** What it was adapted from — `manga`, `light_novel`, `original`, `visual_novel`, `game`,
+   * `4_koma_manga`, `web_manga` and a few more. A coarse vocabulary, but "I bail on light-novel
+   * adaptations" is a real pattern, so it's a taste axis too. */
+  source?: string;
+  /** How many MAL users have this on a list at all — an audience-size measure, not a quality one.
+   * Requested from v5 of the detail cache but not read yet: it is plan 1 step 7's obscurity
+   * ceiling and the PRD's success criterion 8. Fetched now so the cache version is bumped once
+   * for this feature rather than twice. */
+  num_list_users?: number;
 }
 
 export interface AnimeBrowseNodeDto {

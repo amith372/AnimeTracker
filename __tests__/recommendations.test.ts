@@ -1,12 +1,15 @@
 import {
+  buildEraCentre,
   buildGenreAffinity,
+  buildTagAffinity,
   diversifyRanked,
   getCatchUpEntries,
   isExcludedCandidate,
   meetsMinimumEpisodes,
   MIN_EPISODE_THRESHOLDS,
   rankCandidates,
-  scoreGenreOverlap,
+  scoreEraCloseness,
+  scoreTagOverlap,
   selectCandidatePool,
   splitCatchUpByKind,
   splitRecommendationsByType,
@@ -278,7 +281,7 @@ describe('tallyMalRecommendations', () => {
   });
 });
 
-describe('buildGenreAffinity / scoreGenreOverlap', () => {
+describe('buildGenreAffinity / scoreTagOverlap', () => {
   test('liked series weight genres higher', () => {
     const affinity = buildGenreAffinity([
       { liked: true, genres: ['Action'] },
@@ -303,15 +306,15 @@ describe('buildGenreAffinity / scoreGenreOverlap', () => {
       ['Action', 4],
       ['Comedy', 1],
     ]);
-    expect(scoreGenreOverlap(['Action', 'Comedy'], affinity)).toBe(2.5);
-    expect(scoreGenreOverlap(['Romance'], affinity)).toBe(0);
-    expect(scoreGenreOverlap([], affinity)).toBe(0);
+    expect(scoreTagOverlap(['Action', 'Comedy'], affinity)).toBe(2.5);
+    expect(scoreTagOverlap(['Romance'], affinity)).toBe(0);
+    expect(scoreTagOverlap([], affinity)).toBe(0);
   });
 
   test('extra unrelated genres do not inflate a candidate score', () => {
     const affinity = new Map([['Action', 4]]);
-    const focused = scoreGenreOverlap(['Action'], affinity);
-    const padded = scoreGenreOverlap(['Action', 'Romance', 'Sports', 'Horror'], affinity);
+    const focused = scoreTagOverlap(['Action'], affinity);
+    const padded = scoreTagOverlap(['Action', 'Romance', 'Sports', 'Horror'], affinity);
     expect(padded).toBeLessThan(focused);
   });
 });
@@ -804,5 +807,231 @@ describe('meetsMinimumEpisodes', () => {
 
   test('the presets are Any / 12+ / 24+ / 50+', () => {
     expect(MIN_EPISODE_THRESHOLDS).toEqual([0, 12, 24, 50]);
+  });
+});
+
+describe('buildTagAffinity on the studio and source axes', () => {
+  test('a studio profile is the liked-weighted mean per carrying series', () => {
+    // Madhouse carries two series, one liked (weight 3) and one not (weight 1): 4 / 2 = 2.0.
+    // Bones carries one unliked series: 1 / 1 = 1.0.
+    const affinity = buildTagAffinity([
+      { liked: true, tags: ['Madhouse'] },
+      { liked: false, tags: ['Madhouse'] },
+      { liked: false, tags: ['Bones'] },
+    ]);
+    expect(affinity.get('Madhouse')).toBe(2);
+    expect(affinity.get('Bones')).toBe(1);
+    expect(affinity.has('Trigger')).toBe(false);
+  });
+
+  test('a series MAL credits no studio to contributes nothing rather than skewing the mean', () => {
+    const affinity = buildTagAffinity([
+      { liked: true, tags: ['Madhouse'] },
+      { liked: false, tags: [] },
+    ]);
+    // Still 3 / 1, not 3 / 2 — the studio-less series carries no tag, so it is in no denominator.
+    expect(affinity.get('Madhouse')).toBe(3);
+    expect(affinity.size).toBe(1);
+  });
+
+  test('source material works the same way, as a one-tag list', () => {
+    // manga: (3 + 1) / 2 = 2.0. light_novel: 1 / 1 = 1.0.
+    const affinity = buildTagAffinity([
+      { liked: true, tags: ['manga'] },
+      { liked: false, tags: ['manga'] },
+      { liked: false, tags: ['light_novel'] },
+    ]);
+    expect(affinity.get('manga')).toBe(2);
+    expect(affinity.get('light_novel')).toBe(1);
+  });
+
+  test('these axes are positive-only — no dropped series are passed, so nothing can go negative', () => {
+    const affinity = buildTagAffinity([{ liked: false, tags: ['Madhouse'] }]);
+    for (const value of affinity.values()) expect(value).toBeGreaterThan(0);
+  });
+
+  test('buildGenreAffinity still agrees with the generic builder it now delegates to', () => {
+    const sources = [
+      { liked: true, genres: ['Action', 'Comedy'] },
+      { liked: false, genres: ['Action'] },
+    ];
+    const dropped = [{ genres: ['Comedy'] }];
+    expect(Array.from(buildGenreAffinity(sources, dropped))).toEqual(
+      Array.from(
+        buildTagAffinity(
+          sources.map((s) => ({ liked: s.liked, tags: s.genres })),
+          dropped.map((s) => ({ tags: s.genres })),
+        ),
+      ),
+    );
+  });
+});
+
+describe('buildEraCentre / scoreEraCloseness', () => {
+  test('the centre is the liked-weighted mean year, skipping series with no year', () => {
+    // 3 x 2010 + 1 x 2020 = 8050, over a total weight of 4 = 2012.5. The year-less series is
+    // skipped entirely rather than counted as a zero, which would drag the centre to antiquity.
+    const centre = buildEraCentre([
+      { liked: true, startYear: 2010 },
+      { liked: false, startYear: 2020 },
+      { liked: false, startYear: null },
+    ]);
+    expect(centre).toBe(2012.5);
+  });
+
+  test('a library with no years at all has no centre', () => {
+    expect(buildEraCentre([{ liked: false, startYear: null }])).toBeNull();
+    expect(buildEraCentre([])).toBeNull();
+  });
+
+  test('closeness is 1 at the centre and falls linearly to 0 across the 15-year span', () => {
+    expect(scoreEraCloseness(2012.5, 2012.5)).toBe(1);
+    // |2020 - 2012.5| = 7.5, half the span: 1 - 7.5/15 = 0.5.
+    expect(scoreEraCloseness(2020, 2012.5)).toBe(0.5);
+    // Exactly a span away: 1 - 15/15 = 0.
+    expect(scoreEraCloseness(1997.5, 2012.5)).toBe(0);
+  });
+
+  test('beyond the span it floors at 0 rather than going negative', () => {
+    // |1990 - 2012.5| = 22.5, so the raw value is 1 - 1.5 = -0.5. Being old is not evidence of
+    // anything, so the worst an era mismatch can do is contribute nothing.
+    expect(scoreEraCloseness(1990, 2012.5)).toBe(0);
+  });
+
+  test('a missing year or a missing centre scores 0', () => {
+    expect(scoreEraCloseness(null, 2012.5)).toBe(0);
+    expect(scoreEraCloseness(2012, null)).toBe(0);
+  });
+});
+
+describe('rankCandidates across all four taste axes', () => {
+  // Deliberately no MAL tally anywhere in this block: every candidate tallies 0, so normalize
+  // returns 0 for that half and the figures below isolate the taste half, which is what changed.
+  const noTally = new Map<number, number>();
+  const genreAffinity = new Map([
+    ['Action', 2],
+    ['Romance', 1],
+  ]);
+
+  test('every axis at its maximum earns the whole taste half', () => {
+    // c1 tops all four axes; c2 is half as good on three of them and far out on the fourth.
+    //   genre  raw 2 / 1  -> normalized 1 / 0.5
+    //   studio raw 2 / 1  -> normalized 1 / 0.5
+    //   source raw 2 / 1  -> normalized 1 / 0.5
+    //   era    1 / 0.2    -> normalized 1 / 0.2   (|2000 - 2012| = 12, so 1 - 12/15 = 0.2)
+    // All four participate, so the weights total 1.0 and are used as they stand:
+    //   c1 taste = 0.55 + 0.20 + 0.15 + 0.10   = 1.0   -> score 0.4 x 1.0  = 0.4
+    //   c2 taste = 0.275 + 0.10 + 0.075 + 0.02 = 0.47  -> score 0.4 x 0.47 = 0.188
+    const candidates: RecommendationCandidate[] = [
+      { id: 1, genres: ['Action'], relatedIds: [], studios: ['Madhouse'], source: 'manga', startYear: 2012 },
+      { id: 2, genres: ['Romance'], relatedIds: [], studios: ['Bones'], source: 'light_novel', startYear: 2000 },
+    ];
+    const ranked = rankCandidates(candidates, noTally, genreAffinity, {
+      studios: new Map([
+        ['Madhouse', 2],
+        ['Bones', 1],
+      ]),
+      sources: new Map([
+        ['manga', 2],
+        ['light_novel', 1],
+      ]),
+      eraCentre: 2012,
+    });
+    expect(ranked.map((r) => r.id)).toEqual([1, 2]);
+    expect(ranked[0].score).toBeCloseTo(0.4);
+    expect(ranked[1].score).toBeCloseTo(0.188);
+  });
+
+  test('studio, source and era together outrank a better genre fit', () => {
+    // The point of the whole step, as one assertion. c1 is the best genre match and nothing else;
+    // c2 is a weaker genre match that hits the user's studio, source material and era.
+    //   genre  raw 2 / 0.5 -> normalized 1 / 0.25
+    //   studio raw 0 / 2   -> normalized 0 / 1
+    //   source raw 0 / 2   -> normalized 0 / 1
+    //   era    0 / 1       -> normalized 0 / 1   (c1 is 1990, 22 years out, floored at 0)
+    //   c1 taste = 0.55 x 1                         = 0.55   -> score 0.4 x 0.55   = 0.22
+    //   c2 taste = 0.55 x 0.25 + 0.20 + 0.15 + 0.10 = 0.5875 -> score 0.4 x 0.5875 = 0.235
+    const candidates: RecommendationCandidate[] = [
+      { id: 1, genres: ['Action'], relatedIds: [], studios: ['Nobody'], source: 'original', startYear: 1990 },
+      { id: 2, genres: ['Romance'], relatedIds: [], studios: ['Madhouse'], source: 'manga', startYear: 2012 },
+    ];
+    const narrowGenre = new Map([
+      ['Action', 2],
+      ['Romance', 0.5],
+    ]);
+    const withTaste = rankCandidates(candidates, noTally, narrowGenre, {
+      studios: new Map([['Madhouse', 2]]),
+      sources: new Map([['manga', 2]]),
+      eraCentre: 2012,
+    });
+    expect(withTaste.map((r) => r.id)).toEqual([2, 1]);
+    expect(withTaste[0].score).toBeCloseTo(0.235);
+    expect(withTaste[1].score).toBeCloseTo(0.22);
+
+    // And the order genre alone would have produced, which the new axes overturned.
+    expect(rankCandidates(candidates, noTally, narrowGenre).map((r) => r.id)).toEqual([1, 2]);
+  });
+
+  test('an absent axis has its weight redistributed, not zeroed', () => {
+    // Genre and era only — no studio or source profile. Participating weight is 0.55 + 0.10 =
+    // 0.65, and each axis's share is its own weight over that total.
+    //   genre normalized 1 / 0.5; era normalized 1 / 1 (both candidates sit on the centre)
+    //   c1 taste = (0.55/0.65) x 1   + (0.10/0.65) x 1 = 1.0      -> score 0.4
+    //   c2 taste = (0.55/0.65) x 0.5 + (0.10/0.65) x 1 = 0.576923 -> score 0.230769
+    // c1's 0.4 is the assertion that matters: a candidate topping every axis there is data for
+    // earns the entire taste half. Zeroing the two absent axes instead would give it
+    // 0.4 x (0.55 + 0.10) = 0.26 — a third of the taste signal thrown away for no reason.
+    const candidates: RecommendationCandidate[] = [
+      { id: 1, genres: ['Action'], relatedIds: [], startYear: 2012 },
+      { id: 2, genres: ['Romance'], relatedIds: [], startYear: 2012 },
+    ];
+    const ranked = rankCandidates(candidates, noTally, genreAffinity, { eraCentre: 2012 });
+    expect(ranked[0].score).toBeCloseTo(0.4);
+    expect(ranked[1].score).toBeCloseTo(0.230769);
+  });
+
+  test('an empty profile for an axis is the same as not having that axis at all', () => {
+    const candidates: RecommendationCandidate[] = [
+      { id: 1, genres: ['Action'], relatedIds: [], studios: ['Madhouse'], source: 'manga', startYear: 2012 },
+      { id: 2, genres: ['Romance'], relatedIds: [], studios: ['Bones'], source: 'manga', startYear: 2012 },
+    ];
+    const empty = rankCandidates(candidates, noTally, genreAffinity, {
+      studios: new Map(),
+      sources: new Map(),
+      eraCentre: null,
+    });
+    expect(empty).toEqual(rankCandidates(candidates, noTally, genreAffinity));
+  });
+
+  test('a profile with nobody to judge is skipped — no candidate carries a value on the axis', () => {
+    // The user has a studio profile, but MAL credited no studio to either candidate. Judging them
+    // on it would score both 0 and spend a fifth of the taste half saying nothing at all.
+    const candidates: RecommendationCandidate[] = [
+      { id: 1, genres: ['Action'], relatedIds: [] },
+      { id: 2, genres: ['Romance'], relatedIds: [] },
+    ];
+    const ranked = rankCandidates(candidates, noTally, genreAffinity, {
+      studios: new Map([['Madhouse', 2]]),
+    });
+    expect(ranked).toEqual(rankCandidates(candidates, noTally, genreAffinity));
+  });
+
+  test('a candidate missing one axis is not penalised on it', () => {
+    // c2 has no studio credited; c1 matches the profile. c2 must score 0 on the studio axis, not
+    // below it — "we know nothing about this one" is not evidence against it, the same call as
+    // genreSimilarity's empty-genre case and the episode filter's unknown counts.
+    //   genre normalized 1 / 1 (identical genres); studio normalized 1 / 0
+    //   c1 taste = (0.55 + 0.20) / 0.75 = 1.0      -> score 0.4
+    //   c2 taste = 0.55 / 0.75          = 0.733333 -> score 0.293333
+    const candidates: RecommendationCandidate[] = [
+      { id: 1, genres: ['Action'], relatedIds: [], studios: ['Madhouse'] },
+      { id: 2, genres: ['Action'], relatedIds: [] },
+    ];
+    const ranked = rankCandidates(candidates, noTally, genreAffinity, {
+      studios: new Map([['Madhouse', 2]]),
+    });
+    expect(ranked.map((r) => r.id)).toEqual([1, 2]);
+    expect(ranked[0].score).toBeCloseTo(0.4);
+    expect(ranked[1].score).toBeCloseTo(0.293333);
   });
 });
