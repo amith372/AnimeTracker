@@ -34,13 +34,16 @@ never read off what the implementation returned.
 
 ## Current state, 2026-10-11
 
-Plan 1's steps 0–5½ are all done and checked. **Step 6 is built and committed but NOT yet
-checked** — do not rebuild it; its section below says what it still needs from the user before the
-check can even run. **Step 7 is the next thing to build**, and must not start until step 6's check
-passes: step 7 lets the model choose what appears on screen, and step 6's whole purpose is to make
-the model's reading of you inspectable first. Nothing in plan 1 has been pushed — the branch holds
-every commit from step 0 onward, by the user's instruction, so `origin/master` is still at
-`244f20f`.
+Plan 1's steps 0–6 are all done and checked. **Step 7 is the next thing to build, and the last in
+this plan** — `prd/1-recommendation-variety.md` gets deleted when it lands. Nothing in plan 1 has
+been pushed — the branch holds every commit from step 0 onward, by the user's instruction, so
+`origin/master` is still at `244f20f`.
+
+The live project is fully set up for the model steps as of 2026-10-11: the `taste_profiles`
+migration is applied, `taste-profile` is deployed, `GROQ_API_KEY` is set, and Global ZDR is on.
+**Deploying an Edge Function from this machine needs `--use-api`** — Docker isn't installed, and
+without that flag the deploy fails in a way that is easy to scroll past, leaving the client to get
+a 404 that surfaces as a generic error.
 
 `prd/1-recommendation-variety.md` is signed off in shape and has no open questions left that block
 a step. Plan 3 was added 2026-10-11 and is unscheduled.
@@ -86,32 +89,9 @@ Step 3 — learn from dropped series · **done 2026-10-11**
 Step 4 — minimum-episodes filter · **done 2026-10-11**
 Step 5 — more taste axes and the obscurity signal · **done 2026-10-11**
 Step 5½ — privacy notice, consent, and delete everything · **done 2026-10-11**
+Step 6 — the taste profile (model, part 1) · **done 2026-10-11**
 
-### Step 6 — The taste profile (model, part 1) · **built 2026-10-11, awaiting the user's check**
-`taste_profiles` table + RLS; `supabase/functions/taste-profile` holding `GROQ_API_KEY`;
-`src/domain/tasteProfile.ts` (buckets, payload, fingerprint) + `TasteProfileRepository.ts`;
-`TasteProfileCard` on the Recommended tab with a regenerate button. Consent is checked twice —
-client-side in `buildTastePayload` and again server-side against Postgres in the function — so
-either gate failing alone cannot send a library. Groq's retention question is settled: see the
-PRD's open question 3, now answered from Groq's own pages.
-
-**Needs four things from you before the check can run**, three of them dashboard-only:
-1. `supabase db push` — `20261011010000_taste_profiles.sql`. Not a no-op: `create policy` isn't
-   idempotent.
-2. `supabase functions deploy taste-profile`.
-3. `supabase secrets set GROQ_API_KEY=...` — an Edge Function secret, never an `EXPO_PUBLIC_` var.
-4. **Enable Zero Data Retention** in Groq's Data Controls — the **Inference APIs ZDR** toggle
-   (chat completions is the only endpoint this app calls), or **Global ZDR** if that account does
-   nothing else. It is what removes the 30-day input/output storage window and squares the
-   provider with MAL §3(e)'s 24 hours.
-
-**Check:** Recommended tab → "Describe my taste" → read it. Does it describe you? Then drop or like
-a series and confirm the card says your library has changed; regenerate and confirm the text moves.
-Failure: generic filler ("enjoys a variety of genres"), a profile that doesn't move when you drop
-something, or a card that offers to generate one on a library with fewer than five finished-or-
-dropped series.
-
-### Step 7 — The candidate generator (model, part 2) · **blocked on step 6's check**
+### Step 7 — The candidate generator (model, part 2)
 One generator request per refresh; MAL-search resolution gate with a similarity threshold and a
 long-TTL `resolve:v1:<normalized>` cache key; `num_list_users` obscurity ceiling; degrade path with
 its one-line notice; per-user daily call ceiling.
