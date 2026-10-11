@@ -46,7 +46,8 @@ without that flag the deploy fails in a way that is easy to scroll past, leaving
 a 404 that surfaces as a generic error.
 
 `prd/1-recommendation-variety.md` is signed off in shape and has no open questions left that block
-a step. Plan 3 was added 2026-10-11 and is unscheduled.
+a step. Plan 3 was added 2026-10-11 and is unscheduled. Plan 4 was added 2026-10-12 with
+`prd/2-public-share.md`; it is unscheduled and the PRD awaits sign-off.
 
 Last shipped before this plan existed: Phase 12's direct-Postgres cutover and web build
 (2026-08-12), plus the UI fixes in commits up to `244f20f`. `PLAN.md` holds that history.
@@ -126,6 +127,34 @@ file is the work list, so `mattpocock-skills:domain-modeling` and friends stop l
 `CONTEXT.md` and `docs/adr/`.
 **Check:** invoke the domain-modeling skill and confirm it reads the right files instead of
 proposing new ones.
+
+---
+
+# Plan 4 — A public, account-free share link for your list · **not scheduled, PRD awaiting sign-off**
+
+Asked for 2026-10-12. Detail, decisions, the compliance reading and the step plan live in
+**`prd/2-public-share.md`** — not duplicated here. Four shape decisions were settled the same day:
+a public Edge Function returning JSON (so RLS stays owner-only on every table), the whole library
+with every status, one revocable link per account, and an optional nickname rather than any name
+the app already holds.
+
+**It amends a standing non-goal**, which is why it needs sign-off rather than just scheduling.
+CLAUDE.md says a library is private to its account; this makes it publishable by its owner to
+anyone holding a URL. No account can still read another account's library — that half of the
+non-goal stands.
+
+**Settled against the agreement, read 2026-10-12 rather than recalled:** §3(a)(ii) restricts
+distributing *the API*, not MyAnimeList Content; §2(b) grants MAL crawler rights over "any webpage
+on which you display MyAnimeList Content", so public pages are anticipated; and no clause requires
+a viewer to hold a MAL account. §4(f) is the binding one and is about people, not shows — so no
+email, MAL username, MAL user id or account id goes anywhere near the page.
+
+**One open question blocks step 3, not steps 1–2:** whether a guest may share. A cleared anonymous
+session leaves a live public URL with no reachable owner. See the PRD's open question 1 for the
+three options.
+
+Four steps: the table plus the sharer's controls; the public read function; the viewer's page; then
+the privacy notice and the CLAUDE.md amendment. Each has its own user-run check in the PRD.
 
 ---
 
