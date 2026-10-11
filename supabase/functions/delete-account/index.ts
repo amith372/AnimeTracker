@@ -28,9 +28,21 @@ import { describeError } from '../_shared/errors.ts';
 
 // Every table keyed to one account. series_entries is listed even though it cascades from series,
 // for the same reason the whole sweep exists: it must not depend on another table's FK being
-// configured the way it is today. taste_profiles is plan 1 step 6's and does not exist yet —
-// see isMissingTable below.
-const OWNED_TABLES = ['series_entries', 'series', 'user_library_meta', 'mal_accounts', 'taste_profiles'] as const;
+// configured the way it is today. A table from a plan step that hasn't been migrated onto this
+// project yet is a no-op rather than a failure — see isMissingTable below.
+//
+// model_call_quota (plan 1 step 7) holds nothing but a per-day counter, which is not data anyone
+// would think of as theirs. It is swept anyway, because the question this list answers is "does
+// this account leave anything behind", and a row keyed to a deleted account's id is something
+// left behind whatever it contains.
+const OWNED_TABLES = [
+  'series_entries',
+  'series',
+  'user_library_meta',
+  'mal_accounts',
+  'taste_profiles',
+  'model_call_quota',
+] as const;
 
 /**
  * Whether a Postgres/PostgREST error means "that table isn't there" rather than "the delete

@@ -86,6 +86,21 @@ export function callTasteProfile(payload: {
   return invoke('taste-profile', payload);
 }
 
+/**
+ * Plan 1 step 7's candidate generator. The body is the whole of what leaves the app — the stored
+ * taste profile plus the titles the user already tracks, built by
+ * src/domain/candidateGenerator.ts's buildGeneratorPayload; see supabase/functions/taste-candidates
+ * for why the function re-checks consent and spends a daily quota before touching the key.
+ * Returns raw title strings, every one of which still has to survive the resolution gate before it
+ * can become a recommendation.
+ */
+export function callTasteCandidates(payload: {
+  profile: { summary: string; seeksOut: string[]; tolerates: string[]; avoids: string[] };
+  exclude: string[];
+}): Promise<{ titles: string[] }> {
+  return invoke('taste-candidates', payload);
+}
+
 /** Plan 1 step 5½'s "delete everything" — removes the signed-in account's rows and the account
  * itself. `remaining` names any table the server couldn't clear, and is empty on a clean delete;
  * see supabase/functions/delete-account for why a partial result is reported rather than thrown. */

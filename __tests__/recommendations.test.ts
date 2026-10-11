@@ -377,6 +377,93 @@ describe('rankCandidates', () => {
     expect(ranked[0].score).toBeGreaterThan(0);
     expect(ranked[0].score).toBeLessThanOrEqual(1);
   });
+
+  // Plan 1 step 7's model picks. Every figure below is derived from the weights in
+  // recommendations.ts — MAL 0.6, taste 0.4, model-pick bonus 0.5 — and the fixtures are built so
+  // the arithmetic is short enough to state in a comment.
+  describe('model picks', () => {
+    test('a model pick with no MAL tally still reaches the list, below the best tallied candidate', () => {
+      const candidates: RecommendationCandidate[] = [
+        { id: 1, genres: ['Action'], relatedIds: [] },
+        { id: 2, genres: ['Action'], relatedIds: [] },
+      ];
+      // 1 is the only candidate MAL's graph links to anything watched; 2 came from the generator,
+      // which is the whole situation the bonus exists for.
+      const ranked = rankCandidates(
+        candidates,
+        new Map([[1, 10]]),
+        new Map([['Action', 1]]),
+        {},
+        new Set([2]),
+      );
+
+      // Normalized MAL: 1 -> 10/10 = 1, 2 -> 0. Genre is the only axis with data, so it takes the
+      // whole taste half: scoreTagOverlap = 1 for both, normalized to 1 for both.
+      //   1 = 0.6(1) + 0.4(1)         = 1.0
+      //   2 = 0.6(0) + 0.4(1) + 0.5   = 0.9
+      expect(ranked.map((r) => r.id)).toEqual([1, 2]);
+      expect(ranked[0].score).toBeCloseTo(1.0, 10);
+      expect(ranked[1].score).toBeCloseTo(0.9, 10);
+    });
+
+    test('a model pick with no signal at all survives the zero-score filter', () => {
+      // Without the bonus this is the feature's silent failure: the generator runs, costs a model
+      // call, and its pick scores exactly 0 on both halves and is dropped before anything renders.
+      const candidates: RecommendationCandidate[] = [
+        { id: 1, genres: ['Action'], relatedIds: [] },
+        { id: 2, genres: [], relatedIds: [] },
+      ];
+      const malTally = new Map([[1, 10]]);
+      const genreAffinity = new Map([['Action', 1]]);
+
+      expect(rankCandidates(candidates, malTally, genreAffinity).map((r) => r.id)).toEqual([1]);
+
+      const withPick = rankCandidates(candidates, malTally, genreAffinity, {}, new Set([2]));
+      //   1 = 0.6(1) + 0.4(1)       = 1.0
+      //   2 = 0 + 0 + 0.5           = 0.5
+      expect(withPick.map((r) => r.id)).toEqual([1, 2]);
+      expect(withPick[1].score).toBeCloseTo(0.5, 10);
+    });
+
+    test('a model pick is not promoted past a candidate both halves agree on', () => {
+      // The bonus must be visible, not decisive — "top entries now obviously worse fits" is the
+      // failure mode steps 1 and 7 share.
+      const candidates: RecommendationCandidate[] = [
+        { id: 1, genres: ['Action'], relatedIds: [] },
+        { id: 2, genres: ['Romance'], relatedIds: [] },
+      ];
+      // 1 has the full MAL tally and the full genre affinity; 2 is a pick with neither.
+      const ranked = rankCandidates(
+        candidates,
+        new Map([[1, 10]]),
+        new Map([['Action', 1]]),
+        {},
+        new Set([2]),
+      );
+      //   1 = 0.6(1) + 0.4(1)     = 1.0
+      //   2 = 0 + 0 + 0.5         = 0.5
+      expect(ranked[0].id).toBe(1);
+    });
+
+    test('with no model picks the ranking is exactly the deterministic one', () => {
+      // The degrade path, reduced to something a unit test can hold: a provider outage leaves an
+      // empty pick set (see GeneratedCandidateRepository), and an empty set must change nothing.
+      const candidates: RecommendationCandidate[] = [
+        { id: 1, genres: ['Action'], relatedIds: [] },
+        { id: 2, genres: ['Romance'], relatedIds: [] },
+        { id: 3, genres: [], relatedIds: [] },
+      ];
+      const malTally = new Map([[2, 5]]);
+      const genreAffinity = new Map([['Action', 2]]);
+
+      const deterministic = rankCandidates(candidates, malTally, genreAffinity);
+      const degraded = rankCandidates(candidates, malTally, genreAffinity, {}, new Set<number>());
+
+      expect(degraded).toEqual(deterministic);
+      // And it is still the pre-step-7 answer: 2 on the MAL signal, 1 on genre alone, 3 dropped.
+      expect(degraded.map((r) => r.id)).toEqual([2, 1]);
+    });
+  });
 });
 
 describe('diversifyRanked', () => {

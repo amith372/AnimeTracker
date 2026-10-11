@@ -486,6 +486,28 @@ export function isExcludedCandidate(
 const MAL_TALLY_WEIGHT = 0.6;
 const TASTE_WEIGHT = 0.4;
 
+/**
+ * What it is worth that the model named a candidate — plan 1 step 7.
+ *
+ * A generated candidate carries no MAL tally, and that is not a shortcoming but the entire reason
+ * it was asked for: the tally can only ever score shows MAL's own recommendation graph links to
+ * something the user already has, so a show outside that graph scores zero on 60% of the ranking
+ * no matter how well it fits. Without a bonus a model pick could score on taste alone, land below
+ * every tallied candidate, and be cut by the MAX_RECOMMENDATIONS slice — the feature would run,
+ * cost a model call, and show nothing. Worse, a pick with no genre overlap either would score
+ * exactly 0 and be dropped outright by the filter below.
+ *
+ * 0.5 puts a model pick roughly level with a candidate that half the user's watched library
+ * recommends: clearly visible in the list, clearly below the handful of candidates that the tally
+ * and the taste profile both agree on. It is added rather than folded into the 0.6/0.4 split so
+ * that split keeps meaning what it meant before this step, and so a run with no model picks
+ * produces byte-identical scores to the one before it — which is what makes the degrade path
+ * testable rather than merely claimed.
+ *
+ * A starting value, tuned against nothing yet; PRD open question 4, same as the MMR lambda.
+ */
+const MODEL_PICK_BONUS = 0.5;
+
 // How the taste half divides between its axes. Relative weights, renormalized over whichever axes
 // there is actually data for (see rankCandidates), so these are ratios rather than shares.
 //
@@ -552,12 +574,17 @@ export interface TasteAxes {
  *
  * "Has data to judge on" means both halves of the judgement: the user's profile for that axis is
  * non-empty, *and* at least one candidate carries a value on it. Either alone ranks nothing.
+ *
+ * `modelPicks` are the ids step 7's generator produced; each gets MODEL_PICK_BONUS added on top of
+ * the two normalized halves. An empty set (the default, and what a provider outage leaves behind)
+ * makes this function exactly the one that existed before that step.
  */
 export function rankCandidates(
   candidates: RecommendationCandidate[],
   malTally: Map<number, number>,
   genreAffinity: Map<string, number>,
   taste: TasteAxes = {},
+  modelPicks: ReadonlySet<number> = new Set<number>(),
 ): { id: number; score: number }[] {
   const rawMal = new Map(candidates.map((c) => [c.id, malTally.get(c.id) ?? 0]));
 
@@ -609,7 +636,13 @@ export function rankCandidates(
         axisWeightTotal === 0
           ? 0
           : axes.reduce((sum, a) => sum + (a.weight / axisWeightTotal) * (a.scores.get(c.id) ?? 0), 0);
-      return { id: c.id, score: MAL_TALLY_WEIGHT * (normalizedMal.get(c.id) ?? 0) + TASTE_WEIGHT * tasteScore };
+      return {
+        id: c.id,
+        score:
+          MAL_TALLY_WEIGHT * (normalizedMal.get(c.id) ?? 0) +
+          TASTE_WEIGHT * tasteScore +
+          (modelPicks.has(c.id) ? MODEL_PICK_BONUS : 0),
+      };
     })
     // Drops no-signal candidates and, now that genre affinity can go negative, net-negative ones
     // too: a candidate built from tags the user demonstrably bails on shouldn't be shown just

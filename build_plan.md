@@ -91,10 +91,16 @@ Step 5 — more taste axes and the obscurity signal · **done 2026-10-11**
 Step 5½ — privacy notice, consent, and delete everything · **done 2026-10-11**
 Step 6 — the taste profile (model, part 1) · **done 2026-10-11**
 
-### Step 7 — The candidate generator (model, part 2)
+### Step 7 — The candidate generator (model, part 2) · **built 2026-10-11, awaiting its check**
 One generator request per refresh; MAL-search resolution gate with a similarity threshold and a
 long-TTL `resolve:v1:<normalized>` cache key; `num_list_users` obscurity ceiling; degrade path with
 its one-line notice; per-user daily call ceiling.
+
+**Needs from you before the check can run:** push `supabase/migrations/20261011020000_model_call_quota.sql`
+(`npx -y supabase@latest db push`). `taste-candidates` is already deployed and verified reachable.
+Until that migration lands the generator degrades to the notice on every run, because the quota
+function it calls doesn't exist yet — which looks exactly like the provider being down.
+
 **Check:** "For you" shows something with no MAL recommendation path from your library. Then revoke
 the key and confirm the list still renders with the notice. Failure: an error screen, a title you
 can't find on MAL, or the same famous shows.

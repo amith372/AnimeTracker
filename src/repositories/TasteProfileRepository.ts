@@ -104,6 +104,27 @@ export function useTasteProfile(): TasteProfileView {
 }
 
 /**
+ * One-shot read of the stored profile, for step 7's generator — which runs inside
+ * fetchRecommendations, outside any component, so it can't use the hook above.
+ *
+ * Goes through ensureQueryData rather than straight to Postgres so it shares the hook's cache
+ * entry: the Recommendations screen already has the profile on screen when this runs, and on this
+ * backend a second read of the same row is a real ~350ms the user waits for. Returns null when
+ * there is no profile yet, which is the generator's cue not to run at all — a model call is the
+ * user's to ask for (the regenerate button), never something a screen load fires on its own.
+ */
+export async function getTasteProfileOnce(): Promise<TasteProfile | null> {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const userId = sessionData.session?.user.id;
+  if (!userId) return null;
+  const stored = await queryClient.ensureQueryData({
+    queryKey: libraryKeys.taste(userId),
+    queryFn: () => fetchTasteProfile(userId),
+  });
+  return stored?.profile ?? null;
+}
+
+/**
  * Generates a profile and stores it. Backs both the first "describe my taste" and the regenerate
  * button — they are the same operation, since a missing profile is stale by definition.
  *

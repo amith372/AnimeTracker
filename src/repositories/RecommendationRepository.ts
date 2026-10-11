@@ -2,7 +2,13 @@
 // list: a MAL-based tally (how often each candidate shows up across every non-dropped watched
 // series' own `recommendations`) and a taste profile built from those same series — genre
 // affinity, plus studio, source-material and era affinity since plan 1 step 5. `liked` series
-// count for more in every half, and dropped series count against the genre one. The
+// count for more in every half, and dropped series count against the genre one.
+//
+// Plan 1 step 7 adds a third, optional source: a model asked for lesser-known shows that fit the
+// user's written taste profile (GeneratedCandidateRepository). It is the only source that can
+// reach a show MAL's recommendation graph never links to this library, and it is strictly
+// additive — when it doesn't run, the two halves above produce exactly the list they did before,
+// plus one line of notice saying so. The
 // "Catch up" list is unrelated and purely local — no MAL calls, no ranking, just unwatched TV
 // seasons inside series that are already Watched/Watched X/Y.
 import { mapWithConcurrency } from '@/api/concurrency';
@@ -24,7 +30,9 @@ import {
   type RecommendedRef,
 } from '@/domain/recommendations';
 import type { ReconcileSeries } from '@/domain/reconcileSeries';
+import { isWithinObscurityCeiling } from '@/domain/candidateGenerator';
 import { fetchDetailsAndGroup, type DiscoverProgress } from './DiscoverRepository';
+import { fetchGeneratedCandidates } from './GeneratedCandidateRepository';
 import { useMemo } from 'react';
 import { getAllSeriesOnce, useLibrary } from './AnimeRepository';
 
@@ -32,7 +40,8 @@ export type RecommendProgress =
   | { kind: 'FETCHING_SOURCES'; completed: number; total: number }
   | { kind: 'FETCHING_CANDIDATES'; completed: number; total: number }
   | { kind: 'GROUPING'; completed: number; total: number }
-  | { kind: 'READY'; series: ReconcileSeries[] }
+  /** `generatorNotice` is step 7's degrade line — null when the model's picks are in the list. */
+  | { kind: 'READY'; series: ReconcileSeries[]; generatorNotice: string | null }
   | { kind: 'FAILED'; message: string };
 
 // Bumped from 8 (Discover/Import's concurrency) to 12: unlike those, this screen is a one-shot
@@ -90,9 +99,16 @@ export async function fetchRecommendations(
   const sourceSeries = allSeries.filter(isRecommendationSource);
 
   if (sourceSeries.length === 0) {
-    onProgress({ kind: 'READY', series: [] });
+    onProgress({ kind: 'READY', series: [], generatorNotice: null });
     return;
   }
+
+  // Step 7's generator, started here and awaited after the source stage. It needs nothing from
+  // that stage — only the library, already read above — so running the two concurrently hides a
+  // model call plus up to twelve MAL searches inside a wait the user was paying anyway. It never
+  // rejects (see fetchGeneratedCandidates' header), which is what makes starting it before anyone
+  // awaits it safe rather than an unhandled rejection.
+  const generatedPromise = fetchGeneratedCandidates(allSeries, { bypassCache: opts?.bypassCache });
 
   onProgress({ kind: 'FETCHING_SOURCES', completed: 0, total: sourceSeries.length });
   let sourcesCompleted = 0;
@@ -166,7 +182,7 @@ export async function fetchRecommendations(
   // This also absorbs the "no series recommended anything" early return that used to sit above:
   // that and "the exclusions left nothing" are the same outcome by two routes, and the single
   // emptiness check below covers both.
-  const candidateIds = selectCandidatePool(
+  const deterministicIds = selectCandidatePool(
     sourceSeries.map((s) => ({
       recommended: (recommendedBySeries.get(s.id) ?? []).filter(
         (r) => !trackedMalIds.has(r.id) && !droppedMalIds.has(r.id),
@@ -175,8 +191,24 @@ export async function fetchRecommendations(
     MAX_CANDIDATE_DETAILS,
   );
 
+  // The generator's ids join the pool rather than forming a list of their own: they then go
+  // through the same detail fetch, exclusion, ranking, diversification and grouping as every other
+  // candidate, and the only thing that marks them out downstream is MODEL_PICK_BONUS. A separate
+  // list would have meant a second grouping pass and a second set of exclusions to keep in step.
+  //
+  // They are added *outside* MAX_CANDIDATE_DETAILS, not inside it. The budget exists to cap how
+  // much of the MAL recommendation graph gets a detail call; spending part of it on the twelve ids
+  // that came from somewhere else entirely would trade away the deterministic pool's breadth to
+  // pay for the discovery half, which is the opposite of what both are for. The extra cost is
+  // bounded at twelve calls by MAX_GENERATED_TITLES.
+  const generated = await generatedPromise;
+  const generatedIds = generated.malIds.filter(
+    (id) => !trackedMalIds.has(id) && !droppedMalIds.has(id) && !deterministicIds.includes(id),
+  );
+  const candidateIds = [...deterministicIds, ...generatedIds];
+
   if (candidateIds.length === 0) {
-    onProgress({ kind: 'READY', series: [] });
+    onProgress({ kind: 'READY', series: [], generatorNotice: generated.notice });
     return;
   }
 
@@ -212,22 +244,36 @@ export async function fetchRecommendations(
     });
   const survivors = candidates.filter((c) => !isExcludedCandidate(c, trackedMalIds, droppedMalIds));
   const genresById = new Map(survivors.map((c) => [c.id, c.genres]));
+  // Which of the generator's ids actually earn the ranking bonus. The obscurity ceiling is applied
+  // here rather than in GeneratedCandidateRepository because this is the first point where
+  // `num_list_users` exists — it arrives on the detail call every candidate needs anyway, so
+  // filtering any earlier would mean fetching the same detail twice.
+  //
+  // A pick over the ceiling isn't removed from the pool, just stripped of its bonus: it is a real
+  // show the user may genuinely not have seen, and if the tally and the taste profile rank it
+  // highly on their own merits it has earned its place like anything else. What it loses is the
+  // guaranteed visibility, which is reserved for the obscure picks this feature exists to surface.
+  const modelPicks = new Set(
+    generatedIds.filter((id) => isWithinObscurityCeiling(detailById.get(id)?.num_list_users)),
+  );
   // Diversify *before* the slice, not after: MMR's whole job is to decide which candidates make
   // the cut, so running it on an already-trimmed list would only reshuffle sixty near-duplicates
   // instead of pulling a different one up into them.
   const ranked = diversifyRanked(
-    rankCandidates(survivors, malTally, genreAffinity, {
-      studios: studioAffinity,
-      sources: sourceAffinity,
-      eraCentre,
-    }).map((r) => ({
+    rankCandidates(
+      survivors,
+      malTally,
+      genreAffinity,
+      { studios: studioAffinity, sources: sourceAffinity, eraCentre },
+      modelPicks,
+    ).map((r) => ({
       ...r,
       genres: genresById.get(r.id) ?? [],
     })),
   ).slice(0, MAX_RECOMMENDATIONS);
 
   if (ranked.length === 0) {
-    onProgress({ kind: 'READY', series: [] });
+    onProgress({ kind: 'READY', series: [], generatorNotice: generated.notice });
     return;
   }
 
@@ -279,7 +325,7 @@ export async function fetchRecommendations(
   // groupIntoSeries doesn't preserve rank order (it groups by connected component), so re-sort
   // the grouped rows by the best ordering key among their constituent MAL ids.
   const series = recommendable.sort((a, b) => bestOrderKey(b, orderById) - bestOrderKey(a, orderById));
-  onProgress({ kind: 'READY', series });
+  onProgress({ kind: 'READY', series, generatorNotice: generated.notice });
 }
 
 /** The best (largest) ordering key among a grouped series' entries — grouping collapses several

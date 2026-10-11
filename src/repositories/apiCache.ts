@@ -29,11 +29,18 @@ const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
  * select only), and Discover/Recommendations must keep working with an unwarmed cache rather than
  * break because the write couldn't happen. `bypass: true` skips the read (not the write) — used by
  * the manual "refresh" action so it fetches fresh data without wiping what everyone else has cached.
+ *
+ * `ttlMs` overrides the 30-day default for a key space whose data ages differently — see
+ * getTitleResolutionCached, where the mapping being cached is effectively permanent.
  */
-async function cached<T>(key: string, fetcher: () => Promise<T>, opts?: { bypass?: boolean }): Promise<T> {
+async function cached<T>(
+  key: string,
+  fetcher: () => Promise<T>,
+  opts?: { bypass?: boolean; ttlMs?: number },
+): Promise<T> {
   if (!opts?.bypass) {
     const { data } = await supabase.from('api_cache').select('json, fetched_at').eq('key', key).maybeSingle();
-    if (data && Date.now() - Date.parse(data.fetched_at) < CACHE_TTL_MS) {
+    if (data && Date.now() - Date.parse(data.fetched_at) < (opts?.ttlMs ?? CACHE_TTL_MS)) {
       return data.json as T;
     }
   }
@@ -72,4 +79,42 @@ export function getAnimeRecommendationsCached(
   opts?: { bypass?: boolean },
 ): Promise<AnimeRecommendationsDto> {
   return cached(`recs:${RECS_CACHE_VERSION}:${id}`, () => getAnimeRecommendations(id), opts);
+}
+
+const RESOLVE_CACHE_VERSION = 'v1';
+
+// A year rather than the 30-day default. What this key space holds is a title→MAL-id mapping, and
+// a show's title does not change — so the usual reason for a TTL (the data drifts) doesn't apply,
+// and the PRD asks for it explicitly. The TTL is not zero only because a *failed* resolution is
+// cached too (see below) and MAL's catalogue does gain entries.
+const RESOLVE_TTL_MS = 365 * 24 * 60 * 60 * 1000;
+
+/** What one title resolved to, or null when nothing on MAL matched it closely enough. */
+export interface ResolvedTitle {
+  malId: number | null;
+}
+
+/**
+ * Cache-first title→id resolution for plan 1 step 7's generator gate. Keyed by the *normalized*
+ * title (src/domain/candidateGenerator.ts's normalizeTitle), so two spellings of one show share a
+ * row instead of each paying a MAL search.
+ *
+ * The caller supplies `resolve` because the matching decision is domain logic and belongs in
+ * src/domain, not in a cache — this function owns the key space and the TTL and nothing else.
+ *
+ * A null result is cached deliberately. A fabricated title is the common case this gate exists
+ * for, and re-searching MAL for the same invented show on every refresh would be exactly the
+ * tight loop guardrail #3 forbids. Being in the shared table is fine and in fact desirable: the
+ * mapping is a fact about MAL's catalogue, identical for every account, and carries nothing about
+ * whose library prompted the lookup.
+ */
+export function getTitleResolutionCached(
+  normalizedTitle: string,
+  resolve: () => Promise<ResolvedTitle>,
+  opts?: { bypass?: boolean },
+): Promise<ResolvedTitle> {
+  return cached(`resolve:${RESOLVE_CACHE_VERSION}:${normalizedTitle}`, resolve, {
+    bypass: opts?.bypass,
+    ttlMs: RESOLVE_TTL_MS,
+  });
 }

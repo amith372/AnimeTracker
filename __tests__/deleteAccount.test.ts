@@ -21,7 +21,16 @@ describe('delete-account', () => {
   // Every table holding rows owned by one account. Asserted as `from('<table>')`/a quoted list
   // entry rather than a bare substring, so `series` can't be satisfied by `series_entries`
   // happening to contain it.
-  const ownedTables = ['series', 'series_entries', 'user_library_meta', 'mal_accounts', 'taste_profiles'];
+  const ownedTables = [
+    'series',
+    'series_entries',
+    'user_library_meta',
+    'mal_accounts',
+    'taste_profiles',
+    // Plan 1 step 7's daily model-call counter. Listed here for the same reason as the rest: this
+    // test is the only thing that fails when a per-user table is added and the sweep isn't.
+    'model_call_quota',
+  ];
 
   test.each(ownedTables)('deletes %s', (table) => {
     expect(source).toContain(`'${table}'`);

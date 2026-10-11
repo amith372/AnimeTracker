@@ -60,7 +60,10 @@ import { useIsWideWeb } from '@/hooks/useWebLayout';
 
 type ScreenState =
   | { kind: 'LOADING'; message: string }
-  | { kind: 'READY'; series: ReconcileSeries[] }
+  // `generatorNotice` is plan 1 step 7's degrade line, carried up from the repository: one
+  // sentence saying the model's picks aren't in this list, or null when they are. It is held on
+  // the state rather than in a ref so it clears with the list it describes.
+  | { kind: 'READY'; series: ReconcileSeries[]; generatorNotice: string | null }
   | { kind: 'ERROR'; message: string };
 
 type Tab = 'CATCH_UP' | 'FOR_YOU';
@@ -145,7 +148,7 @@ export default function RecommendScreen() {
           setState({ kind: 'LOADING', message: `Grouping results (${progress.completed}/${progress.total})...` });
           break;
         case 'READY':
-          setState({ kind: 'READY', series: progress.series });
+          setState({ kind: 'READY', series: progress.series, generatorNotice: progress.generatorNotice });
           break;
         case 'FAILED':
           setState({ kind: 'ERROR', message: progress.message });
@@ -472,6 +475,16 @@ export default function RecommendScreen() {
           {/* Above the list rather than below it: it describes the basis of what follows, and a
               reader who disagrees with it should be able to say so before scrolling sixty rows. */}
           <TasteProfileCard view={tasteProfile} />
+          {/* Step 7's one-line degrade notice. Below the profile card and above the list, because
+              it is a statement about what the list below is and isn't — and only when the
+              generator didn't contribute, so a working run says nothing at all rather than adding
+              a permanent line of chrome. Without it, "the provider is down" and "the model had
+              dull ideas" look identical from here. */}
+          {state.kind === 'READY' && state.generatorNotice && (
+            <Text variant="bodySmall" style={styles.generatorNotice}>
+              {state.generatorNotice}
+            </Text>
+          )}
           <ForYouList
             state={state}
             series={sortedRecommended}
@@ -955,6 +968,9 @@ const useStyles = makeStyles((colors) => ({
   center: { alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
   headerSpinner: { marginHorizontal: 12 },
   error: { textAlign: 'center' },
+  // Muted and inset to the same gutter the cards use: it is a footnote about the list, not a
+  // warning about the app, and nothing about it is actionable by the user.
+  generatorNotice: { color: colors.textMuted, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
 
   // --- Wide web ---
   webContainer: { paddingHorizontal: 24 },
