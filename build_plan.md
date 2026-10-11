@@ -100,8 +100,10 @@ PRD's open question 3, now answered from Groq's own pages.
    idempotent.
 2. `supabase functions deploy taste-profile`.
 3. `supabase secrets set GROQ_API_KEY=...` — an Edge Function secret, never an `EXPO_PUBLIC_` var.
-4. **Enable Zero Data Retention** in Groq's Data Controls. Available on every account; it is what
-   removes the 30-day abuse-log window and squares the provider with MAL §3(e)'s 24 hours.
+4. **Enable Zero Data Retention** in Groq's Data Controls — the **Inference APIs ZDR** toggle
+   (chat completions is the only endpoint this app calls), or **Global ZDR** if that account does
+   nothing else. It is what removes the 30-day input/output storage window and squares the
+   provider with MAL §3(e)'s 24 hours.
 
 **Check:** Recommended tab → "Describe my taste" → read it. Does it describe you? Then drop or like
 a series and confirm the card says your library has changed; regenerate and confirm the text moves.

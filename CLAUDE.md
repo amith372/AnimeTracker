@@ -297,8 +297,11 @@ Safe to expose in the client bundle — Postgres Row-Level Security (not key sec
 
 **`GROQ_API_KEY` is a Supabase Edge Function secret too** (plan 1 step 6, set the same way as the
 two above) — only `supabase/functions/taste-profile` reads it. The account it belongs to must have
-**Zero Data Retention enabled** in Groq's Data Controls: that is what removes the provider's 30-day
-abuse-log window and squares it with MAL §3(e)'s 24 hours. Groq's Services Agreement §4.2 separately
+**Zero Data Retention enabled** in Groq's Data Controls — specifically the **Inference APIs ZDR**
+toggle, which is the one covering chat completions (the only endpoint this app calls), or **Global
+ZDR**, which covers it and everything else. That is what removes the provider's 30-day
+input/output storage window and squares it with MAL §3(e)'s 24 hours. The Batch and
+Fine-tuning/LoRA toggles are irrelevant here; the app uses neither. Groq's Services Agreement §4.2 separately
 bars training on inputs or outputs. **No MAL API response may ever reach the model** — the whole
 compliance argument (the PRD's reading of §3(a)(vii)) is that our own Postgres sits between them, so
 `taste-profile` sends title strings read from our database and nothing else. `__tests__/tasteProfileFunction.test.ts`

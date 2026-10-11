@@ -328,8 +328,11 @@ account's data means hand-written SQL in the Supabase dashboard.
    Inputs or Outputs for training or fine-tuning any AI Model Services or other models, unless
    explicitly granted permission or instructed by Customer."* So the answer is accept-with-ZDR, and
    the Cloudflare Workers AI fallback is not needed. **Enabling ZDR in Groq's Data Controls is a
-   prerequisite for step 6**, listed with its other live-project setup. ZDR disables batch and
-   fine-tuning, neither of which this app uses.
+   prerequisite for step 6**, listed with its other live-project setup. The console splits it in
+   two: **Inference APIs ZDR** is the one that matters (its own description names the 30-day
+   window, and chat completions is the only endpoint this app calls), while **Global ZDR** covers
+   that and everything else at the cost of disabling batch and fine-tuning org-wide — neither of
+   which this app uses, so Global is the simpler choice on a single-purpose account.
 4. The MMR lambda, the dropped-genre weight and the `num_list_users` ceiling are all numbers that
    need tuning against the real library. Each lands with a stated starting value and a comment, not
    a silent constant.
