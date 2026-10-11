@@ -149,12 +149,26 @@ produced, and passes the day someone corrects a bug.
 - `hooks/pre-commit` + `core.hooksPath hooks` via package.json's `prepare`: added-line secret scan
   (`.env` by name, private-key blocks, JWTs, literal-assigned keys), then `npx tsc --noEmit`, then
   `npx jest`. Lands first so every later step is gated.
-- **Fact to settle before steps 3 and 5:** does MAL's v2 `genres` array already include Themes and
-  Demographics (~70–80 tags), or only the ~15 coarse genres? The test fixtures are hand-written, so
-  they don't say. Settled by one query in the Supabase SQL editor:
-  `select json->'genres' from api_cache where key like 'detail:v4:%' limit 5;`
-  If genres are that deep, steps 3 and 5 get sharply better on their own and the case for the model
-  weakens — worth knowing before building either.
+- **Fact settled, 2026-10-11 — `genres` is the deep list.** MAL v2 flattens Genres, Themes and
+  Demographics into one `genres` array of `{id, name}`, with **no field saying which kind a tag
+  is**. Death Note returns `Psychological, Shounen, Supernatural, Suspense` — a Theme and a
+  Demographic sitting beside two genres. Twelve varied shows yielded 22 distinct tags with ids
+  spanning 1–78 (`Isekai`, `Time Travel`, `Gore`, `Survival`, `Space`, `Adult Cast`,
+  `Award Winning`, `Shounen`, `Seinen` all among them), so the vocabulary is the full ~70–80 set,
+  not the ~15 coarse genres. Read from the `mal-anime-detail` Edge Function directly rather than the
+  SQL editor — `api_cache` held zero rows, and that function takes no user context, so the anon key
+  reaches it.
+- **What that buys steps 3 and 5, and what it costs them.** Both get sharply better for free: an
+  affinity profile over `Isekai` / `Psychological` / `Time Travel` is already close to taste, where
+  one over fifteen coarse genres mostly measures "is this mainstream". That weakens the case for
+  steps 6 and 7 as planned — revisit their value once step 5 is live and judged, rather than
+  assuming it. The cost is that one flat list now mixes tags of very different kinds, and its two
+  broadest, `Shounen` and `Award Winning`, carry almost no taste at all. Two consequences:
+  **step 3's negative profile must not be able to wipe out `Shounen`** — the per-tag divisor
+  `CLAUDE.md` already requires (a tag's weight ÷ how many series carry it) is what holds that down,
+  and step 3's check is written to catch precisely this failure; and **step 5 must not add a
+  separate demographic or theme axis**, because both are already inside the genre axis. Its new
+  axes stay `studios`, `source` and era.
 - **Check:** stage a file containing a fake JWT, attempt a commit, confirm it is refused. Then
   commit something harmless and confirm typecheck and tests run.
 
