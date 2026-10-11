@@ -23,7 +23,7 @@ import { AppSearchbar } from '@/components/AppSearchbar';
 import { useIsGuest } from '@/account/guestMode';
 import { useAccountSession } from '@/account/accountRepository';
 import { useMalLinkStatus } from '@/account/malLinkRepository';
-import { deleteSeries, refetchLibrary, useHasCompletedInitialImport, useLibrary } from '@/repositories/AnimeRepository';
+import { deleteSeries, refetchLibrary, useHasCompletedInitialImport, useLibrary, usePrivacyConsent } from '@/repositories/AnimeRepository';
 import { userFacingMessage } from '@/repositories/errorMessage';
 import { LoadFailure } from '@/components/LoadFailure';
 import { runMonthlySync } from '@/repositories/SyncRepository';
@@ -71,6 +71,9 @@ export default function LibraryScreen() {
   const isGuest = useIsGuest();
   const [malLinked, refreshMalLinked] = useMalLinkStatus();
   const hasImported = useHasCompletedInitialImport();
+  // Reads the same user_library_meta row as hasImported, in the same request — see
+  // AnimeRepository's useLibraryMetaFlag.
+  const privacyConsented = usePrivacyConsent();
   const { series: seriesList, isLoading: libraryLoading, error: libraryError } = useLibrary();
   const router = useRouter();
   const isWideWeb = useIsWideWeb();
@@ -199,6 +202,20 @@ export default function LibraryScreen() {
   // (anonymous auth, see guestMode.ts) — this only catches someone who hasn't made any choice yet.
   if (!session) {
     return <Redirect href="/onboarding/login" />;
+  }
+  // Privacy consent comes before everything else the app would do with this account's data (plan 1
+  // step 5½) — including the MAL import below, which is itself a bulk read of the user's list. A
+  // guest hits this gate too: nothing special-cases an anonymous session, because every reason the
+  // notice exists applies to them unchanged.
+  if (privacyConsented === null) {
+    return (
+      <View style={styles.empty}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
+  if (!privacyConsented) {
+    return <Redirect href="/onboarding/privacy" />;
   }
   // Neither a guest nor an account with no MAL linked ever has a MAL list to import, so both skip
   // straight to the (possibly empty) library instead of onboarding/reconcile — only a MAL-linked

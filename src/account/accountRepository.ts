@@ -6,6 +6,8 @@
 // "Create account" (this file, MAL-less until linked).
 import type { Session } from '@supabase/supabase-js';
 import { useEffect, useState } from 'react';
+import { callDeleteAccount } from '@/api/edgeFunctions';
+import { userFacingMessage } from '@/repositories/errorMessage';
 import { isSupabaseConfigured, supabase } from './supabaseClient';
 
 export type AccountAuthResult = { success: true } | { success: false; message: string };
@@ -59,6 +61,37 @@ export async function logInWithEmail(email: string, password: string): Promise<A
 export async function logOutAccount(): Promise<void> {
   if (!isSupabaseConfigured) return;
   await supabase.auth.signOut();
+}
+
+/**
+ * "Delete everything" — the account's whole library, its MyAnimeList link and the account record
+ * itself, irreversibly. Lives here beside logOutAccount because it is the other end of the same
+ * account lifecycle; the actual deleting is an Edge Function (supabase/functions/delete-account),
+ * since removing an auth.users row is a service_role operation no client JWT can do.
+ *
+ * Signs out locally afterwards. That isn't cosmetic: the stored session's user no longer exists,
+ * so every subsequent request would fail in a way no screen has a sensible state for. Signing out
+ * also clears the cached library (src/repositories/realtime.ts's resubscribe on a null user), so
+ * the deleted account's data doesn't linger on screen after it's gone from the server.
+ *
+ * The sign-out runs even if the delete reports a failure: whatever happened server-side, the
+ * caller asked to be rid of this account on this device.
+ */
+export async function deleteAccountAndData(): Promise<AccountAuthResult> {
+  if (!isSupabaseConfigured) {
+    return { success: false, message: 'Accounts aren’t set up yet — Supabase isn’t configured.' };
+  }
+  try {
+    const { remaining } = await callDeleteAccount();
+    await supabase.auth.signOut();
+    if (remaining.length > 0) {
+      return { success: false, message: `Your account was deleted, but some data couldn’t be removed (${remaining.join(', ')}).` };
+    }
+    return { success: true };
+  } catch (e) {
+    await supabase.auth.signOut();
+    return { success: false, message: userFacingMessage(e, 'Couldn’t delete your account. Nothing was deleted — try again.') };
+  }
 }
 
 /**

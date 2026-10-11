@@ -333,14 +333,27 @@ export async function addImportedSeries(items: ReconcileSeries[]): Promise<{ add
   return { added, failed };
 }
 
-async function fetchLibraryMeta(userId: string): Promise<{ initialImportCompletedAt: string | null }> {
+// Both of the app's cold-start gates read off this one row, in one request: whether onboarding
+// import has run, and whether the privacy notice has been accepted (plan 1 step 5½, see
+// supabase/migrations/20261011000000_privacy_consent.sql for why consent lives on this row rather
+// than in a table of its own). Two queries would mean two sequential network hops before the
+// Library can draw anything, and with no local database there is nothing to draw in the meantime.
+async function fetchLibraryMeta(userId: string): Promise<LibraryMeta> {
   const { data, error } = await supabase
     .from('user_library_meta')
-    .select('initial_import_completed_at')
+    .select('initial_import_completed_at, privacy_consented_at')
     .eq('user_id', userId)
     .maybeSingle();
   if (error) throw error;
-  return { initialImportCompletedAt: data?.initial_import_completed_at ?? null };
+  return {
+    initialImportCompletedAt: data?.initial_import_completed_at ?? null,
+    privacyConsentedAt: data?.privacy_consented_at ?? null,
+  };
+}
+
+interface LibraryMeta {
+  initialImportCompletedAt: string | null;
+  privacyConsentedAt: string | null;
 }
 
 /** Marks onboarding import as done — see supabase/migrations/20260812000000_direct_postgres.sql's
@@ -362,7 +375,37 @@ export async function markInitialImportComplete(): Promise<void> {
   // useHasCompletedInitialImport returns false, the gate redirects straight back to reconcile, and
   // the whole MAL import runs again before the fresh value ever lands. We know exactly what we just
   // wrote, so write it into the cache and skip the round trip entirely.
-  queryClient.setQueryData(libraryKeys.meta(userId), { initialImportCompletedAt: now });
+  //
+  // Merged into whatever is cached rather than replacing it, since this row now carries the
+  // privacy-consent gate too: writing a bare object here would blank privacyConsentedAt and bounce
+  // the user who just finished importing straight back to the notice they already accepted.
+  queryClient.setQueryData<LibraryMeta>(libraryKeys.meta(userId), (previous) => ({
+    privacyConsentedAt: previous?.privacyConsentedAt ?? null,
+    initialImportCompletedAt: now,
+  }));
+}
+
+/**
+ * Records that the user accepted the privacy notice (plan 1 step 5½). Upsert, not update: a brand
+ * new account has no user_library_meta row yet, and consent is the first thing written to it —
+ * before the import that normally creates it.
+ *
+ * Same setQueryData-not-invalidate reasoning as markInitialImportComplete above, and for the same
+ * concrete reason: the caller navigates away immediately, so an invalidation of this now-inactive
+ * query would only mark it stale, and the gate would re-read the pre-consent value on remount and
+ * send the user back to the notice they just accepted.
+ */
+export async function markPrivacyConsent(): Promise<void> {
+  const userId = await requireUserId();
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from('user_library_meta')
+    .upsert({ user_id: userId, privacy_consented_at: now });
+  if (error) throw error;
+  queryClient.setQueryData<LibraryMeta>(libraryKeys.meta(userId), (previous) => ({
+    initialImportCompletedAt: previous?.initialImportCompletedAt ?? null,
+    privacyConsentedAt: now,
+  }));
 }
 
 /**
@@ -380,6 +423,21 @@ export async function markLastSync(): Promise<void> {
 /** Reactive check for whether onboarding import has completed — gates Library vs. Reconcile.
  * Tri-state preserved from the old hook: null means "still loading/unknown", not "no". */
 export function useHasCompletedInitialImport(): boolean | null {
+  return useLibraryMetaFlag((meta) => meta.initialImportCompletedAt != null);
+}
+
+/** Reactive check for whether this account has accepted the privacy notice — gates the whole app
+ * (app/(tabs)/index.tsx), since §4(f) ties consent to the policy generally and not to one feature.
+ * Tri-state like the import gate: null is "unknown yet", which must not be read as "no" or a
+ * consented user flashes the notice on every cold start. */
+export function usePrivacyConsent(): boolean | null {
+  return useLibraryMetaFlag((meta) => meta.privacyConsentedAt != null);
+}
+
+/** The shared half of the two gates above: one query over the singleton meta row, read through a
+ * selector. Both hooks mount the same query key, so the two gates on the Library screen cost one
+ * request between them, not one each. */
+function useLibraryMetaFlag(select: (meta: LibraryMeta) => boolean): boolean | null {
   const { session, loading: sessionLoading } = useAccountSession();
   const userId = session?.user.id ?? null;
   const query = useQuery({
@@ -388,6 +446,9 @@ export function useHasCompletedInitialImport(): boolean | null {
     enabled: !!userId,
   });
   if (sessionLoading || !userId) return null;
-  if (query.isPending) return null;
-  return query.data?.initialImportCompletedAt != null;
+  // A failed read answers "unknown", not "no" — the caller renders a spinner for null, which beats
+  // either gate firing on a dropped connection (sending a user who has already imported back
+  // through reconcile, or re-showing a notice they accepted).
+  if (query.isPending || !query.data) return null;
+  return select(query.data);
 }

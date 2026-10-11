@@ -70,3 +70,10 @@ export function callMalPush(targets: { malId: number; status: 'plan_to_watch' | 
 export function callMalMonthlySync(): Promise<{ seriesWithNewSeasons: number }> {
   return invoke('mal-monthly-sync');
 }
+
+/** Plan 1 step 5½'s "delete everything" — removes the signed-in account's rows and the account
+ * itself. `remaining` names any table the server couldn't clear, and is empty on a clean delete;
+ * see supabase/functions/delete-account for why a partial result is reported rather than thrown. */
+export function callDeleteAccount(): Promise<{ deleted: boolean; remaining: string[] }> {
+  return invoke('delete-account');
+}

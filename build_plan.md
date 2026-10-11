@@ -34,11 +34,12 @@ never read off what the implementation returned.
 
 ## Current state, 2026-10-11
 
-Plan 1's steps 0–3 are done and checked. **Steps 4 and 5 are built and committed but NOT yet
-checked** (`09246c2`, `3f15df8`) — do not rebuild them. They are kept below, with their checks, so
-a session that reads this file doesn't mistake committed work for unbuilt work; the moment the user
-confirms both checks they compress to one line each and get pushed. **Step 5½ is the next thing to
-build.**
+Plan 1's steps 0–3 are done and checked. **Steps 4, 5 and 5½ are built and committed but NOT yet
+checked** (`09246c2`, `3f15df8`, and step 5½'s own commit) — do not rebuild them. They are kept
+below, with their checks, so a session that reads this file doesn't mistake committed work for
+unbuilt work; the moment the user confirms each check it compresses to one line and gets pushed.
+**Step 6 is the next thing to build**, and it must not start before step 5½'s check passes — step 6
+is the first step that sends data out of the app, which is the whole reason 5½ lands first.
 
 `prd/1-recommendation-variety.md` is signed off in shape and has no open questions left that block
 a step. Plan 3 was added 2026-10-11 and is unscheduled.
@@ -97,12 +98,16 @@ answer shows are already inside `genres`.
 **Check:** recommendations shift toward studios and sources you favour. Failure: genre-only
 behaviour unchanged — the new fields are reading `undefined`, i.e. the cache version wasn't bumped.
 
-### Step 5½ — Privacy notice, consent, and delete everything · **next to build**
+### Step 5½ — Privacy notice, consent, and delete everything · **built 2026-10-11, awaiting the user's check**
 Lands before step 6, because that is the first step that sends data out of the app. A
 `service_role` Edge Function deleting the account's rows and its `auth.users` record; a ~150-word
 notice screen; `privacy_consented_at` on `user_library_meta`. **Leaves `api_cache` alone and never
 touches the user's MAL list** — the dialog says both.
 Guests see the gate too, confirmed 2026-10-11 — nothing special-cases an anonymous session.
+**Needs two live-project pushes before the check can run**, neither of which this dev environment
+should do unattended: `supabase db push` for `20261011000000_privacy_consent.sql`, and
+`supabase functions deploy delete-account`. Until the function is deployed, "Delete everything"
+reports a failure and deletes nothing; until the column exists, the consent gate can't be passed.
 **Check:** on a throwaway second account — read the notice, accept, app opens; delete, account gone,
 re-signin starts at onboarding; your own library untouched; that account's MAL list still intact on
 MAL's own site.

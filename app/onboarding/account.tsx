@@ -9,11 +9,12 @@
 // Three render branches, not two: a real signed-in account, a guest (anonymous session — see
 // src/account/guestMode.ts), and signed-out. The guest branch is what lets someone who started
 // without an account upgrade in place, keeping everything they already tracked.
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
-import { Button, Text, TextInput } from 'react-native-paper';
+import { Button, Dialog, Portal, Text, TextInput } from 'react-native-paper';
 import { isSupabaseConfigured } from '@/account/supabaseClient';
-import { logInWithEmail, logOutAccount, signUpWithEmail, useAccountSession } from '@/account/accountRepository';
+import { deleteAccountAndData, logInWithEmail, logOutAccount, signUpWithEmail, useAccountSession } from '@/account/accountRepository';
 import { useIsGuest } from '@/account/guestMode';
 import { linkMalAccount, useMalLinkStatus } from '@/account/malLinkRepository';
 import { radii, spacing } from '@/theme/colors';
@@ -29,6 +30,10 @@ export default function AccountScreen() {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  // Behind a confirmation dialog for the same reason the MAL push is (CLAUDE.md §8): this is
+  // irreversible, and it is the user's whole library.
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  const router = useRouter();
 
   // For a real (non-guest) signup this creates a brand-new account, same as always. For a guest
   // (anonymous session), signUpWithEmail instead *upgrades* that same session in place — see its
@@ -74,6 +79,18 @@ export default function AccountScreen() {
     setBusy(false);
   }
 
+  // Plan 1 step 5½. deleteAccountAndData signs out on both outcomes, so on success this screen's
+  // own session goes null and it re-renders as the signed-out branch while the Library's gate sends
+  // the user back to login — nothing to navigate here. A failure keeps its message on screen.
+  async function handleDeleteEverything() {
+    setDeleteConfirmVisible(false);
+    setBusy(true);
+    setMessage(null);
+    const result = await deleteAccountAndData();
+    setBusy(false);
+    if (!result.success) setMessage(result.message);
+  }
+
   async function handleLinkMal() {
     setBusy(true);
     setMessage(null);
@@ -81,6 +98,44 @@ export default function AccountScreen() {
     setBusy(false);
     if (result.success) refreshMalLinked();
     else setMessage(result.message);
+  }
+
+  // Rendered in both signed-in branches (real account and guest), because both have real data and
+  // both are offered the same two things: the notice to re-read, and the way out. Written once as a
+  // local fragment rather than copied into each branch — a delete button that exists in one branch
+  // only is exactly the kind of drift that leaves a guest with no way to delete anything.
+  function dataSection() {
+    return (
+      <>
+        <Button mode="text" onPress={() => router.push('/onboarding/privacy')} disabled={busy} style={styles.button}>
+          What this app stores
+        </Button>
+        <Button mode="outlined" onPress={() => setDeleteConfirmVisible(true)} disabled={busy} textColor={colors.red} style={styles.button}>
+          Delete everything
+        </Button>
+        <Portal>
+          <Dialog visible={deleteConfirmVisible} onDismiss={() => setDeleteConfirmVisible(false)}>
+            <Dialog.Title>Delete everything?</Dialog.Title>
+            <Dialog.Content>
+              <Text variant="bodyMedium">
+                This permanently deletes your library, your MyAnimeList link and this account
+                itself. It can’t be undone.
+              </Text>
+              <Text variant="bodyMedium" style={styles.dialogNote}>
+                Your list on MyAnimeList is not touched — it stays exactly as it is on their site.
+                The shared anime details this app caches stay too; they hold nothing about you.
+              </Text>
+            </Dialog.Content>
+            <Dialog.Actions>
+              <Button onPress={() => setDeleteConfirmVisible(false)}>Cancel</Button>
+              <Button onPress={handleDeleteEverything} textColor={colors.red}>
+                Delete everything
+              </Button>
+            </Dialog.Actions>
+          </Dialog>
+        </Portal>
+      </>
+    );
   }
 
   if (!isSupabaseConfigured) {
@@ -160,6 +215,7 @@ export default function AccountScreen() {
         <Button mode="outlined" onPress={handleLogOut} loading={busy} disabled={busy} style={styles.button}>
           Leave guest mode (discards this list)
         </Button>
+        {dataSection()}
       </ScrollView>
       </KeyboardAvoidingView>
     );
@@ -195,6 +251,7 @@ export default function AccountScreen() {
         <Button mode="outlined" onPress={handleLogOut} loading={busy} disabled={busy} style={styles.button}>
           Log out
         </Button>
+        {dataSection()}
       </View>
     );
   }
@@ -265,4 +322,5 @@ const useStyles = makeStyles((colors) => ({
   input: { backgroundColor: colors.surface },
   message: { color: colors.textMuted },
   button: { borderRadius: radii.pill },
+  dialogNote: { marginTop: spacing.sm },
 }));

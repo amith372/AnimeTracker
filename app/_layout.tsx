@@ -78,6 +78,7 @@ export default function RootLayout() {
               <Stack.Screen name="series/preview" options={{ headerShown: false }} />
               <Stack.Screen name="onboarding/login" options={{ title: 'Log in', headerShown: false }} />
               <Stack.Screen name="onboarding/account" options={{ title: 'Account' }} />
+              <Stack.Screen name="onboarding/privacy" options={{ title: 'Your data' }} />
               <Stack.Screen name="auth" options={{ headerShown: false }} />
               <Stack.Screen name="onboarding/reconcile" options={{ title: 'Import your MyAnimeList' }} />
             </Stack>
