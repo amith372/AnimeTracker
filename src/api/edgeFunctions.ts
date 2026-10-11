@@ -71,6 +71,21 @@ export function callMalMonthlySync(): Promise<{ seriesWithNewSeasons: number }> 
   return invoke('mal-monthly-sync');
 }
 
+/**
+ * Plan 1 step 6's taste profile. The body is the whole of what leaves the app — three lists of
+ * titles, built by src/domain/tasteProfile.ts's buildTastePayload and nothing else; see
+ * supabase/functions/taste-profile for why the function re-checks consent server-side before
+ * spending the key. Returns the model's raw object, which parseTasteProfile narrows before any of
+ * it renders.
+ */
+export function callTasteProfile(payload: {
+  liked: string[];
+  watchedNeutral: string[];
+  dropped: string[];
+}): Promise<{ profile: unknown }> {
+  return invoke('taste-profile', payload);
+}
+
 /** Plan 1 step 5½'s "delete everything" — removes the signed-in account's rows and the account
  * itself. `remaining` names any table the server couldn't clear, and is empty on a clean delete;
  * see supabase/functions/delete-account for why a partial result is reported rather than thrown. */

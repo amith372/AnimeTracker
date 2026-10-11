@@ -98,6 +98,7 @@ src/
 │   ├── seriesMapping.ts        // Postgres row <-> domain Series/SeriesEntry mapping
 │   ├── realtime.ts             // Realtime subscription -> query invalidation (replaces the old sync engine)
 │   ├── queryClient.ts          // TanStack Query singleton + query-key registry
+│   ├── TasteProfileRepository.ts // reads/writes taste_profiles; sequences payload → model → row
 │   └── apiCache.ts             // shared Postgres api_cache table — MAL response cache, guardrail #3
 ├── domain/                   // plain models + derivation logic (status, grouping) — pure, unit-tested
 ├── account/                  // Supabase account system
@@ -159,6 +160,14 @@ client-generated integers (a real, app-wide type change from the pre-cutover loc
 `last_sync_at`. Replaces the old per-device "has this device imported yet" flag — being per-account
 rather than per-device is what lets signing into an already-imported account on a second device (or
 browser) skip straight to the Library instead of re-running onboarding.
+
+**`taste_profiles`** — one row per account (`user_id` PK), holding the model-generated taste
+description: `profile jsonb`, `generated_at`, `source_fingerprint`. RLS is owner-only
+(`auth.uid() = user_id`) — it is a description of the reader, not of a show, and the most personal
+thing the app stores. The fingerprint is `src/domain/tasteProfile.ts`'s digest of which series are
+liked / finished / dropped, which is what makes a profile stale: comparing it against the live
+library means a like, a drop or a *finishing* episode tick costs one model call and every other
+tick costs none. Must never live in `api_cache` — that table is `anon`-readable.
 
 **`api_cache`** — the MAL response cache (guardrail #3), **shared across every account** (not
 per-user): anime detail/recommendation data is user-independent, so `anon`-readable, `authenticated`-writable,
@@ -285,6 +294,15 @@ Safe to expose in the client bundle — Postgres Row-Level Security (not key sec
 **The MAL Client ID is a Supabase Edge Function secret as of Phase 8** (`MAL_CLIENT_ID`, set via the dashboard's Edge Functions secrets page or `supabase secrets set MAL_CLIENT_ID=...`), never an `EXPO_PUBLIC_` var — the client bundle doesn't hold it, print it, or send it anywhere. Only `supabase/functions/_shared/malAuth.ts` reads it (`Deno.env.get('MAL_CLIENT_ID')`).
 
 **`SITE_URL` is also a Supabase Edge Function secret** (e.g. `https://animetracker-btpk.onrender.com`, set the same way as `MAL_CLIENT_ID` above) — `mal-oauth-callback` reads it (`Deno.env.get('SITE_URL')`) to build the redirect target for the web MAL OAuth popup's `/oauth-complete` landing (see Feature specs §1). Not a secret in the confidentiality sense (it's the app's own public URL), but it has to live server-side because `mal-oauth-callback` is the thing constructing the redirect, not the client. Update it if the deployed web origin ever changes.
+
+**`GROQ_API_KEY` is a Supabase Edge Function secret too** (plan 1 step 6, set the same way as the
+two above) — only `supabase/functions/taste-profile` reads it. The account it belongs to must have
+**Zero Data Retention enabled** in Groq's Data Controls: that is what removes the provider's 30-day
+abuse-log window and squares it with MAL §3(e)'s 24 hours. Groq's Services Agreement §4.2 separately
+bars training on inputs or outputs. **No MAL API response may ever reach the model** — the whole
+compliance argument (the PRD's reading of §3(a)(vii)) is that our own Postgres sits between them, so
+`taste-profile` sends title strings read from our database and nothing else. `__tests__/tasteProfileFunction.test.ts`
+asserts that function imports no MAL helper; keep it that way.
 
 `app.json` — the `scheme` field is the **native** OAuth redirect scheme (`animetracker://`, same value the Kotlin app's intent-filter used). `expo-web-browser` + `expo-linking` read this automatically to catch the *final* redirect back from `mal-oauth-callback` on iOS/Android (see Feature specs §1) — there's no manifest/intent-filter to hand-write like the old `AuthRedirectActivity`. Web doesn't use this scheme at all — `malLinkRepository.web.ts` catches the same redirect via a `postMessage` from a popup instead (see Tech stack's Auth bullet). MAL itself only ever needs the Edge Function's URL registered, never this scheme.
 

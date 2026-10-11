@@ -317,9 +317,19 @@ account's data means hand-written SQL in the Supabase dashboard.
 2. **`groupIntoSeries` drops `ova`/`ona`/`special` entirely.** A model asked for discovery will
    suggest ONAs, which silently produce no row. Not in scope, but step 7's yield will be quietly
    lower because of it.
-3. **Groq's retention window.** Reported abuse logs of up to 30 days sit awkwardly beside §3(e)'s 24
-   hours. Check whether zero-data-retention is available on the free tier before step 6 ships; if
-   not, decide between Cloudflare Workers AI and accepting the window.
+3. ~~**Groq's retention window.**~~ **Settled 2026-10-11, from Groq's own pages rather than the
+   third-party summaries.** Zero Data Retention is available to every account and is not a paid
+   feature — console.groq.com/docs/your-data: *"All customers may enable Zero Data Retention
+   (ZDR)"*, with no free/paid distinction drawn anywhere on the page, and *"Organization admins can
+   decide to enable ZDR globally or on a per-feature basis at any time."* With it on, nothing is
+   retained for reliability or abuse monitoring, which removes the 30-day window outright; the
+   default without it is no retention for inference plus temporary logs *"retained for up to 30
+   days."* Training is barred by contract: Services Agreement §4.2 — Groq *"is not permitted to use
+   Inputs or Outputs for training or fine-tuning any AI Model Services or other models, unless
+   explicitly granted permission or instructed by Customer."* So the answer is accept-with-ZDR, and
+   the Cloudflare Workers AI fallback is not needed. **Enabling ZDR in Groq's Data Controls is a
+   prerequisite for step 6**, listed with its other live-project setup. ZDR disables batch and
+   fine-tuning, neither of which this app uses.
 4. The MMR lambda, the dropped-genre weight and the `num_list_users` ceiling are all numbers that
    need tuning against the real library. Each lands with a stated starting value and a comment, not
    a silent constant.

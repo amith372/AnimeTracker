@@ -27,4 +27,10 @@ export const libraryKeys = {
   root: ['library'] as const,
   library: (userId: string) => ['library', userId] as const,
   meta: (userId: string) => ['library', userId, 'meta'] as const,
+  // Plan 1 step 6's generated taste profile. Deliberately nested under the same ['library',
+  // userId] root as the rest rather than given a root of its own: it is per-account data, and the
+  // sign-out cleanup above drops everything under `root` in one call. A sibling root would need
+  // its own removeQueries and would be forgotten exactly once — leaving one account's taste
+  // description on screen after another signs in on the same device.
+  taste: (userId: string) => ['library', userId, 'taste'] as const,
 };

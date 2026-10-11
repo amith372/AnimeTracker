@@ -40,6 +40,8 @@ import { refetchLibrary, useTrackedMalIds } from '@/repositories/AnimeRepository
 import { userFacingMessage } from '@/repositories/errorMessage';
 import { useHover } from '@/hooks/useHover';
 import { fetchRecommendations, useCatchUp, type RecommendProgress } from '@/repositories/RecommendationRepository';
+import { useTasteProfile } from '@/repositories/TasteProfileRepository';
+import { TasteProfileCard } from '@/components/TasteProfileCard';
 import {
   meetsMinimumEpisodes,
   MIN_EPISODE_THRESHOLDS,
@@ -106,6 +108,10 @@ export default function RecommendScreen() {
   const theme = useTheme();
   const isWideWeb = useIsWideWeb();
   const { items: catchUp, isLoading: catchUpLoading, error: catchUpError } = useCatchUp();
+  // Plan 1 step 6. Read unconditionally rather than only while the Recommended tab is showing:
+  // the query is cached and shared, so switching tabs doesn't pay a fresh round trip on a
+  // backend where every one of those is ~350ms.
+  const tasteProfile = useTasteProfile();
   const [state, setState] = useState<ScreenState>({ kind: 'LOADING', message: 'Loading...' });
   const [tab, setTab] = useState<Tab>('CATCH_UP');
   // Which Catch up kind is showing — Seasons / Movies / Future releases. Held by title rather than
@@ -462,14 +468,19 @@ export default function RecommendScreen() {
           </>
         )
       ) : (
-        <ForYouList
-          state={state}
-          series={sortedRecommended}
-          genreFiltered={recommended.length > 0 && filteredRecommended.length === 0}
-          onRetry={load}
-          onPressCard={openPreview}
-          isWideWeb={isWideWeb}
-        />
+        <>
+          {/* Above the list rather than below it: it describes the basis of what follows, and a
+              reader who disagrees with it should be able to say so before scrolling sixty rows. */}
+          <TasteProfileCard view={tasteProfile} />
+          <ForYouList
+            state={state}
+            series={sortedRecommended}
+            genreFiltered={recommended.length > 0 && filteredRecommended.length === 0}
+            onRetry={load}
+            onPressCard={openPreview}
+            isWideWeb={isWideWeb}
+          />
+        </>
       )}
 
       {/* WebSidebar already shows this line on wide web (it's the "left bar" the sidebar owns) —

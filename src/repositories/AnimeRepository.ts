@@ -409,6 +409,23 @@ export async function markPrivacyConsent(): Promise<void> {
 }
 
 /**
+ * The consent timestamp itself, read once — not the boolean usePrivacyConsent() gives a gate.
+ * buildTastePayload (plan 1 step 6) wants the value rather than a yes/no because it refuses to
+ * build a payload without one, and "the gate said yes" is a weaker thing to hold than the stamp
+ * that says when. Reads through the TanStack cache the two cold-start gates already populated, so
+ * on the normal path this costs no round trip.
+ */
+export async function getPrivacyConsentedAtOnce(): Promise<string | null> {
+  const userId = await currentUserId();
+  if (!userId) return null;
+  const meta = await queryClient.ensureQueryData({
+    queryKey: libraryKeys.meta(userId),
+    queryFn: () => fetchLibraryMeta(userId),
+  });
+  return meta.privacyConsentedAt;
+}
+
+/**
  * Stamps `last_sync_at` only, for the additive sync's "we checked MAL just now" bookkeeping.
  * Deliberately not markInitialImportComplete(), which also writes initial_import_completed_at —
  * that column is the Library-vs-Reconcile onboarding gate and must keep its original timestamp.
