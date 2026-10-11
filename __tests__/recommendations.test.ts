@@ -3,6 +3,8 @@ import {
   diversifyRanked,
   getCatchUpEntries,
   isExcludedCandidate,
+  meetsMinimumEpisodes,
+  MIN_EPISODE_THRESHOLDS,
   rankCandidates,
   scoreGenreOverlap,
   selectCandidatePool,
@@ -694,5 +696,113 @@ describe('rankCandidates with a negative genre profile', () => {
     expect(ranked.map((r) => r.id)).toEqual([1, 2]);
     expect(ranked[0].score).toBeCloseTo(0.406);
     expect(ranked[1].score).toBeCloseTo(0.2);
+  });
+});
+
+describe('meetsMinimumEpisodes', () => {
+  // A recommended series as the "For you" list holds it. Only `kind` and `episodeCount` matter to
+  // the predicate, but ReconcileEntry is a closed shape, so the rest is filled with plausible
+  // values rather than cast away.
+  function makeReconcile(entries: { kind: 'TV_SEASON' | 'MOVIE'; episodeCount: number }[]): ReconcileSeries {
+    return {
+      title: 'Candidate',
+      coverUrl: null,
+      genres: [],
+      rootMalId: 1,
+      type: entries.every((e) => e.kind === 'MOVIE') ? 'STANDALONE_MOVIE' : 'SERIES',
+      manualStatus: 'NONE',
+      entries: entries.map((e, i) => ({
+        malId: i + 1,
+        kind: e.kind,
+        orderIndex: i,
+        title: `Entry ${i + 1}`,
+        episodeCount: e.episodeCount,
+        airingStatus: e.episodeCount > 0 ? 'FINISHED' : 'NOT_YET_AIRED',
+        watchState: 'UNWATCHED',
+      })),
+    };
+  }
+
+  test('a two-season, 25-episode series passes 24+ and fails 50+', () => {
+    // 13 + 12 = 25 total TV episodes. 25 >= 12, 25 >= 24, 25 < 50 with no unknown count to save it.
+    const series = makeReconcile([
+      { kind: 'TV_SEASON', episodeCount: 13 },
+      { kind: 'TV_SEASON', episodeCount: 12 },
+    ]);
+    expect(meetsMinimumEpisodes(series, 12)).toBe(true);
+    expect(meetsMinimumEpisodes(series, 24)).toBe(true);
+    expect(meetsMinimumEpisodes(series, 50)).toBe(false);
+  });
+
+  test('the threshold is inclusive — exactly 12 episodes passes 12+', () => {
+    const series = makeReconcile([{ kind: 'TV_SEASON', episodeCount: 12 }]);
+    expect(meetsMinimumEpisodes(series, 12)).toBe(true);
+    expect(meetsMinimumEpisodes(series, 24)).toBe(false);
+  });
+
+  test('"Any" (0) passes anything, including a series nothing else would keep', () => {
+    const series = makeReconcile([{ kind: 'TV_SEASON', episodeCount: 6 }]);
+    expect(meetsMinimumEpisodes(series, 0)).toBe(true);
+    expect(meetsMinimumEpisodes(series, 12)).toBe(false);
+  });
+
+  test('a series with no published episode counts passes every threshold', () => {
+    // MAL reports num_episodes: 0 for announced-but-unaired entries. Unknown is not zero, so an
+    // airing show with nothing published must not be hidden.
+    const series = makeReconcile([
+      { kind: 'TV_SEASON', episodeCount: 0 },
+      { kind: 'TV_SEASON', episodeCount: 0 },
+    ]);
+    for (const threshold of [12, 24, 50]) {
+      expect(meetsMinimumEpisodes(series, threshold)).toBe(true);
+    }
+  });
+
+  test('one unknown season keeps a series its known seasons alone would fail', () => {
+    // Known: 13. Unknown: one season. 13 >= 12 passes on the known sum alone; 24 and 50 are short
+    // on what's known, but the real total isn't known to be short, so the series stays.
+    const series = makeReconcile([
+      { kind: 'TV_SEASON', episodeCount: 13 },
+      { kind: 'TV_SEASON', episodeCount: 0 },
+    ]);
+    expect(meetsMinimumEpisodes(series, 12)).toBe(true);
+    expect(meetsMinimumEpisodes(series, 24)).toBe(true);
+    expect(meetsMinimumEpisodes(series, 50)).toBe(true);
+  });
+
+  test('a standalone movie is exempt, so the Movies section is untouched at every threshold', () => {
+    const film = makeReconcile([{ kind: 'MOVIE', episodeCount: 1 }]);
+    for (const threshold of [12, 24, 50]) {
+      expect(meetsMinimumEpisodes(film, threshold)).toBe(true);
+    }
+  });
+
+  test('films hanging off a series do not count toward its TV length', () => {
+    // TV only: 20 episodes, which fails 24+. Were the five films summed in as well the total would
+    // be 20 + 5 = 25 and the series would wrongly pass — this is the test that pins that down.
+    const series = makeReconcile([
+      { kind: 'TV_SEASON', episodeCount: 20 },
+      { kind: 'MOVIE', episodeCount: 1 },
+      { kind: 'MOVIE', episodeCount: 1 },
+      { kind: 'MOVIE', episodeCount: 1 },
+      { kind: 'MOVIE', episodeCount: 1 },
+      { kind: 'MOVIE', episodeCount: 1 },
+    ]);
+    expect(meetsMinimumEpisodes(series, 12)).toBe(true);
+    expect(meetsMinimumEpisodes(series, 24)).toBe(false);
+  });
+
+  test('a movie with no published runtime does not make a series exempt', () => {
+    // The exemption is "no TV seasons", not "an unknown count somewhere" — the unknown film is
+    // irrelevant, and the one short TV season is what decides it.
+    const series = makeReconcile([
+      { kind: 'TV_SEASON', episodeCount: 6 },
+      { kind: 'MOVIE', episodeCount: 0 },
+    ]);
+    expect(meetsMinimumEpisodes(series, 12)).toBe(false);
+  });
+
+  test('the presets are Any / 12+ / 24+ / 50+', () => {
+    expect(MIN_EPISODE_THRESHOLDS).toEqual([0, 12, 24, 50]);
   });
 });

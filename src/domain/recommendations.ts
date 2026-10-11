@@ -106,6 +106,53 @@ export function splitRecommendationsByType(recommended: ReconcileSeries[]): {
   };
 }
 
+/**
+ * The thresholds the "For you" length filter offers. Presets rather than a free number: the point
+ * is "is this a short or a long commitment", which three cut points answer, and a typed box would
+ * need a keyboard on a screen that otherwise has none. 12 is one cour, 24 two, 50 the long-runner
+ * mark (Hunter x Hunter, Bleach, Fullmetal Alchemist all sit above it).
+ *
+ * 0 means "Any" — no filter — so it doubles as the off switch and meetsMinimumEpisodes can take it
+ * without the caller special-casing an undefined.
+ */
+export const MIN_EPISODE_THRESHOLDS = [0, 12, 24, 50] as const;
+export type MinEpisodeThreshold = (typeof MIN_EPISODE_THRESHOLDS)[number];
+
+/**
+ * Whether a recommended series is long enough to pass an active minimum-episode filter.
+ *
+ * Length is the **sum of `episodeCount` across `TV_SEASON` entries only** — the question the filter
+ * answers is "how many hours of television is this", and a film that happens to hang off the series
+ * isn't television. Three deliberate consequences, each the subject of a test below:
+ *
+ *  - **A series with no TV seasons at all is exempt**, never filtered out. A standalone movie would
+ *    otherwise total 0 and vanish from every threshold above Any, which would make the Movies
+ *    section empty the moment the filter was touched — the filter is about TV length, so it has
+ *    nothing to say about a film.
+ *  - **An unknown count can never hide a series.** MAL publishes `num_episodes: 0` for anything
+ *    announced-but-unaired and for some currently-airing shows, so a season with no count makes the
+ *    true total unknown, not zero. When the known seasons alone don't reach the threshold but some
+ *    season's count is missing, the series is kept: the real total might well clear it, and failing
+ *    in the direction that doesn't silently hide things is the same call already written into
+ *    `isUnreleased` above.
+ *  - **Known counts are summed across seasons**, not judged per season, because "50+ episodes" is a
+ *    statement about the whole show — two 25-episode seasons is a 50-episode commitment.
+ *
+ * Note this counts every TV season, watched or not. A recommendation is by definition a series the
+ * user has none of, so there is no watched half to subtract.
+ */
+export function meetsMinimumEpisodes(series: ReconcileSeries, minEpisodes: number): boolean {
+  if (minEpisodes <= 0) return true;
+  const tvSeasons = series.entries.filter((e) => e.kind === 'TV_SEASON');
+  if (tvSeasons.length === 0) return true;
+  const known = tvSeasons.filter((e) => e.episodeCount > 0);
+  const knownTotal = known.reduce((sum, e) => sum + e.episodeCount, 0);
+  if (knownTotal >= minEpisodes) return true;
+  // Short on the known seasons alone — but if any season's count is missing, the total isn't
+  // actually known to be short, so keep it rather than hide it.
+  return known.length < tvSeasons.length;
+}
+
 // A series the user marked `liked` counts for more than one plain vote in both the MAL-tally and
 // the genre-affinity profile — CLAUDE.md §7's "liked series count for extra weight" rule.
 const LIKED_WEIGHT = 3;

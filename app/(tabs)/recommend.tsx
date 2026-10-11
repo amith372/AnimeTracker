@@ -40,7 +40,14 @@ import { refetchLibrary, useTrackedMalIds } from '@/repositories/AnimeRepository
 import { userFacingMessage } from '@/repositories/errorMessage';
 import { useHover } from '@/hooks/useHover';
 import { fetchRecommendations, useCatchUp, type RecommendProgress } from '@/repositories/RecommendationRepository';
-import { splitCatchUpByKind, splitRecommendationsByType, type CatchUpItem } from '@/domain/recommendations';
+import {
+  meetsMinimumEpisodes,
+  MIN_EPISODE_THRESHOLDS,
+  splitCatchUpByKind,
+  splitRecommendationsByType,
+  type CatchUpItem,
+  type MinEpisodeThreshold,
+} from '@/domain/recommendations';
 import type { ReconcileSeries } from '@/domain/reconcileSeries';
 import { LinearGradient } from 'expo-linear-gradient';
 import { logoGradient, radii, shadows, spacing } from '@/theme/colors';
@@ -69,6 +76,17 @@ const TYPE_FILTER_LABELS: Record<TypeFilter, string> = {
   ALL: 'Series & movies',
   SERIES: 'Series only',
   MOVIES: 'Movies only',
+};
+
+// "Recommended" only, same as the two above — the lengths come from meetsMinimumEpisodes, which
+// counts TV seasons only, so this says nothing about the Movies section (see the predicate's own
+// comment). Worded as the question being asked ("how long a commitment is this") rather than as the
+// number, because "24" on a button means nothing on its own.
+const MIN_EPISODE_LABELS: Record<MinEpisodeThreshold, string> = {
+  0: 'Any length',
+  12: '12+ episodes',
+  24: '24+ episodes',
+  50: '50+ episodes',
 };
 
 // A stable empty array, so the "no recommendations yet" render path doesn't hand a fresh []
@@ -102,6 +120,10 @@ export default function RecommendScreen() {
   const [sortDialogVisible, setSortDialogVisible] = useState(false);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('ALL');
   const [typeDialogVisible, setTypeDialogVisible] = useState(false);
+  // 0 is "Any" — see MIN_EPISODE_THRESHOLDS. Not reset when the tab changes, the same as the sort
+  // and type filters: it's only read on "Recommended", so a stale value can't affect Catch up.
+  const [minEpisodes, setMinEpisodes] = useState<MinEpisodeThreshold>(0);
+  const [lengthDialogVisible, setLengthDialogVisible] = useState(false);
 
   function load(opts?: { bypassCache?: boolean }) {
     setState({ kind: 'LOADING', message: 'Loading...' });
@@ -191,7 +213,9 @@ export default function RecommendScreen() {
   const matchesType = (s: ReconcileSeries) =>
     typeFilter === 'ALL' ||
     (typeFilter === 'MOVIES' ? s.type === 'STANDALONE_MOVIE' : s.type !== 'STANDALONE_MOVIE');
-  const filteredRecommended = recommended.filter((s) => matchesGenre(s.genres) && matchesType(s));
+  const filteredRecommended = recommended.filter(
+    (s) => matchesGenre(s.genres) && matchesType(s) && meetsMinimumEpisodes(s, minEpisodes),
+  );
   // Rating sort only applies to "For you" — Catch up has no ranking to override in the first place.
   const sortedRecommended =
     sortMode === 'RATING'
@@ -299,6 +323,14 @@ export default function RecommendScreen() {
               {TYPE_FILTER_LABELS[typeFilter]}
             </Button>
           )}
+          {/* Length is "Recommended"-only for the reason the PRD gives: Catch up is shows you have
+              already started, and hiding a committed backlog because it turned out to be long is
+              the opposite of what that list is for. */}
+          {tab === 'FOR_YOU' && (
+            <Button mode="outlined" icon="timer-outline" onPress={() => setLengthDialogVisible(true)}>
+              {MIN_EPISODE_LABELS[minEpisodes]}
+            </Button>
+          )}
         </View>
       )}
       <Portal>
@@ -355,6 +387,27 @@ export default function RecommendScreen() {
             >
               {(Object.keys(TYPE_FILTER_LABELS) as TypeFilter[]).map((value) => (
                 <RadioButton.Item key={value} label={TYPE_FILTER_LABELS[value]} value={value} />
+              ))}
+            </RadioButton.Group>
+          </Dialog.Content>
+        </Dialog>
+      </Portal>
+
+      <Portal>
+        {/* Single-select radios, closing on pick — the same shape as Sort and Show, since these are
+            four mutually exclusive presets rather than the genre dialog's multi-select. */}
+        <Dialog visible={lengthDialogVisible} onDismiss={() => setLengthDialogVisible(false)} style={dialogStyle}>
+          <Dialog.Title>Minimum episodes</Dialog.Title>
+          <Dialog.Content>
+            <RadioButton.Group
+              value={String(minEpisodes)}
+              onValueChange={(v) => {
+                setMinEpisodes(Number(v) as MinEpisodeThreshold);
+                setLengthDialogVisible(false);
+              }}
+            >
+              {MIN_EPISODE_THRESHOLDS.map((value) => (
+                <RadioButton.Item key={value} label={MIN_EPISODE_LABELS[value]} value={String(value)} />
               ))}
             </RadioButton.Group>
           </Dialog.Content>
