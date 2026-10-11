@@ -24,6 +24,26 @@ This is a collaborative build. When in doubt, stop and ask; do not guess.
 
 Use the `AskUserQuestion` tool when a decision comes down to a few clear options.
 
+### What to build next, and where the plan lives
+
+- **`build_plan.md` (repo root) is the work list.** Told to "continue", read it whole, take the
+  first step not marked done, build **only** that step, end with the check it names, and stop. It
+  holds only unbuilt work — a landed step is compressed to one line with its date the same day.
+- **`prd/N-name.md` holds what a step *is* and why** — decisions, reasoning, constraints, edge
+  cases. Read on demand, never auto-loaded. On any conflict with `build_plan.md`, the PRD wins and
+  the plan is corrected. The file is deleted once its last step lands.
+- **Any feature or setup change these two don't already describe starts with a PRD**, signed off
+  before code: problem, success criteria, scope in *and explicitly out*, constraints, edge cases,
+  open questions, plus a step-by-step implementation plan. A fix, or a step the plan already names,
+  needs no PRD.
+- **Every step ends with a check the user runs** — what to open or press, and what failure looks
+  like — written into the message and the commit, and nothing is pushed until they confirm it. An
+  agent verifying its own work only proves the code does what the agent thought, which is the half
+  already known.
+- **Every expected test figure is derived on paper from the inputs**, never read off what the
+  implementation returned. A test written by reading the code under it records whatever that code
+  produced, passes in full, and fails the day someone corrects the bug.
+
 ---
 
 ## ⚠️ Non-negotiable guardrails (MAL API compliance)
