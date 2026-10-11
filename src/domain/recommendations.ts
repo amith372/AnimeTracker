@@ -145,6 +145,75 @@ export function tallyMalRecommendations(sources: RecommendationSource[]): Map<nu
   return tally;
 }
 
+/** One source series' own MAL recommendations, already filtered to ids worth considering. */
+export interface SourceCandidatePool {
+  recommended: RecommendedRef[];
+}
+
+/**
+ * Chooses which candidate ids are worth spending a detail fetch on, by giving every source series
+ * a turn instead of letting the biggest ones spend the whole budget.
+ *
+ * Why this exists: the budget is real (one MAL `anime/{id}` call per candidate, see
+ * MAX_CANDIDATE_DETAILS) and a watched library easily tallies 200+ unique candidates, so something
+ * has to be cut. This used to be a single global sort by MAL tally, which meant popularity decided
+ * the pool *before taste was ever consulted* — and because a blockbuster contributes hundreds of
+ * strongly-recommended candidates while an obscure favourite contributes ten weakly-recommended
+ * ones, the top 80 came almost entirely from the user's two or three biggest shows. Nothing the
+ * obscure series recommended was ever scored at all, let alone ranked, so no amount of fixing the
+ * ranking downstream could surface it.
+ *
+ * Round-robin fixes that at the only place it can be fixed: every series contributes its own best
+ * candidate, then its second best, and so on until the budget runs out. The number of MAL calls is
+ * unchanged — it is the same 80, drawn from across the library rather than off the top of it.
+ *
+ * Within a series, "best" is that series' *own* `num_recommendations`, not the global tally: the
+ * question being asked of each series in turn is "of the shows you point at, which do MAL's users
+ * point at hardest", which is a judgement about that series alone. The global tally still decides
+ * *ranking* afterwards (see rankCandidates) — it just no longer decides who gets to be ranked.
+ *
+ * Turns are equal, and a `liked` series gets no larger quota, even though liked counts for extra
+ * weight elsewhere. That weight already applies twice downstream, in the tally and the genre
+ * profile; applying it a third time here would spend the breadth budget on preference, which is
+ * the exact failure being fixed. This stage is about *who gets heard*, not who wins.
+ *
+ * Pool order is the caller's and decides only who gets the extra pick in a final partial round, so
+ * the result is deterministic for a given library rather than shuffling between runs.
+ */
+export function selectCandidatePool(pools: SourceCandidatePool[], budget: number): number[] {
+  // Each series' own candidates, strongest-first by that series' num_recommendations. Sorted once
+  // up front and then walked by cursor, so the round-robin below stays O(total candidates).
+  const queues = pools.map((pool) =>
+    [...pool.recommended].sort((a, b) => b.numRecommendations - a.numRecommendations),
+  );
+  const cursors = queues.map(() => 0);
+
+  const picked: number[] = [];
+  const claimed = new Set<number>();
+  // Stops the moment a whole pass claims nothing, which is how "every pool is exhausted" is
+  // detected without recounting what is left in each one.
+  let progressed = true;
+
+  while (picked.length < budget && progressed) {
+    progressed = false;
+    for (let i = 0; i < queues.length && picked.length < budget; i++) {
+      const queue = queues[i];
+      // Advance past anything another series already claimed. Skipping rather than forfeiting the
+      // turn matters: candidates overlap heavily between related shows, so a series whose top few
+      // recommendations are all shared with a bigger one would otherwise contribute nothing.
+      while (cursors[i] < queue.length && claimed.has(queue[cursors[i]].id)) cursors[i]++;
+      if (cursors[i] >= queue.length) continue;
+
+      const ref = queue[cursors[i]++];
+      claimed.add(ref.id);
+      picked.push(ref.id);
+      progressed = true;
+    }
+  }
+
+  return picked;
+}
+
 export interface GenreProfileSource {
   liked: boolean;
   genres: string[];

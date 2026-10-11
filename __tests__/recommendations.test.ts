@@ -5,6 +5,7 @@ import {
   isExcludedCandidate,
   rankCandidates,
   scoreGenreOverlap,
+  selectCandidatePool,
   splitCatchUpByKind,
   splitRecommendationsByType,
   tallyMalRecommendations,
@@ -466,5 +467,76 @@ describe('diversifyRanked', () => {
     // Guards the wiring, not a specific lambda: whatever DIVERSITY_LAMBDA is, it must be non-zero,
     // or every test above is testing a function the app never really applies.
     expect(diversifyRanked(CANDIDATES).map((c) => c.id)).not.toEqual([1, 2, 3, 4, 5]);
+  });
+});
+
+describe('selectCandidatePool', () => {
+  // Shorthand: a pool from [id, num_recommendations] pairs.
+  function pool(...refs: [number, number][]) {
+    return { recommended: refs.map(([id, numRecommendations]) => ({ id, numRecommendations })) };
+  }
+
+  test('one huge source series cannot crowd the three small ones out of the budget', () => {
+    // The shape this function exists for. BIG recommends 50 shows, every one of them more strongly
+    // recommended than anything the three small series point at, so a single global sort by MAL
+    // tally spends the entire budget inside BIG and the other three are never scored at all.
+    //
+    // ids 100..149 at num 500 down to 451; the small series offer 10/9/8 each.
+    const big = {
+      recommended: Array.from({ length: 50 }, (_, i) => ({ id: 100 + i, numRecommendations: 500 - i })),
+    };
+    const a = pool([200, 10], [201, 9], [202, 8]);
+    const b = pool([300, 10], [301, 9], [302, 8]);
+    const c = pool([400, 10], [401, 9], [402, 8]);
+
+    // Derived on paper. Pools take turns in order [big, a, b, c]:
+    //   pass 1 -> 100, 200, 300, 400   (4)
+    //   pass 2 -> 101, 201, 301, 401   (8)
+    //   pass 3 -> 102, 202             (10 = budget, so b and c get no third turn)
+    const picked = selectCandidatePool([big, a, b, c], 10);
+    expect(picked).toEqual([100, 200, 300, 400, 101, 201, 301, 401, 102, 202]);
+
+    // The success criterion stated independently of the exact order: all four are represented.
+    expect(picked.some((id) => id >= 100 && id < 150)).toBe(true);
+    expect(picked.some((id) => id >= 200 && id < 300)).toBe(true);
+    expect(picked.some((id) => id >= 300 && id < 400)).toBe(true);
+    expect(picked.some((id) => id >= 400 && id < 500)).toBe(true);
+  });
+
+  test("a series' turn spends on its own strongest recommendation, not on input order", () => {
+    // Input order is 1, 2, 3; num_recommendations order is 2 (50), 3 (20), 1 (5).
+    expect(selectCandidatePool([pool([1, 5], [2, 50], [3, 20])], 3)).toEqual([2, 3, 1]);
+  });
+
+  test('a candidate two series both recommend is taken once, and the second series picks again', () => {
+    // A: 1 (10), 2 (5).  B: 1 (99), 3 (1).  Both point at 1.
+    //   pass 1 -> A takes 1; B's best is also 1, already claimed, so it moves on and takes 3
+    //   pass 2 -> A takes 2; B is exhausted
+    // Forfeiting B's turn instead would have cost it its only unshared candidate.
+    expect(selectCandidatePool([pool([1, 10], [2, 5]), pool([1, 99], [3, 1])], 4)).toEqual([1, 3, 2]);
+  });
+
+  test('an exhausted series is skipped rather than ending the rounds early', () => {
+    // A has one candidate, B has three, budget 4.
+    //   pass 1 -> 1, 10 | pass 2 -> A empty, 11 | pass 3 -> 12
+    expect(selectCandidatePool([pool([1, 1]), pool([10, 9], [11, 8], [12, 7])], 4)).toEqual([
+      1, 10, 11, 12,
+    ]);
+  });
+
+  test('a budget smaller than the number of series gives the earliest pools the turns', () => {
+    // Nothing clever to do here, but it must be deterministic rather than arbitrary.
+    expect(selectCandidatePool([pool([1, 9]), pool([2, 9]), pool([3, 9])], 2)).toEqual([1, 2]);
+  });
+
+  test('fewer unique candidates than the budget returns all of them and stops', () => {
+    // Every pool exhausted well inside the budget; the loop must end, not spin.
+    expect(selectCandidatePool([pool([1, 5], [2, 4]), pool([2, 99], [3, 1])], 80)).toEqual([1, 2, 3]);
+  });
+
+  test('no pools, no candidates, or no budget yields nothing', () => {
+    expect(selectCandidatePool([], 80)).toEqual([]);
+    expect(selectCandidatePool([pool(), pool()], 80)).toEqual([]);
+    expect(selectCandidatePool([pool([1, 5])], 0)).toEqual([]);
   });
 });

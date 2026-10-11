@@ -34,7 +34,7 @@ never read off what the implementation returned.
 
 ## Current state, 2026-10-11
 
-Nothing in this file is started. `prd/1-recommendation-variety.md` is signed off in shape; the one
+Steps 0 and 1 are done; step 2 is built and awaiting its check. `prd/1-recommendation-variety.md` is signed off in shape; the one
 open question inside it (step 5½, guests and the consent gate) blocks only that step.
 
 Last shipped before this plan existed: Phase 12's direct-Postgres cutover and web build
@@ -59,31 +59,20 @@ Carried forward from finished work. None of these is a defect, and none is sched
 Detail, decisions and reasoning: **`prd/1-recommendation-variety.md`**. Not duplicated here — this
 is the work list, that is the brief. Delete the PRD when step 7 lands.
 
-### Step 0 — The pre-commit gate, and settle the `genres` question · **next**
-`hooks/pre-commit` + `core.hooksPath hooks` via package.json's `prepare`: added-line secret scan,
-then `npx tsc --noEmit`, then `npx jest`. Lands first so every later step is gated.
-Also settle, before steps 3 and 5: does MAL v2's `genres` carry Themes and Demographics (~70–80
-tags) or only ~15 coarse genres? One query in the Supabase SQL editor —
-`select json->'genres' from api_cache where key like 'detail:v4:%' limit 5;`
-**Check:** stage a file containing a fake JWT, try to commit, confirm refusal; then commit something
-harmless and confirm typecheck and tests run.
+Step 0 — the pre-commit gate, and the `genres` question · **done 2026-10-11**
+Step 1 — diversify the final list · **done 2026-10-11**
 
-### Step 1 — Diversify the final list
-`diversifyRanked()` in `src/domain/recommendations.ts` (greedy MMR, genre-Jaccard similarity),
-applied in `RecommendationRepository.ts` after `rankCandidates` and before the
-`MAX_RECOMMENDATIONS` slice. Tests in `__tests__/recommendations.test.ts`.
-**Check:** the top ~10 of "For you" is no longer one genre cluster. Failure: unchanged list, or top
-entries now obviously worse fits.
-
-### Step 2 — Broaden the candidate pool
-Replace the top-80-by-tally cut with a round-robin quota over source series, as a new pure function
-so selection is testable apart from fetching. Same MAL call count, different 80.
+### Step 2 — Broaden the candidate pool · **built 2026-10-11, awaiting the check**
+`selectCandidatePool()` in `src/domain/recommendations.ts` replaces the top-80-by-tally cut with a
+round-robin over source series. Same MAL call count, different 80. Compress this to one line once
+the check below passes.
 **Check:** a show you'd expect from a less popular watched series appears. Failure: the list is
 still drawn from your two or three biggest shows.
 
 ### Step 3 — Learn from dropped series
 Negative genre profile from `DROPPED` series, subtracted in scoring. Weight decided against the real
-library and stated in a comment. Depends on step 0's `genres` answer.
+library and stated in a comment. `genres` is the deep ~70–80 flat tag list (settled in the PRD), so
+the per-tag divisor is what has to stop a broad tag like `Shounen` being wiped out.
 **Check:** something you dropped the like of stops appearing. Failure: no change, or a genre you do
 still like gets wiped out.
 
@@ -96,7 +85,8 @@ an airing show with no published count hidden.
 ### Step 5 — More taste axes and the obscurity signal
 `studios`, `source`, `num_list_users` added to `DETAIL_FIELDS` in **both** `mal-anime-detail` and
 `mal-import`, byte-identical, with `DETAIL_CACHE_VERSION` bumped to v5 in the same commit. Studio /
-source / era affinity alongside genre. Depends on step 0's `genres` answer.
+source / era affinity alongside genre — and no theme or demographic axis, which the PRD's step-0
+answer shows are already inside `genres`.
 **Check:** recommendations shift toward studios and sources you favour. Failure: genre-only
 behaviour unchanged — the new fields are reading `undefined`, i.e. the cache version wasn't bumped.
 

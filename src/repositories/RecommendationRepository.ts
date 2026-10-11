@@ -14,6 +14,7 @@ import {
   isExcludedCandidate,
   isRecommendationSource,
   rankCandidates,
+  selectCandidatePool,
   tallyMalRecommendations,
   type CatchUpItem,
   type RecommendationCandidate,
@@ -43,18 +44,14 @@ const CANDIDATE_FETCH_CONCURRENCY = 12;
 // the edge of the window. Costs nothing extra by itself: this trims an already-ranked list.
 const MAX_RECOMMENDATIONS = 60;
 // A watched library can easily tally 200+ unique candidates across all its series'
-// recommendations — fetching detail for every one of them made this take minutes. A candidate
-// that barely shows up in the tally is extremely unlikely to out-rank a popular one purely on
-// genre overlap (which is bounded by how many genres the user has weight in), so it's safe to
-// only fetch full detail for the top N by raw tally count before scoring/grouping. Trimmed from 60
-// to 40 for the same reason as the concurrency bump above — fewer detail round-trips, same result
-// quality since anything past the top 40 by raw tally was already vanishingly unlikely to rank.
+// recommendations, and fetching detail for every one of them made this take minutes — so the pool
+// is capped. This is the one knob here that genuinely costs MAL requests (one detail call each,
+// plus closure expansion), which makes it the number to lower first if this ever feels slow; the
+// shared api_cache absorbs repeat runs, but a cold one really does make ~80 calls.
 //
-// Raised back to 80 to feed the larger MAX_RECOMMENDATIONS below: grouping collapses sequel chains,
-// so 40 candidates couldn't produce 60 distinct series no matter how they ranked. This is the one
-// knob here that genuinely costs MAL requests (one detail call each, plus closure expansion), which
-// is why it's the number to lower first if this ever feels slow — the shared api_cache absorbs
-// repeat runs, but a cold one really does make ~80 calls.
+// 80 rather than fewer because grouping collapses sequel chains, so a smaller pool can't produce
+// MAX_RECOMMENDATIONS distinct series no matter how it ranks. How the budget is *divided* among the
+// user's watched series is selectCandidatePool's job, not this constant's.
 const MAX_CANDIDATE_DETAILS = 80;
 
 /**
@@ -121,25 +118,28 @@ export async function fetchRecommendations(
   );
   const genreAffinity = buildGenreAffinity(sourceSeries.map((s) => ({ liked: s.liked, genres: s.genres })));
 
-  const allCandidateIds = Array.from(
-    new Set(Array.from(recommendedBySeries.values()).flatMap((refs) => refs.map((r) => r.id))),
-  );
-  if (allCandidateIds.length === 0) {
-    onProgress({ kind: 'READY', series: [] });
-    return;
-  }
-
   const trackedMalIds = new Set(allSeries.flatMap((s) => s.entries.map((e) => e.malId)));
   const droppedMalIds = new Set(
     allSeries.filter((s) => s.manualStatus === 'DROPPED').flatMap((s) => s.entries.map((e) => e.malId)),
   );
 
-  // Cheap pre-filter (no fetch needed): drop anything already tracked or itself a dropped series,
-  // then cap to the top scorers by raw tally before spending a network call on any of them.
-  const candidateIds = allCandidateIds
-    .filter((id) => !trackedMalIds.has(id) && !droppedMalIds.has(id))
-    .sort((a, b) => (malTally.get(b) ?? 0) - (malTally.get(a) ?? 0))
-    .slice(0, MAX_CANDIDATE_DETAILS);
+  // Which candidates are worth a detail call. The cheap exclusions (already tracked, or itself a
+  // dropped series) need no fetch, so they're applied to each source series' own recommendations
+  // before selection; the budget is then divided by giving every series a turn rather than by one
+  // global sort — see selectCandidatePool for why letting popularity choose the pool made the
+  // taste-based ranking downstream largely moot.
+  //
+  // This also absorbs the "no series recommended anything" early return that used to sit above:
+  // that and "the exclusions left nothing" are the same outcome by two routes, and the single
+  // emptiness check below covers both.
+  const candidateIds = selectCandidatePool(
+    sourceSeries.map((s) => ({
+      recommended: (recommendedBySeries.get(s.id) ?? []).filter(
+        (r) => !trackedMalIds.has(r.id) && !droppedMalIds.has(r.id),
+      ),
+    })),
+    MAX_CANDIDATE_DETAILS,
+  );
 
   if (candidateIds.length === 0) {
     onProgress({ kind: 'READY', series: [] });
