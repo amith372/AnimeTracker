@@ -58,9 +58,11 @@ Carried forward from finished work. None of these is a defect, and none is sched
   weighted by what you liked" is a real if blunt signal, and step 3's negative half is built to be
   frequency-sensitive on its own terms. Fixing it is a behaviour change to the positive half and
   wants its own step, probably folded into step 5 when the other taste axes land.
-- **Three Supabase-side items from Phase 12 may still be outstanding** — the
-  `20260812000000_direct_postgres.sql` migration pushed, anonymous sign-ins enabled, and the Render
-  static site connected. Confirm before step 5½, which adds a migration of its own.
+- **Two Supabase-side items from Phase 12 are still unverified**: anonymous sign-ins enabled, and
+  the Render static site connected. The third is settled — `20260812000000_direct_postgres.sql` is
+  applied on the remote, and the CLI migration history (empty, because the schema was applied
+  outside the CLI) was repaired to match, 2026-10-11, so step 5½'s migration pushes normally.
+  Never `db push` these expecting a no-op: `create policy` and `cron.schedule` are not idempotent.
 
 ---
 
