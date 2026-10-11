@@ -149,3 +149,55 @@ file is the work list, so `mattpocock-skills:domain-modeling` and friends stop l
 `CONTEXT.md` and `docs/adr/`.
 **Check:** invoke the domain-modeling skill and confirm it reads the right files instead of
 proposing new ones.
+
+---
+
+# Plan 3 — Move the Supabase project to a closer region · **not scheduled, needs a PRD**
+
+Asked for 2026-10-11: loading is slow, and the suspicion is that the Postgres region is far away.
+
+**The measurement that says it is.** Five REST round trips to the current project, from this dev
+machine:
+
+```
+connect 0.008-0.028s   tls 0.019-0.040s   total 0.372-0.412s
+```
+
+TCP connect and the TLS handshake both finish inside ~40ms, because those terminate at a CDN edge
+that is already nearby. The remaining **~350ms is the edge → region → edge leg**, and it is paid on
+every single request. That is the whole of the problem in one number, and it is worth stating what
+makes it expensive here specifically: since the Phase 12 cutover there is no local database and no
+offline support, so every screen read, every optimistic write's commit, and every MAL call (they
+all go through Edge Functions, which run in that same region) is one of these round trips. A screen
+doing three sequential ones spends a second before it can draw.
+
+**Why this needs a PRD rather than just doing it.** A region is fixed at project creation, so this
+is a migration to a new project, not a setting — *verify that against Supabase's current docs
+first, as it may have changed, and the answer decides whether there is any work here at all.*
+Assuming it holds, the new project means a new URL and anon key, and the following all have to move
+or be redone, each of which can silently half-work:
+
+- `supabase/migrations/` re-pushed, including `20260812000000_direct_postgres.sql` — which the
+  "still owed" list above says may never have been pushed to the current project either, so settle
+  that first or the two projects differ in ways nothing will tell you about.
+- Edge Function secrets re-set: `MAL_CLIENT_ID`, `SITE_URL`, `CRON_SECRET`.
+- **The MAL OAuth redirect URI changes**, because it is the `mal-oauth-callback` function's own URL
+  (Feature specs §1). It must be re-registered on MAL's side, and until it is, every sign-in path
+  breaks — this is the step with the largest blast radius and the one to sequence last.
+- "Allow anonymous sign-ins" re-enabled (dashboard-only, no migration can do it).
+- The `pg_cron` schedules re-created: the monthly sync and the daily `api_cache` prune.
+- Data: `series` / `series_entries` / `user_library_meta` dumped and restored. `mal_accounts` is
+  better left behind and re-linked by hand — copying live MAL refresh tokens between projects is
+  the one piece of this that handles a real secret, and a re-link costs one OAuth round trip.
+  `api_cache` needs nothing: it is shared, disposable, and measured empty on 2026-10-11 anyway.
+- `.env` and the Render static site's environment both updated.
+
+**Open question for the PRD:** whether a closer region is actually available for the plan the
+project is on, and which one genuinely wins — pick it by measuring, not by looking at a map.
+A throwaway project in each candidate region, timed with the same five-sample curl above, settles
+it before anything is migrated.
+
+**Check:** re-run that curl against the new project. `total` should fall toward the connect+TLS
+floor — call it under ~120ms rather than ~390ms. Then open the app cold and confirm the Library
+draws noticeably faster. Failure looks like an unchanged `total` (the new region is no closer), or
+any sign-in path broken (the MAL redirect URI was not re-registered).
