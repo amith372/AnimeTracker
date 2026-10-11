@@ -1,0 +1,92 @@
+#!/bin/sh
+# Pre-commit gate. Installed by package.json's "prepare" script, which points
+# core.hooksPath at this directory, so a fresh clone gets it from `npm install`
+# alone rather than from a setup step someone has to remember.
+#
+# Three gates, cheapest first:
+#   1. a secret scan over added lines only (never echoing what it matched)
+#   2. npx tsc --noEmit
+#   3. npx jest
+#
+# The secret scan exists because guardrail #1 and #2 in CLAUDE.md (never commit
+# the MAL Client ID, never commit a token) are rules a human has to remember on
+# every single commit, and one slip is permanent in the history. It reads only
+# ADDED lines of the staged diff: existing matches in the tree would otherwise
+# block every commit forever, and the point is to catch the thing being
+# introduced right now.
+#
+# Bypass with `git commit --no-verify` if a match is genuinely a false
+# positive — but prefer fixing the line, since a false positive here usually
+# means a real key-shaped literal in source.
+
+set -e
+
+fail() {
+  echo "pre-commit: $1" >&2
+  echo "pre-commit: commit refused. Fix it, or re-run with --no-verify if this is genuinely a false positive." >&2
+  exit 1
+}
+
+# --- 1. secret scan ------------------------------------------------------
+
+# A .env file is never committable: it is the one file that by convention holds
+# the real values. Caught by name, before looking at any content.
+staged_names=$(git diff --cached --name-only --diff-filter=ACMR)
+for name in $staged_names; do
+  case "$name" in
+    .env|.env.*|*/.env|*/.env.*)
+      case "$name" in
+        *.example|*.sample|*.template) ;;
+        *) fail "$name is staged. Environment files hold real values and must never be committed." ;;
+      esac
+      ;;
+    *.keystore|*.jks|*.p8|*.p12|*.mobileprovision|*.pem|*.key)
+      fail "$name is staged. Signing material and private keys must never be committed." ;;
+  esac
+done
+
+# Added lines only, scanned per file so a hit can be reported by file name
+# without ever echoing the matched value — printing it would put the secret in
+# the terminal, CI log and scrollback, which is the thing being prevented.
+scan_file() {
+  # $1 = path, $2 = ERE, $3 = what it means
+  added=$(git diff --cached --diff-filter=ACMR -U0 -- "$1" | grep '^+' | grep -v '^+++' | sed 's/^+//' || true)
+  [ -n "$added" ] || return 0
+  count=$(printf '%s
+' "$added" | grep -cE "$2" || true)
+  if [ "${count:-0}" -gt 0 ]; then
+    echo "pre-commit: $count added line(s) in $1 look like a $3." >&2
+    echo "pre-commit: the matched text is deliberately not printed - open the file and look." >&2
+    fail "$3 in $1"
+  fi
+}
+
+for name in $staged_names; do
+  # A PEM private-key block - unambiguous, no false positive worth caring about.
+  scan_file "$name" '^-----BEGIN [A-Z ]*PRIVATE KEY-----' "private key block"
+
+  # A JWT: three base64url segments whose first two carry the usual {"alg /
+  # {"typ encoding. Supabase service_role keys are this shape. The eyJ prefix
+  # is what makes this specific rather than a generic "long base64 string"
+  # match that would hit real data.
+  scan_file "$name" 'eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}' "JWT"
+
+  # A literal-assigned credential: a secret-ish name assigned a long quoted
+  # literal. Deliberately requires the quotes, so
+  # `const id = process.env.MAL_CLIENT_ID` and `Deno.env.get('MAL_CLIENT_ID')`
+  # both pass - those are the correct way to read one, and allowing them is
+  # the whole point.
+  scan_file "$name" '(secret|token|password|passwd|api[_-]?key|client[_-]?id|service[_-]?role|anon[_-]?key)[A-Za-z_]*["'"'"']?[[:space:]]*[:=][[:space:]]*["'"'"'][A-Za-z0-9_\-\.\/\+]{16,}["'"'"']' "hardcoded credential"
+done
+
+# --- 2. typecheck -------------------------------------------------------
+
+echo "pre-commit: typechecking..."
+npx tsc --noEmit || fail "typecheck failed"
+
+# --- 3. tests -----------------------------------------------------------
+
+echo "pre-commit: running tests..."
+npx jest --silent || fail "tests failed"
+
+echo "pre-commit: ok"
