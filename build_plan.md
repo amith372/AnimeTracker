@@ -67,7 +67,8 @@ Carried forward from finished work. None of these is a defect, and none is sched
 - **One Supabase-side item from Phase 12 is still unverified**: the Render static site connected.
   Anonymous sign-ins are confirmed **enabled** (2026-10-11, by signing one in against the live
   project — it returned `is_anonymous: true`; the throwaway user `178e75f9…` is still in
-  `auth.users` and is a natural first subject for step 5½'s delete action). The migration is settled — `20260812000000_direct_postgres.sql` is
+  `auth.users`, and is **not** a subject for step 5½'s delete action after all: its session is
+  gone, so nothing can sign into it from the app — clear it from the dashboard instead). The migration is settled — `20260812000000_direct_postgres.sql` is
   applied on the remote, and the CLI migration history (empty, because the schema was applied
   outside the CLI) was repaired to match, 2026-10-11, so step 5½'s migration pushes normally.
   Never `db push` these expecting a no-op: `create policy` and `cron.schedule` are not idempotent.
@@ -108,9 +109,12 @@ Guests see the gate too, confirmed 2026-10-11 — nothing special-cases an anony
 should do unattended: `supabase db push` for `20261011000000_privacy_consent.sql`, and
 `supabase functions deploy delete-account`. Until the function is deployed, "Delete everything"
 reports a failure and deletes nothing; until the column exists, the consent gate can't be passed.
-**Check:** on a throwaway second account — read the notice, accept, app opens; delete, account gone,
-re-signin starts at onboarding; your own library untouched; that account's MAL list still intact on
-MAL's own site.
+**Check:** on a throwaway guest session (login → Continue as a guest) — read the notice, accept, app
+opens; delete, account gone, re-signin starts at onboarding; your own library untouched. The MAL
+half of this check is **not runnable and has been dropped** — `mal_accounts.mal_user_id` is unique,
+so one MAL identity links to one app account at a time and a throwaway can't hold a link to delete;
+the only account that can is the user's own. That the delete never reaches MAL rests on
+`__tests__/deleteAccount.test.ts` asserting no MAL helper is imported, not on an observation.
 
 ### Step 6 — The taste profile (model, part 1)
 `taste_profiles` table + RLS; `supabase/functions/taste-profile` holding `GROQ_API_KEY` and sending

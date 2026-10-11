@@ -262,11 +262,19 @@ account's data means hand-written SQL in the Supabase dashboard.
     check never will: someone adds a per-user table later and forgets to delete it, or wires
     `api_cache` in by mistake. A comment saying "don't touch api_cache" does not fail a build.
   - The payload builder in step 6 throws if consent is null — unchanged, and a pure-domain test.
-- **Check:** on a throwaway second account, read the notice, accept, confirm the app opens. Then
-  press delete, confirm the account is gone, confirm signing in again starts from onboarding — and
-  confirm your *own* account's library is untouched. Then check MAL's website and confirm that
-  account's list is still there. Failure looks like the other account's data disappearing, an
-  orphaned login that gets an empty library, or anything missing from the MAL list.
+- **Check — amended 2026-10-11, for the same reason the tests bullet above was: part of it isn't
+  runnable here.** On a throwaway guest session (login → "Continue as a guest" — a real `auth.uid()`
+  with an empty library, and it hits the consent gate like any account), read the notice, accept,
+  confirm the app opens. Then press delete, confirm the account is gone, confirm signing in again
+  starts from onboarding — and confirm your *own* account's library is untouched. Failure looks like
+  the other account's data disappearing, or an orphaned login that gets an empty library.
+  - **The "their MAL list is still there" half is dropped**, because no throwaway can hold a MAL
+    link to delete: `mal_accounts.mal_user_id` is `unique`, so one MAL identity is linked to exactly
+    one app account at a time, and linking it to a second one fails on that constraint rather than
+    moving it. The only account with a link to delete is the user's own, and deleting that to prove
+    a negative is not a check worth running. What stands in for it: the delete function imports no
+    MAL helper at all, which `__tests__/deleteAccount.test.ts` asserts — a stronger guarantee than
+    one observed list surviving one deletion, and the reason that assertion is in the test.
 
 ### Step 6 — The taste profile (model, part 1)
 
