@@ -34,12 +34,9 @@ never read off what the implementation returned.
 
 ## Current state, 2026-10-11
 
-Plan 1's steps 0–3 are done and checked. **Steps 4, 5 and 5½ are built and committed but NOT yet
-checked** (`09246c2`, `3f15df8`, `35de161`) — do not rebuild them. They are kept
-below, with their checks, so a session that reads this file doesn't mistake committed work for
-unbuilt work; the moment the user confirms each check it compresses to one line and gets pushed.
-**Step 6 is the next thing to build**, and it must not start before step 5½'s check passes — step 6
-is the first step that sends data out of the app, which is the whole reason 5½ lands first.
+Plan 1's steps 0–5½ are all done and checked, 5½ confirmed 2026-10-11. **Step 6 is the next thing
+to build.** Nothing in plan 1 has been pushed — the branch holds every commit from step 0 onward,
+by the user's instruction, so `origin/master` is still at `244f20f`.
 
 `prd/1-recommendation-variety.md` is signed off in shape and has no open questions left that block
 a step. Plan 3 was added 2026-10-11 and is unscheduled.
@@ -65,13 +62,11 @@ Carried forward from finished work. None of these is a defect, and none is sched
   frequency-sensitive on its own terms. Fixing it is a behaviour change to the positive half and
   wants its own step, probably folded into step 5 when the other taste axes land.
 - **One Supabase-side item from Phase 12 is still unverified**: the Render static site connected.
-  Anonymous sign-ins are confirmed **enabled** (2026-10-11, by signing one in against the live
-  project — it returned `is_anonymous: true`; the throwaway user `178e75f9…` is still in
-  `auth.users`, and is **not** a subject for step 5½'s delete action after all: its session is
-  gone, so nothing can sign into it from the app — clear it from the dashboard instead). The migration is settled — `20260812000000_direct_postgres.sql` is
-  applied on the remote, and the CLI migration history (empty, because the schema was applied
-  outside the CLI) was repaired to match, 2026-10-11, so step 5½'s migration pushes normally.
-  Never `db push` these expecting a no-op: `create policy` and `cron.schedule` are not idempotent.
+  Settled 2026-10-11: anonymous sign-ins are enabled, and `20260812000000_direct_postgres.sql` is
+  applied on the remote with the CLI's migration history repaired to match. A stale throwaway user
+  `178e75f9…` is still in `auth.users` and can only be cleared from the dashboard — its session is
+  gone, so nothing can sign into it from the app. Never `db push` a migration here expecting a
+  no-op: `create policy` and `cron.schedule` are not idempotent.
 
 ---
 
@@ -84,36 +79,9 @@ Step 0 — the pre-commit gate, and the `genres` question · **done 2026-10-11**
 Step 1 — diversify the final list · **done 2026-10-11**
 Step 2 — broaden the candidate pool · **done 2026-10-11**
 Step 3 — learn from dropped series · **done 2026-10-11**
-
-### Step 4 — Minimum-episodes filter · **built 2026-10-11, awaiting the user's check**
-Preset chips (Any / 12+ / 24+ / 50+) beside the genre filter on "For you" only; counting rule
-(TV seasons only, unknown counts kept) as a pure predicate in `src/domain/`.
-**Check:** set 50+ — only long series remain, Movies section untouched. Failure: movies vanishing, or
-an airing show with no published count hidden.
-
-### Step 5 — More taste axes and the obscurity signal · **built 2026-10-11, awaiting the user's check**
-`studios`, `source`, `num_list_users` added to `DETAIL_FIELDS` in **both** `mal-anime-detail` and
-`mal-import`, byte-identical, with `DETAIL_CACHE_VERSION` bumped to v5 in the same commit. Studio /
-source / era affinity alongside genre — and no theme or demographic axis, which the PRD's step-0
-answer shows are already inside `genres`.
-**Check:** recommendations shift toward studios and sources you favour. Failure: genre-only
-behaviour unchanged — the new fields are reading `undefined`, i.e. the cache version wasn't bumped.
-
-### Step 5½ — Privacy notice, consent, and delete everything · **built 2026-10-11, awaiting the user's check**
-Lands before step 6, because that is the first step that sends data out of the app. A
-`service_role` Edge Function deleting the account's rows and its `auth.users` record; a ~150-word
-notice screen; `privacy_consented_at` on `user_library_meta`. **Leaves `api_cache` alone and never
-touches the user's MAL list** — the dialog says both.
-Guests see the gate too, confirmed 2026-10-11 — nothing special-cases an anonymous session.
-Both live-project pushes are **done, 2026-10-11, by the user**: `20261011000000_privacy_consent.sql`
-via `supabase db push`, and `supabase functions deploy delete-account`. Nothing is outstanding on
-the Supabase side; the check below is the only thing left.
-**Check:** on a throwaway guest session (login → Continue as a guest) — read the notice, accept, app
-opens; delete, account gone, re-signin starts at onboarding; your own library untouched. The MAL
-half of this check is **not runnable and has been dropped** — `mal_accounts.mal_user_id` is unique,
-so one MAL identity links to one app account at a time and a throwaway can't hold a link to delete;
-the only account that can is the user's own. That the delete never reaches MAL rests on
-`__tests__/deleteAccount.test.ts` asserting no MAL helper is imported, not on an observation.
+Step 4 — minimum-episodes filter · **done 2026-10-11**
+Step 5 — more taste axes and the obscurity signal · **done 2026-10-11**
+Step 5½ — privacy notice, consent, and delete everything · **done 2026-10-11**
 
 ### Step 6 — The taste profile (model, part 1)
 `taste_profiles` table + RLS; `supabase/functions/taste-profile` holding `GROQ_API_KEY` and sending
