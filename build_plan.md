@@ -34,8 +34,9 @@ never read off what the implementation returned.
 
 ## Current state, 2026-10-11
 
-Steps 0 and 1 are done; steps 2 and 3 are built and awaiting their checks. `prd/1-recommendation-variety.md` is signed off in shape; the one
-open question inside it (step 5½, guests and the consent gate) blocks only that step.
+Plan 1's steps 0–3 are done and checked. **Step 4 is next.**
+`prd/1-recommendation-variety.md` is signed off in shape; the one open question inside it (step 5½,
+guests and the consent gate) blocks only that step. Plan 3 was added 2026-10-11 and is unscheduled.
 
 Last shipped before this plan existed: Phase 12's direct-Postgres cutover and web build
 (2026-08-12), plus the UI fixes in commits up to `244f20f`. `PLAN.md` holds that history.
@@ -70,25 +71,10 @@ is the work list, that is the brief. Delete the PRD when step 7 lands.
 
 Step 0 — the pre-commit gate, and the `genres` question · **done 2026-10-11**
 Step 1 — diversify the final list · **done 2026-10-11**
+Step 2 — broaden the candidate pool · **done 2026-10-11**
+Step 3 — learn from dropped series · **done 2026-10-11**
 
-### Step 2 — Broaden the candidate pool · **built 2026-10-11, awaiting the check**
-`selectCandidatePool()` in `src/domain/recommendations.ts` replaces the top-80-by-tally cut with a
-round-robin over source series. Same MAL call count, different 80. Compress this to one line once
-the check below passes.
-**Check:** a show you'd expect from a less popular watched series appears. Failure: the list is
-still drawn from your two or three biggest shows.
-
-### Step 3 — Learn from dropped series · **built 2026-10-11, awaiting the check**
-`buildGenreAffinity` now subtracts a drop *rate* per tag — `dropped / (watched + dropped)` ×
-`DROPPED_GENRE_WEIGHT` — rather than a drop count, which would read 1 dropped Isekai out of 21 the
-same as 20 out of 21. The weight is 1.0 because that is the largest value under which a tag with
-any watched series can be neutralised but never inverted, which is what makes the `Shounen`
-wipe-out structurally impossible rather than merely unlikely. `normalize` now floors at −1 so a
-condemned candidate can't swamp the MAL half. Compress this to one line once the check passes.
-**Check:** something you dropped the like of stops appearing. Failure: no change, or a genre you do
-still like gets wiped out.
-
-### Step 4 — Minimum-episodes filter
+### Step 4 — Minimum-episodes filter · **next**
 Preset chips (Any / 12+ / 24+ / 50+) beside the genre filter on "For you" only; counting rule
 (TV seasons only, unknown counts kept) as a pure predicate in `src/domain/`.
 **Check:** set 50+ — only long series remain, Movies section untouched. Failure: movies vanishing, or
