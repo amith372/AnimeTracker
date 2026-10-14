@@ -298,6 +298,12 @@ candidate that is not false on one platform is the one the app already used. The
 reveal the text differently — Detail expands in place and can offer "Show less", Preview opens a
 dialog and cannot — but the invitation to read it is now one phrase.
 
+**Reaching `app/series/preview.tsx` is not obvious, and the check for this item got it wrong
+once.** It is pushed from **exactly one place**: `app/(tabs)/recommend.tsx:173` — "For you" → the
+**Recommended** tab → tap a card. Discover's poster tiles do *not* open it, they open the quick
+`AddSeriesDialog`; Catch-up cards go to the real Detail screen. Nothing about the screen's name
+suggests it is reachable only from recommendations, so check it there or not at all.
+
 ### Edge Function error messages are unwrapped and then discarded
 `src/api/edgeFunctions.ts:26`'s `invoke()` goes to deliberate trouble to pull the real
 `{error: "..."}` body off a non-2xx Edge Function response — and every screen then feeds it to
