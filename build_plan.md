@@ -55,12 +55,18 @@ a step. Plan 3 was added 2026-10-11 and is unscheduled.
 
 **What comes next, in order.**
 
-1. **Plan 5** — five small fixes found 2026-10-14. Unblocked, no PRD, and the natural next thing:
-   each is self-contained and two of them (the nested `<button>`, the swallowed Edge Function error
-   messages) are defects a user can hit today. One carries a UX question to settle before code.
-2. **Plan 9** — make "For you" fast. Unblocked, no PRD, changes nothing about what the list
+1. **Plan 5** — seven small fixes found 2026-10-14, of which **three are built and awaiting the
+   user's check** (the nested `<button>`, the unclickable hero heart/trash, the duplicate ⓘ) and
+   four are not started. Take the first *unstarted* one. Two of those four need something from the
+   user before code: the Edge Function error messages carry a judgement call about showing a
+   provider's own wording, and the Account width wants an `$impeccable` run rather than a number
+   picked here.
+2. **Plan 7** — execute what the design critique found. **Scheduled 2026-10-14 at the user's
+   request**, after plan 5. Read its own section first: it carries a map of every dialog and
+   transient state the critique could not see, and an ordering note about plan 5.
+3. **Plan 9** — make "For you" fast. Unblocked, no PRD, changes nothing about what the list
    contains. Independent of plan 3, which would multiply it rather than replace it.
-3. **Plan 4** — the public share link. PRD signed off 2026-10-14, no open questions, start at its
+4. **Plan 4** — the public share link. PRD signed off 2026-10-14, no open questions, start at its
    step 1. Worth landing plan 7's step 4 first, so a share link is not put in front of an empty
    Library.
 
@@ -68,7 +74,11 @@ a step. Plan 3 was added 2026-10-11 and is unscheduled.
 and plan 8 (MAL sign-in on a localhost dev server, which unblocked every check touching sign-in,
 linking, import or push).
 
-**Unscheduled:** plans 2, 3 and 7 — though plan 7's step 1 is three defect fixes needing no PRD.
+**Unscheduled:** plans 2 and 3.
+
+**Nothing is pushed.** `origin/master` is at `244f20f` and the branch is 37 commits ahead of it as
+of 2026-10-14, by the user's standing instruction. It is worth raising with them — that is a lot of
+work living on one machine.
 
 **Two different plans were numbered 7 on 2026-10-14** — the design critique's and the OAuth fix's
 — because they were written into this file from two directions on the same day. The OAuth one was
