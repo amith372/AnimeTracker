@@ -388,6 +388,18 @@ an existing account from the guest branch without deleting anything, and that a 
 sees both log-out and Delete everything, unchanged. Failure: a guest told the app is deleting an
 "account", a second silent exit still present, or an `auth.users` row surviving the delete.
 
+### Discover's Add dialog truncates the synopsis with no way to read the rest
+Found 2026-10-14 while checking the ⓘ removal. `src/components/AddSeriesDialog.tsx` — reached by
+tapping any Discover poster — shows the synopsis cut off mid-sentence with a trailing `…` and
+offers no way to see the remainder. It is the same gap the ⓘ change just closed on Preview, in the
+one place a user is most likely to want it: this dialog is where the decision to add a show is
+actually made, and the blurb is most of what there is to decide on.
+
+Preview solves it by making the blurb tappable and labelling it "Read more". Whether the same fits
+a dialog that already has Cancel/Add and a radio list is a layout question, not a copy one — which
+is why this is listed rather than done. Worth handing to plan 7 if it is still open when that runs.
+**Check:** open Discover, tap a poster, and confirm the summary can be read in full.
+
 ### The wide-web Library grid lays out 6 cards, then 1, then 6, then 1
 Seen 2026-10-14 on a maximised browser: every row holds six posters and then a seventh sits alone
 on a line of its own, so the grid reads as alternating full and near-empty rows instead of a block.
