@@ -55,12 +55,10 @@ a step. Plan 3 was added 2026-10-11 and is unscheduled.
 
 **What comes next, in order.**
 
-1. **Plan 5** — seven small fixes found 2026-10-14, of which **three are built and awaiting the
-   user's check** (the nested `<button>`, the unclickable hero heart/trash, the duplicate ⓘ) and
-   four are not started. Take the first *unstarted* one. Two of those four need something from the
-   user before code: the Edge Function error messages carry a judgement call about showing a
-   provider's own wording, and the Account width wants an `$impeccable` run rather than a number
-   picked here.
+1. **Plan 5** — seven small fixes found 2026-10-14. Three are **done and checked**; four remain.
+   Take the first unstarted one. Two of the four need something from the user before any code: the
+   Edge Function error messages carry a judgement call about showing a provider's own wording, and
+   the Account width wants an `$impeccable` run rather than a number picked here.
 2. **Plan 7** — execute what the design critique found. **Scheduled 2026-10-14 at the user's
    request**, after plan 5. Read its own section first: it carries a map of every dialog and
    transient state the critique could not see, and an ordering note about plan 5.
@@ -76,9 +74,15 @@ linking, import or push).
 
 **Unscheduled:** plans 2 and 3.
 
-**Nothing is pushed.** `origin/master` is at `244f20f` and the branch is 37 commits ahead of it as
-of 2026-10-14, by the user's standing instruction. It is worth raising with them — that is a lot of
-work living on one machine.
+**Nothing is pushed yet, and there is now a condition on it.** `origin/master` is at `244f20f`,
+roughly 40 commits behind the branch as of 2026-10-14. The user's standing "do not push" was
+lifted that day to: **push once we are done with the current build plan.**
+
+**Do not act on that alone — confirm the scope first.** "The current build plan" was not pinned
+down, and the readings differ by a lot of work: plan 5 (the most likely, since it was the plan in
+flight when they said it), everything scheduled in the ordering list above, or this file in its
+entirety. Ask which, then push. A push is outward-facing and the one action here that cannot be
+quietly undone.
 
 **Two different plans were numbered 7 on 2026-10-14** — the design critique's and the OAuth fix's
 — because they were written into this file from two directions on the same day. The OAuth one was
@@ -274,63 +278,22 @@ screen on a wide monitor; the fifth while looking at the Library on the same mon
 width item holds one number that a design skill should settle before any style is written. The last
 two both edit `app/onboarding/account.tsx`, so build them in one sitting.
 
-### Illegal nested `<button>` on Series Detail (web) · **built 2026-10-14, awaiting its check**
-Settled first: the press target is the text block, not the whole row (asked 2026-10-14). Both
-`EntryRow` and `ArcListRow` are now a plain `View` holding sibling controls, and they are kept
-structurally identical so neither grows a nested button again.
+Nested `<button>` on Series Detail · **done 2026-10-14** — the row is a plain `View` with sibling
+controls; the press target is the text block. `ArcListRow` matches it deliberately so neither can
+drift back.
 
-**Check:** open a Series Detail page on web with the console open — no `validateDOMNesting` error
-and no red toast. Tapping the title or subtitle still opens the image popup; the checkbox and the
-skip button still work and neither opens the popup. The One Piece entry's arc header behaves the
-same. Failure: the error still logging, the popup no longer opening, or a control that now triggers
-two things at once.
+The hero's heart and trash were unclickable · **done 2026-10-14** — `headerTopRow` needed
+`zIndex: 1`, because react-native-web makes every View positioned and the later `headerContent`
+painted over it. **Worth remembering why this mattered beyond a dead button:** `liked` carries
+`LIKED_WEIGHT = 3` against a default of 1 across four ranking signals, so every recommendation
+produced before this fix ran with no liked signal at all. The buttons also gained hover captions
+(`HeroActionButton`, not Paper's `Tooltip` — see the commit for the three reasons that was removed)
+and the heart fills `colors.red`.
 
-### The hero's heart and trash were unclickable · **fixed 2026-10-14, awaiting its check**
-`DetailHeroCard`'s `headerTopRow` is `position: absolute`, and react-native-web gives every View
-`position: relative` — so its sibling `headerContent`, which comes later in DOM order and is
-`flex: 1` across the whole header, was a positioned element painting on top of it. The buttons
-stayed visible (no background) but stopped receiving clicks. The heart was dead outright; the trash
-only worked in the ~16px strip past `headerContent`'s right padding, which is why it never looked
-like a systemic problem. Fixed with `zIndex: 1`.
-
-**This had a second cost worth recording:** `liked` carries `LIKED_WEIGHT = 3` against a default of
-1 across *four* signals — the MAL tally, genre affinity, studio/source affinity and era centre — so
-for as long as the heart was unclickable the ranking ran with no liked signal at all. Any judgement
-about recommendation quality formed before this fix was formed on a crippled profile.
-
-Two changes came with the fix, asked for 2026-10-14 once the buttons worked: both name themselves
-on hover via a local `HeroActionButton`, and the heart fills `colors.red` rather
-than white — the outline stays white so an unliked heart reads as an available action rather than a
-state that is already on. The heart also gains the `accessibilityLabel` it never had, which is one
-of the six unlabeled icon buttons plan 7 lists as still live.
-
-**Paper's `Tooltip` was tried and removed the same day** — worth recording so it is not reached for
-again. It waits `leaveTouchDelay = 1500`ms before hiding, draws a 32px near-black Material pill
-that belongs to a different design language than this gradient, and its press container sets
-`cursor: 'default'`, which silently removed the pointer cursor from both buttons it wrapped. The
-replacement is small white text on the gradient, absolutely positioned so it never reflows the row,
-driven by the `useHover` hook the sidebar and poster tiles already use. `useHover` is inert
-off-web, so the caption is kept short enough to be redundant — the full sentence lives in
-`accessibilityLabel`, which is what a phone surfaces anyway.
-
-**Check:** open a watched series' Detail page on web and click the heart — it should fill **red**,
-and stay filled after a reload. Hover it and the trash: each should show a label saying what it
-does. Click the trash — the remove confirmation should open from anywhere on the button. Failure:
-either still inert, only clickable at its right edge, no tooltip on hover, or a heart that fills
-white.
-
-### The ⓘ button duplicated what the summary already did · **changed 2026-10-14, awaiting its check**
-`app/series/preview.tsx` had an `information-outline` button in both registers' headers opening the
-same dialog the summary blurb already opened on tap — two controls for one action, and the
-discoverable one was the redundant one. Both icons removed; the blurb now carries
-`(click to see full summary)` under it.
-
-**Wording is deliberately the user's own and is not yet consistent with the rest of the app**: the
-Detail screen's equivalent says "Read more", and "click" is wrong on a phone, where this same
-component renders. Settle both when plan 7 runs, rather than inventing a third wording now.
-
-**Check:** open Discover, tap any poster, and confirm there is no ⓘ in the header and the summary
-reads `(click to see full summary)` under it. Tapping the summary still opens the full text.
+The ⓘ button duplicated the summary · **done 2026-10-14** — removed from both registers; the blurb
+says `(click to see full summary)` instead. **One copy decision is still open and belongs to plan
+7:** Detail says "Read more" for the same action, and "click" is wrong on the phone this component
+also renders on. Settle one wording for both.
 
 ### Edge Function error messages are unwrapped and then discarded
 `src/api/edgeFunctions.ts:26`'s `invoke()` goes to deliberate trouble to pull the real
