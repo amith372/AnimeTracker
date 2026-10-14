@@ -55,15 +55,15 @@ a step. Plan 3 was added 2026-10-11 and is unscheduled.
 
 **What comes next, in order.**
 
-1. **Plan 5** — eight small fixes found 2026-10-14. **Five are built; three remain**, and the
+1. **Plan 5** — eight small fixes found 2026-10-14. **Six are built; two remain**, and the
    remaining three are listed under `###` headings while the built ones are compressed to a
    paragraph each — so "the first `###` heading" is the next thing to build. The fifth (the Edge
    Function error messages) is built but **its check has not been run yet**: it needs
    `supabase secrets set GROQ_API_KEY=invalid` and a redeploy of `taste-profile` and
-   `taste-candidates` (with `--use-api`), which is the user's to run. One of the remaining three
-   needs something from the user before any code — the Account width wants an `$impeccable` run
-   rather than a number picked here. The other two — the guest's two exits, and the Library grid
-   laying out 6 cards then 1 — need nothing and can be built straight away.
+   `taste-candidates` (with `--use-api`), which is the user's to run. The sixth (the onboarding
+   column width) is built and measured but its live check — a maximised browser, then the Android
+   emulator — has not been run either. The remaining two, the guest's two exits and the Library
+   grid laying out 6 cards then 1, need nothing from the user and can be built straight away.
 2. **Plan 7** — execute what the design critique found. **Scheduled 2026-10-14 at the user's
    request**, after plan 5. Read its own section first: it carries a map of every dialog and
    transient state the critique could not see, and an ordering note about plan 5.
@@ -323,37 +323,24 @@ the status is what distinguishes a revoked key from a rate limit and the body is
 **Out of scope deliberately:** fresh picks still degrade to one notice
 (`GeneratedCandidateRepository.ts:139`) — that is the PRD's decision, not this discard.
 
-### The Account screen stretches across the full width of a wide monitor
-`app/onboarding/account.tsx:317`'s `container` sets `padding` and `gap` and nothing else, so on a
-1920px browser every control — the email field, the password field, four pill buttons — is drawn
-~1870px wide. A pill that wide reads as a banner rather than a button: its label floats alone in the
-middle of a bar of empty colour, and the eye has to cross the whole screen to tie a field to its
-caret. `app/onboarding/privacy.tsx:133` shares the container and has the worse version of it —
-unbroken prose at that measure runs to roughly 200 characters a line.
+The Account screen stretched across a wide monitor · **done 2026-10-14** — the four onboarding
+screens cap their content at `layout.onboardingColumn` (480) and centre it, with the page
+background moved to a full-bleed parent so the cap doesn't paint a 480px stripe of Warm Paper on
+the navigator's own background. **One number, not two**, settled by an `$impeccable` run: the
+privacy notice is set at `bodyMedium`'s 14px, so 448 of content is ~64 characters — a wider reading
+column would overrun the measure rather than improve it — and 480 is the Discover searchbar's
+existing cap rather than a fifth unrelated width. Recorded in `DESIGN.md`'s wide-web register,
+including why it is the one entry there *not* gated on the 900px breakpoint. Not gated because the
+same style is already correct on a phone. `login.tsx` needed no column (its controls shrink-wrap)
+but its subtitle and error text did, which matters more now that an Edge Function's own sentence
+reaches them verbatim. `reconcile.tsx` got the cheap version the plan asked for — one wrapper
+around count, list and button — since plan 7 step 5 rewrites that screen.
 
-The fix is a centered column, not a media query: `alignSelf: 'center'` + `width: '100%'` +
-`maxWidth`. The same style is correct on a phone, where the `maxWidth` simply never binds.
-
-**The number is the whole decision, so ask for it rather than pick one.** Run `$impeccable` over
-this screen before writing the style and let it settle the column width — and whether the form
-column and the prose column want the same one, since a form and a paragraph have different natural
-measures. Whatever lands gets stated in `DESIGN.md`'s wide-web register in the same terms it already
-uses (232px sidebar, 184px cards, 900px breakpoint), and should be weighed against the ad-hoc widths
-already in the tree (`DetailHeroCard`'s 1040, recommend's tab row at 520, the two searchbars at
-480/440) rather than becoming a fifth unrelated number.
-
-Scope is the four onboarding screens only. `login.tsx:105` already centers its column and may need
-nothing — verify it at width, don't assume. `reconcile.tsx` is a full-width `FlatList` whose rows
-put the checkbox a monitor's width from the title it belongs to; the same column fixes that, and
-since plan 7 step 5 rewrites that screen anyway, do only the cheap version here. Library, Discover
-and For you are out of scope — their grids genuinely use the width.
-
-**Check:** open `/onboarding/account` in a maximised desktop browser. The form sits in a centered
-column of the agreed width with background either side, not edge to edge; `/onboarding/privacy`
-reads as a column of prose rather than full-width lines. Then narrow the window to phone width and
-confirm nothing is clipped or stuck off-centre, and open the same screen on the Android emulator to
-confirm it is unchanged there. Failure: controls still spanning the viewport, a column pinned left
-instead of centered, or horizontal scrolling appearing at narrow width.
+Measured over CDP at 1920 / 900 / 390 / 320: the column is 480 and centred above the cap, full
+width below it, `scrollWidth == clientWidth` at every one. **A headless screenshot at 390 looked
+like it overflowed and the measurement says it doesn't** — the window-size screenshot crops a wider
+layout viewport. Privacy and reconcile both need a session, so neither could be reached headlessly;
+they share account's verified container exactly, and the user's check is what covers them.
 
 ### A guest has two ways out and only one of them deletes anything
 `app/onboarding/account.tsx` offers a guest both **Leave guest mode (discards this list)** (`:215`,

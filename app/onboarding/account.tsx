@@ -17,7 +17,7 @@ import { isSupabaseConfigured } from '@/account/supabaseClient';
 import { deleteAccountAndData, logInWithEmail, logOutAccount, signUpWithEmail, useAccountSession } from '@/account/accountRepository';
 import { useIsGuest } from '@/account/guestMode';
 import { linkMalAccount, useMalLinkStatus } from '@/account/malLinkRepository';
-import { radii, spacing } from '@/theme/colors';
+import { layout, radii, spacing } from '@/theme/colors';
 import { makeStyles, useThemeColors } from '@/theme/useTheme';
 
 export default function AccountScreen() {
@@ -140,16 +140,18 @@ export default function AccountScreen() {
 
   if (!isSupabaseConfigured) {
     return (
-      <View style={styles.container}>
-        <Text variant="bodyLarge" style={styles.centerText}>
-          Accounts aren’t set up yet.
-        </Text>
+      <View style={styles.flex}>
+        <View style={styles.container}>
+          <Text variant="bodyLarge" style={styles.centerText}>
+            Accounts aren’t set up yet.
+          </Text>
+        </View>
       </View>
     );
   }
 
   if (loading || isGuest === null) {
-    return <View style={styles.container} />;
+    return <View style={styles.flex} />;
   }
 
   // A guest (anonymous session, see guestMode.ts) — full read/write access to a real library, but
@@ -223,35 +225,37 @@ export default function AccountScreen() {
 
   if (session) {
     return (
-      <View style={styles.container}>
-        <Text variant="titleMedium">Signed in as</Text>
-        <Text variant="bodyLarge" style={styles.emailText}>
-          {session.user.email}
-        </Text>
-        {message && (
-          <Text variant="bodyMedium" style={styles.message}>
-            {message}
+      <View style={styles.flex}>
+        <View style={styles.container}>
+          <Text variant="titleMedium">Signed in as</Text>
+          <Text variant="bodyLarge" style={styles.emailText}>
+            {session.user.email}
           </Text>
-        )}
-        {malLinked === false && (
-          <>
-            <Text variant="bodySmall" style={styles.hint}>
-              Link MyAnimeList to import your list and update it from here.
+          {message && (
+            <Text variant="bodyMedium" style={styles.message}>
+              {message}
             </Text>
-            <Button mode="contained" onPress={handleLinkMal} loading={busy} disabled={busy} buttonColor={colors.primary} style={styles.button}>
-              Link MyAnimeList
-            </Button>
-          </>
-        )}
-        {malLinked === true && (
-          <Text variant="bodySmall" style={styles.hint}>
-            MyAnimeList is linked to this account.
-          </Text>
-        )}
-        <Button mode="outlined" onPress={handleLogOut} loading={busy} disabled={busy} style={styles.button}>
-          Log out
-        </Button>
-        {dataSection()}
+          )}
+          {malLinked === false && (
+            <>
+              <Text variant="bodySmall" style={styles.hint}>
+                Link MyAnimeList to import your list and update it from here.
+              </Text>
+              <Button mode="contained" onPress={handleLinkMal} loading={busy} disabled={busy} buttonColor={colors.primary} style={styles.button}>
+                Link MyAnimeList
+              </Button>
+            </>
+          )}
+          {malLinked === true && (
+            <Text variant="bodySmall" style={styles.hint}>
+              MyAnimeList is linked to this account.
+            </Text>
+          )}
+          <Button mode="outlined" onPress={handleLogOut} loading={busy} disabled={busy} style={styles.button}>
+            Log out
+          </Button>
+          {dataSection()}
+        </View>
       </View>
     );
   }
@@ -313,8 +317,23 @@ export default function AccountScreen() {
 }
 
 const useStyles = makeStyles((colors) => ({
-  flex: { flex: 1 },
-  container: { flexGrow: 1, padding: spacing.lg, gap: spacing.md, backgroundColor: colors.background },
+  // Carries the page background, so it reaches the full width of the window while the content
+  // below stops at the column.
+  flex: { flex: 1, backgroundColor: colors.background },
+  // The onboarding column. `width: '100%'` is load-bearing rather than redundant with maxWidth —
+  // alignSelf:'center' alone makes this shrink-wrap its content, so the fields would size to their
+  // placeholder text instead of the column. Sizing to the parent first and capping second is what
+  // gives the cap something to cap. Same reasoning as recommend.tsx's webTabs.
+  // The background lives on the full-bleed parent, not here: a capped view carrying its own colour
+  // would paint a 480px stripe of it and leave the navigator's own background either side.
+  container: {
+    flexGrow: 1,
+    padding: spacing.lg,
+    gap: spacing.md,
+    width: '100%',
+    maxWidth: layout.onboardingColumn,
+    alignSelf: 'center',
+  },
   centerText: { textAlign: 'center', marginTop: spacing.xl },
   title: { color: colors.textPrimary },
   hint: { color: colors.textMuted },

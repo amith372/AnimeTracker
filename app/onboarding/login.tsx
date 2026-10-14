@@ -13,7 +13,7 @@ import { signInWithMal } from '@/account/malLinkRepository';
 import { continueAsGuest } from '@/account/guestMode';
 import { AtLogoMark } from '@/components/AtLogoMark';
 import { MalAttribution } from '@/components/MalAttribution';
-import { radii } from '@/theme/colors';
+import { layout, radii } from '@/theme/colors';
 import { makeStyles, useThemeColors } from '@/theme/useTheme';
 import { fontFamilies } from '@/theme/fonts';
 
@@ -104,8 +104,11 @@ export default function LoginScreen() {
 const useStyles = makeStyles((colors) => ({
   container: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 16, backgroundColor: colors.background },
   title: { fontFamily: fontFamilies.displayBlack, color: colors.textPrimary },
-  subtitle: { textAlign: 'center', color: colors.textMuted },
-  error: { color: colors.red, textAlign: 'center' },
+  // This screen already centred its column, so the controls were never the problem — they
+  // shrink-wrap. The two text blocks do not: an error from the server (now shown verbatim where a
+  // function wrote it for the user) would otherwise set as one line the full width of the window.
+  subtitle: { textAlign: 'center', color: colors.textMuted, maxWidth: layout.onboardingColumn },
+  error: { color: colors.red, textAlign: 'center', maxWidth: layout.onboardingColumn },
   loginButton: { borderRadius: radii.pill, minWidth: 240 },
   attribution: { position: 'absolute', bottom: 24 },
 }));

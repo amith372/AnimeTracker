@@ -24,7 +24,7 @@ import { statusLabel } from '@/domain/statusLabel';
 import { SeriesTitleText } from '@/components/SeriesTitleText';
 import { SquareCheckbox } from '@/components/SquareCheckbox';
 import { GradientProgressBar } from '@/components/GradientProgressBar';
-import { radii, spacing } from '@/theme/colors';
+import { layout, radii, spacing } from '@/theme/colors';
 import { makeStyles, useThemeColors } from '@/theme/useTheme';
 import { dialogStyle } from '@/theme/dialog';
 import type { ReconcileEntry, ReconcileSeries } from '@/domain/reconcileSeries';
@@ -239,31 +239,37 @@ export default function ReconcileScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.countRow}>
-        <Text variant="bodyMedium" style={styles.mutedText}>
-          {state.series.length} {isAdditive ? 'new shows found' : 'shows found'}
-        </Text>
-        <Text variant="bodySmall" style={styles.mutedText}>
-          Tap a show to tick the seasons you&apos;ve watched
-        </Text>
+      {/* The cheap half of the column fix: the count, the list and the confirm button share one
+          capped column, so a row's checkbox stays beside the title it belongs to instead of a
+          monitor's width from it. Plan 7 rewrites this screen, hence a wrapper rather than a
+          per-row treatment. */}
+      <View style={styles.column}>
+        <View style={styles.countRow}>
+          <Text variant="bodyMedium" style={styles.mutedText}>
+            {state.series.length} {isAdditive ? 'new shows found' : 'shows found'}
+          </Text>
+          <Text variant="bodySmall" style={styles.mutedText}>
+            Tap a show to tick the seasons you&apos;ve watched
+          </Text>
+        </View>
+        <FlatList
+          data={state.series}
+          keyExtractor={(s) => String(s.rootMalId)}
+          renderItem={({ item }) => (
+            <SeriesGroup
+              series={item}
+              expanded={expandedRoots.has(item.rootMalId)}
+              onToggleExpanded={() => toggleExpanded(item.rootMalId)}
+              onToggleEntry={toggleEntry}
+            />
+          )}
+        />
+        {/* "Replace my library" when that's what the button actually does — "Confirm & save" named
+            the safe first-time case for an action that, on a re-run, deletes everything first. */}
+        <Button mode="contained" onPress={handleConfirmPress} style={styles.confirmButton} buttonColor={colors.primary}>
+          {isAdditive ? 'Add to library' : replacesExistingLibrary ? 'Replace my library' : 'Confirm & save'}
+        </Button>
       </View>
-      <FlatList
-        data={state.series}
-        keyExtractor={(s) => String(s.rootMalId)}
-        renderItem={({ item }) => (
-          <SeriesGroup
-            series={item}
-            expanded={expandedRoots.has(item.rootMalId)}
-            onToggleExpanded={() => toggleExpanded(item.rootMalId)}
-            onToggleEntry={toggleEntry}
-          />
-        )}
-      />
-      {/* "Replace my library" when that's what the button actually does — "Confirm & save" named
-          the safe first-time case for an action that, on a re-run, deletes everything first. */}
-      <Button mode="contained" onPress={handleConfirmPress} style={styles.confirmButton} buttonColor={colors.primary}>
-        {isAdditive ? 'Add to library' : replacesExistingLibrary ? 'Replace my library' : 'Confirm & save'}
-      </Button>
       {replaceConfirmDialog}
       <Snackbar visible={saveError !== null} onDismiss={() => setSaveError(null)} duration={6000}>
         {saveError}
@@ -359,6 +365,9 @@ function EntryRow({ entry, onPress }: { entry: ReconcileEntry; onPress: () => vo
 
 const useStyles = makeStyles((colors) => ({
   container: { flex: 1, backgroundColor: colors.background },
+  // flex: 1 as well as the cap, because the FlatList inside needs a bounded height to scroll in;
+  // width:'100%' first, then maxWidth — see account.tsx's container for why that order matters.
+  column: { flex: 1, width: '100%', maxWidth: layout.onboardingColumn, alignSelf: 'center' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12, backgroundColor: colors.background },
   error: { textAlign: 'center' },
   progressBarWrap: { width: 200 },

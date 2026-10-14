@@ -22,7 +22,7 @@ import { useAccountSession } from '@/account/accountRepository';
 import { MalAttribution } from '@/components/MalAttribution';
 import { markPrivacyConsent, usePrivacyConsent } from '@/repositories/AnimeRepository';
 import { userFacingMessage } from '@/repositories/errorMessage';
-import { radii, spacing } from '@/theme/colors';
+import { layout, radii, spacing } from '@/theme/colors';
 import { makeStyles, useThemeColors } from '@/theme/useTheme';
 
 export default function PrivacyScreen() {
@@ -59,7 +59,7 @@ export default function PrivacyScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
       <Text variant="headlineSmall" style={styles.title}>
         Your data
       </Text>
@@ -130,7 +130,16 @@ export default function PrivacyScreen() {
 
 const useStyles = makeStyles((colors) => ({
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
-  container: { flexGrow: 1, padding: spacing.lg, gap: spacing.sm, backgroundColor: colors.background },
+  // See account.tsx's twin of this pair for why the background and the cap are two styles.
+  screen: { flex: 1, backgroundColor: colors.background },
+  container: {
+    flexGrow: 1,
+    padding: spacing.lg,
+    gap: spacing.sm,
+    width: '100%',
+    maxWidth: layout.onboardingColumn,
+    alignSelf: 'center',
+  },
   title: { color: colors.textPrimary, marginBottom: spacing.xs },
   heading: { color: colors.textPrimary, marginTop: spacing.sm },
   body: { color: colors.textPrimary },

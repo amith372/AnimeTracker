@@ -110,3 +110,20 @@ export const logoGradient = ['#FF6F61', '#C58FC0', '#4FA3F7'] as const;
 
 export const radii = { sm: 8, md: 12, lg: 16, xl: 22, pill: 999 } as const;
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 } as const;
+
+/**
+ * Widths a layout is capped at, where the cap is a design decision rather than a measurement.
+ *
+ * `onboardingColumn` is the four onboarding screens' measure. Those screens set only padding, so
+ * on a 1920px browser every text field and pill button was drawn ~1870px wide — a pill that wide
+ * reads as a banner with its label adrift in the middle, and the privacy notice ran to roughly 260
+ * characters a line. 480 minus the 16px gutters leaves 448 of content: ~64 characters at
+ * `bodyMedium`'s 14px, which is inside the 45–75 a line should hold, and a form column the width
+ * of the Discover searchbar's existing cap rather than a fifth unrelated number. Settled with an
+ * $impeccable run, 2026-10-14 — the form and the prose share one number because the prose is set
+ * at 14px, where a wider column would overrun the measure rather than improve it.
+ *
+ * Not gated on `useIsWideWeb`: the same style is already correct on a phone, where the cap simply
+ * never binds, so there is no second layout to keep in step.
+ */
+export const layout = { onboardingColumn: 480 } as const;
