@@ -78,12 +78,15 @@ export default function SeriesPreviewScreen() {
         <Text variant="bodySmall" style={styles.summary} numberOfLines={3}>
           {synopsis}
         </Text>
+        {/* The blurb was tappable before this and nothing said so, while a separate ⓘ button in the
+            header opened the very same dialog — two controls for one action, and the discoverable
+            one was the redundant one. The icon is gone and the affordance now sits on the thing it
+            acts on. */}
+        <Text variant="labelSmall" style={styles.summaryHint}>
+          (click to see full summary)
+        </Text>
       </Pressable>
     );
-  }
-
-  function openInfo() {
-    setInfoVisible(true);
   }
 
   // Picking a status here doesn't edit anything — it's the moment this show actually joins the
@@ -111,7 +114,6 @@ export default function SeriesPreviewScreen() {
         genres={series.genres.join(' · ')}
         summary={<SummaryBlurb />}
         onBack={() => router.back()}
-        topRight={<IconButton icon="information-outline" iconColor="#fff" accessibilityLabel="Show summary" onPress={openInfo} />}
       >
         <View style={styles.webEntriesColumn}>
           {series.entries.length > 0 && <Text style={styles.webSectionLabel}>SEASONS &amp; MOVIES</Text>}
@@ -162,9 +164,10 @@ export default function SeriesPreviewScreen() {
     <View style={styles.container}>
       <StatusBar style="light" />
       <LinearGradient colors={[colors.primary, colors.heroGradientEnd]} style={[styles.banner, { paddingTop: insets.top }]}>
+        {/* Back only. The ⓘ that sat here opened the same dialog the summary blurb below already
+            opens, and the blurb now says so itself — see SummaryBlurb. */}
         <View style={styles.bannerTopRow}>
           <IconButton icon="arrow-left" iconColor="#fff" onPress={() => router.back()} />
-          <IconButton icon="information-outline" iconColor="#fff" accessibilityLabel="Show summary" onPress={openInfo} />
         </View>
         <View style={styles.bannerContent}>
           <Image source={series.coverUrl ?? undefined} style={styles.cover} contentFit="cover" />
@@ -286,6 +289,7 @@ const useStyles = makeStyles((colors) => ({
   // (which goes muddy on colour). A hair tighter than the default line height: three lines of body
   // text is already a lot of banner, and this has to leave the cover art room to breathe.
   summary: { color: colors.heroMutedText, lineHeight: 18 },
+  summaryHint: { color: colors.heroMutedText, opacity: 0.85, marginTop: 4 },
   addPrompt: { color: colors.textMuted, paddingHorizontal: spacing.lg, paddingTop: spacing.lg },
   statusChipRow: { marginTop: spacing.sm, flexGrow: 0, flexShrink: 0, minHeight: 34 },
   entryList: { flex: 1 },

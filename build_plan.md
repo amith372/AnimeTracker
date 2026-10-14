@@ -263,6 +263,36 @@ skip button still work and neither opens the popup. The One Piece entry's arc he
 same. Failure: the error still logging, the popup no longer opening, or a control that now triggers
 two things at once.
 
+### The hero's heart and trash were unclickable · **fixed 2026-10-14, awaiting its check**
+`DetailHeroCard`'s `headerTopRow` is `position: absolute`, and react-native-web gives every View
+`position: relative` — so its sibling `headerContent`, which comes later in DOM order and is
+`flex: 1` across the whole header, was a positioned element painting on top of it. The buttons
+stayed visible (no background) but stopped receiving clicks. The heart was dead outright; the trash
+only worked in the ~16px strip past `headerContent`'s right padding, which is why it never looked
+like a systemic problem. Fixed with `zIndex: 1`.
+
+**This had a second cost worth recording:** `liked` carries `LIKED_WEIGHT = 3` against a default of
+1 across *four* signals — the MAL tally, genre affinity, studio/source affinity and era centre — so
+for as long as the heart was unclickable the ranking ran with no liked signal at all. Any judgement
+about recommendation quality formed before this fix was formed on a crippled profile.
+
+**Check:** open a watched series' Detail page on web and click the heart — it should fill, and stay
+filled after a reload. Click the trash — the remove confirmation should open from anywhere on the
+button. Failure: either still inert, or only clickable at its right edge.
+
+### The ⓘ button duplicated what the summary already did · **changed 2026-10-14, awaiting its check**
+`app/series/preview.tsx` had an `information-outline` button in both registers' headers opening the
+same dialog the summary blurb already opened on tap — two controls for one action, and the
+discoverable one was the redundant one. Both icons removed; the blurb now carries
+`(click to see full summary)` under it.
+
+**Wording is deliberately the user's own and is not yet consistent with the rest of the app**: the
+Detail screen's equivalent says "Read more", and "click" is wrong on a phone, where this same
+component renders. Settle both when plan 7 runs, rather than inventing a third wording now.
+
+**Check:** open Discover, tap any poster, and confirm there is no ⓘ in the header and the summary
+reads `(click to see full summary)` under it. Tapping the summary still opens the full text.
+
 ### Edge Function error messages are unwrapped and then discarded
 `src/api/edgeFunctions.ts:26`'s `invoke()` goes to deliberate trouble to pull the real
 `{error: "..."}` body off a non-2xx Edge Function response — and every screen then feeds it to
@@ -393,7 +423,7 @@ Checked both halves: the sidebar greets by MAL username, and a guest reads "Welc
 `prd/3-welcome-greeting.md` deleted. Step 2 (`mal-me`) was dropped on evidence — see "What is
 still owed" for the one case it would have covered.
 
-# Plan 7 — What the design critique found · **not scheduled**
+# Plan 7 — What the design critique found · **scheduled 2026-10-14, after plan 5**
 
 From the `$impeccable critique` run of 2026-10-14 over the whole user-facing UI, both registers.
 Scored 23/40 against 24/40 in August — flat, but P0s went 2 → 1 and Error Recovery climbed on the
@@ -410,6 +440,41 @@ the persona walkthroughs and the arithmetic behind every contrast figure:
   six unlabeled icon-only `IconButton`s, and `onPrimary` (step 3 below). Each fails for every
   user, not only an assistive-technology one; `ignore.md` says so in full.
 - **`userInterfaceStyle: "light"` was not deliberate.** Step 3 turns it off.
+
+## What the critique never saw — point the next run at these
+
+Asked for 2026-10-14. The run read the UI as it renders at rest, so **every transient surface was
+invisible to it**: a dialog that is only mounted while a state flag is true, an error state that
+needs a failure to produce, a hover style that needs a pointer. These are a large share of what the
+app actually is, and several are the moments that matter most — a confirmation before a
+hard-to-reverse action is exactly where clarity is worth the most. Hand the next run this list with
+how to reach each, rather than asking it to find them.
+
+**Dialogs, and what opens each:**
+
+| Where | Dialog | How to open it |
+|---|---|---|
+| Library | More menu | the ⋯ button in the header |
+| Library | Remove series | the remove action on a series card |
+| Library | Push to MyAnimeList | the push button — only visible when MAL is linked |
+| For you | Genre / Sort / Type / Length | the four filter chips above the list |
+| Series Detail | Remove series | the trash icon in the hero |
+| Series Detail | Entry image + summary | tap an entry's title (`EntryImageDialog`) |
+| Preview | Full summary | tap the summary blurb (both registers) |
+| Discover | Add series | tap any poster tile (`AddSeriesDialog`) |
+| Reconcile | Replace existing library | import when a library already exists |
+| Account | Delete everything | the delete action — the most destructive dialog in the app |
+
+**Non-dialog states it also could not have seen:** every screen's loading and progress text
+(Recommendations has three distinct stages with counts); empty states (an empty Library, a filtered
+list with no matches, Catch up with nothing outstanding); error states and their Retry; Snackbars;
+web hover styles on cards, nav rows and poster tiles; Discover's full-screen search mode; the taste
+profile card in each of its four states (not enough signal, generating, generated-collapsed,
+generated-expanded); and the reconcile screen at real scale, which step 5 below already covers.
+
+**Two copy decisions are waiting on this run**, both from plan 5's ⓘ change: the Preview summary
+hint currently reads `(click to see full summary)` where Detail says `Read more`, and "click" is
+wrong on the phone this same component renders on. Settle one wording for both.
 
 **Ordering note:** step 1 edits the same entry-row block that plan 5's nested-`<button>`
 restructure rewrites (`app/series/[id].tsx` around :408–:412). Build plan 5 first and step 1

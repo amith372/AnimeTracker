@@ -96,7 +96,15 @@ const useStyles = makeStyles((colors) => ({
   backLinkTextHovered: { color: colors.heroGradientEnd },
   card: { width: '100%', maxWidth: CARD_MAX_WIDTH, borderRadius: radii.xl, overflow: 'hidden', borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, ...shadows.lg },
   header: { flexDirection: 'row', gap: 26, padding: 30 },
-  headerTopRow: { position: 'absolute', top: 14, right: 14, flexDirection: 'row' },
+  // zIndex is load-bearing, not decoration. react-native-web gives every View `position: relative`,
+  // which makes the sibling headerContent below a *positioned* element too — so with both at
+  // z-index auto, paint order falls back to DOM order and headerContent, which comes later and is
+  // `flex: 1` across the whole header, drew on top of these buttons. They stayed visible (it has no
+  // background) but stopped receiving clicks: the heart was dead outright, and the trash button
+  // only worked in the ~16px strip past headerContent's right padding. Found 2026-10-14, after the
+  // heart had been silently unusable long enough to leave the recommendation ranking with no
+  // `liked` signal at all.
+  headerTopRow: { position: 'absolute', top: 14, right: 14, flexDirection: 'row', zIndex: 1 },
   headerContent: { flexDirection: 'row', gap: 26, flex: 1 },
   cover: { width: 150, height: 214, borderRadius: radii.lg, backgroundColor: 'rgba(255,255,255,0.15)' },
   headerText: { flex: 1, minWidth: 0, paddingTop: 6, gap: 12 },
