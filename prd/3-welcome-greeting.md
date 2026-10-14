@@ -1,6 +1,6 @@
 # PRD 3 — A greeting that names who is signed in
 
-Status: **drafted 2026-10-14, awaiting sign-off.** Asked for mid-session on 2026-10-14, after plan
+Status: **signed off 2026-10-14.** Asked for mid-session on 2026-10-14, after plan
 1 step 8's check passed. Two shape decisions were answered the same day and are recorded below.
 
 ## Problem
@@ -67,7 +67,7 @@ created before this change.
 
 | Case | Behaviour |
 |---|---|
-| Guest who has linked MAL | Show the MAL username, **not** "Guest". Once MAL is linked the session is identifiable, and of two true answers the name is the informative one. *(Proposed — see Open questions.)* |
+| Guest who has linked MAL | Show the MAL username, **not** "Guest" — settled 2026-10-14. Once MAL is linked the session is identifiable, and of two true answers the name is the informative one. The rejected argument is recorded below rather than lost, because it is the one that would otherwise be re-litigated. |
 | MAL linked, username fetch fails | Fall back to `Welcome back` with no name. The greeting must never block or error the sidebar. |
 | User renames themselves on MAL | The stored name goes stale until the next sign-in or re-link. Accepted: renames are rare, and re-fetching on every load would spend a MAL call per page view against guardrail #3. |
 | Email/password account that also has MAL linked | MAL username wins — it is the name the user chose, the email is the one they typed to log in. |
@@ -76,10 +76,14 @@ created before this change.
 
 ## Open questions
 
-1. **Guest + MAL linked** — the table above proposes showing the MAL username. The counter-argument
-   is that "Guest" is a warning about impermanence, and linking MAL does not make the session
-   permanent, so suppressing it is exactly when the warning matters most. **Needs a decision before
-   step 3.**
+**None.** The one that existed — guest + MAL linked — was settled 2026-10-14 in favour of the
+username.
+
+The argument that lost: `"Guest"` is a warning that the library is temporary, linking MAL does not
+make the session permanent, and so suppressing the warning is exactly when it matters most. It is
+recorded here because it is correct about the risk and merely outweighed — the greeting was never
+the right place to carry that warning, and if impermanence needs saying it should be said somewhere
+it cannot be missed, not inferred from the absence of a name.
 
 ## Implementation
 

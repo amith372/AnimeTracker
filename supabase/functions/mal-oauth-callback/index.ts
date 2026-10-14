@@ -74,7 +74,17 @@ Deno.serve(async (req) => {
 
   try {
     const token = await exchangeAuthorizationCode({ code, codeVerifier: session.code_verifier, redirectUri: REDIRECT_URI });
-    const me = await malGetAuthed<{ id: number }>(token.access_token, 'users/@me', { fields: 'id' });
+    // `name` as well as `id`: it is the only human-readable name this app can ever have for a
+    // MAL-created account, whose email is the synthetic placeholder minted below. Same call, one
+    // more field — see prd/3-welcome-greeting.md. It is cosmetic throughout: nothing in RLS, no
+    // Edge Function gate and no derivation reads it, which is why it lives in `user_metadata`
+    // beside the `mal_user_id` already stored there rather than in a column of its own.
+    const me = await malGetAuthed<{ id: number; name?: string }>(token.access_token, 'users/@me', {
+      fields: 'id,name',
+    });
+    // Absent or blank both mean "no name to show" — MAL returns an empty string rather than
+    // omitting a field often enough that displayTitle already has to handle it (CLAUDE.md §3).
+    const malUsername = me.name?.trim() || null;
     const expiresAt = new Date(Date.now() + token.expires_in * 1000).toISOString();
 
     if (session.user_id) {
@@ -88,6 +98,15 @@ Deno.serve(async (req) => {
       });
       if (error) throw error;
 
+      // Best-effort, and deliberately after the upsert: the link itself is the thing that must
+      // succeed, and a greeting that falls back to "Welcome back" is not worth failing it over.
+      // mal-me backfills anything missed here.
+      if (malUsername) {
+        await supabaseAdmin.auth.admin
+          .updateUserById(session.user_id, { user_metadata: { mal_user_id: me.id, mal_username: malUsername } })
+          .catch(() => {});
+      }
+
       return session.platform === 'mobile' ? redirect('animetracker://auth?linked=1') : webFinish({ linked: '1' });
     }
 
@@ -99,11 +118,19 @@ Deno.serve(async (req) => {
     let resolvedUserId: string;
     if (existing) {
       resolvedUserId = existing.user_id;
+      // Every MAL sign-in is a free, already-paid-for chance to refresh the stored name — which is
+      // also what repairs an account created before this field existed, and the only thing that
+      // picks up a rename on MAL's side. Best-effort for the same reason as the linking variant.
+      if (malUsername) {
+        await supabaseAdmin.auth.admin
+          .updateUserById(resolvedUserId, { user_metadata: { mal_user_id: me.id, mal_username: malUsername } })
+          .catch(() => {});
+      }
     } else {
       const { data: created, error: createError } = await supabaseAdmin.auth.admin.createUser({
         email: `mal-${me.id}@mal-users.animetracker.app`,
         email_confirm: true,
-        user_metadata: { mal_user_id: me.id },
+        user_metadata: { mal_user_id: me.id, mal_username: malUsername },
       });
       if (createError || !created.user) throw createError ?? new Error('Failed to create account');
       resolvedUserId = created.user.id;

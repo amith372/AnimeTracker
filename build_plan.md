@@ -57,7 +57,9 @@ a step. Plan 3 was added 2026-10-11 and is unscheduled.
 2026-10-14 and jumps the queue by the user's ask; its PRD is drafted and has **one open question
 that blocks its step 3**. Plan 5 (two bugs found the same day) is small and unblocked. Plan 4 (the
 public share link) was the scheduled next thing and still is, once those clear — PRD signed off
-2026-10-14, no open questions, start at its step 1. Plans 2 and 3 stay unscheduled.
+2026-10-14, no open questions, start at its step 1. Plans 2, 3 and 7 stay unscheduled — though
+plan 7's step 1 is three defect fixes needing no PRD, and its step 4 is worth landing before plan 4
+puts a share link in front of an empty Library.
 
 Last shipped before this plan existed: Phase 12's direct-Postgres cutover and web build
 (2026-08-12), plus the UI fixes in commits up to `244f20f`. `PLAN.md` holds that history.
@@ -271,3 +273,119 @@ synthetic `mal-123456` address or no name at all), and put the line in the web s
 who has linked MAL: show the MAL username, or keep saying "Guest"? The PRD proposes the username;
 the counter-argument is that "Guest" is a warning about impermanence that linking MAL does not
 make false.
+
+---
+
+# Plan 7 — What the design critique found · **not scheduled**
+
+From the `$impeccable critique` run of 2026-10-14 over the whole user-facing UI, both registers.
+Scored 23/40 against 24/40 in August — flat, but P0s went 2 → 1 and Error Recovery climbed on the
+back of `errorMessage.ts` and the shared `LoadFailure`. Full report, with the per-heuristic table,
+the persona walkthroughs and the arithmetic behind every contrast figure:
+`.impeccable/critique/2026-10-14T10-58-29Z__app-tabs.md`. Read that rather than re-deriving it.
+
+**Two decisions were taken the same day and are already written down, not pending:**
+- **WCAG conformance is out of scope** for a private non-commercial app. `DESIGN.md`'s Faint Ink
+  bullet now records the measured figures (3.80:1 on Warm Paper) instead of the false AA claim it
+  carried, and `.impeccable/critique/ignore.md` lists what future critiques must stop raising.
+  A future session must not "fix" these contrast values: leaving them is the decision.
+  Three things were deliberately **not** ignored and are still live — the ~32dp status chips, the
+  six unlabeled icon-only `IconButton`s, and `onPrimary` (step 3 below). Each fails for every
+  user, not only an assistive-technology one; `ignore.md` says so in full.
+- **`userInterfaceStyle: "light"` was not deliberate.** Step 3 turns it off.
+
+**Ordering note:** step 1 edits the same entry-row block that plan 5's nested-`<button>`
+restructure rewrites (`app/series/[id].tsx` around :408–:412). Build plan 5 first and step 1
+becomes a two-line change inside a structure that is already correct; build it second and one of
+the two will be rewriting the other's work.
+
+### Step 1 — Make the movie half of the rollup tell the truth · no PRD
+Three defects, not design changes: the code contradicts `deriveSeriesStatus`.
+- `app/series/[id].tsx:408` and `app/series/preview.tsx:257` print `"doesn't count toward X/Y"` on
+  every movie row. It has counted since the dual-count work landed —
+  `src/domain/seriesStatus.ts:87-88` carries `watchedMovies`/`totalMovies` as its own half and
+  `:74-80` requires both halves resolved to reach `WATCHED`. Replace with a real subtitle
+  (`Movie 1`, or the runtime/year).
+- `app/series/[id].tsx:342-349` heads the section `SEASONS & MOVIES` and then renders a
+  seasons-only count, because `seasonProgress` filters to `TV_SEASON`. Show both halves.
+- The same header row is gated on `progress.total > 0`, so a standalone movie's Detail screen gets
+  no section header and no count at all. Drop the gate so it reads `0/1 movies`.
+
+**Check:** open a series with both seasons and films (Demon Slayer) and confirm the Detail counter
+and the status pill agree, and that no row claims a movie doesn't count. Then open a standalone
+movie and confirm it shows `0/1 movies` rather than nothing. Failure: the two numbers still
+disagree, or the standalone movie's list still has no header.
+
+### Step 2 — Draw the rollup · **needs a PRD before any code**
+The critique's central finding: the dual seasons/movies rollup is the one thing no other tracker
+has, it is computed correctly, and its entire visual budget is one comma in one string. It renders
+as plain body text beside a 7px dot in all four places status appears, while `GradientProgressBar`
+— the only progress form in the app — is spent on import progress, the one moment nobody watches.
+
+A two-track meter (seasons over movies, `WONT_WATCH` as a visually distinct segment rather than
+silently counted as done) changes what a Library row *is* and touches every surface that renders
+status, so it wants a PRD. The open questions it has to settle: does it replace the status dot or
+sit beside it; does it appear on Discover tiles and recommendation cards or only Library and
+Detail; and what a 0/0 half looks like, since `statusLabel` currently omits an empty half.
+
+### Step 3 — Turn native dark mode on · **needs sign-off, not a PRD**
+`app.json:8` sets `"userInterfaceStyle": "light"`, which pins `useColorScheme()` to light on both
+iOS and Android. The whole `darkColors` palette, `paperDarkTheme`, and the dark branch of all 44
+`makeStyles` factories are therefore unreachable on a phone — maintained code no native user has
+ever seen. Web does render them.
+
+One string, but wide reach, and it cannot ship alone:
+- `src/theme/theme.ts` hardcodes `onPrimary: '#FFFFFF'` for both appearances while `primary`
+  lightens to `#7BA6D6` in dark, so every filled button and active chip computes **2.54:1**.
+  Derive `onPrimary` per palette. This is illegibility in the mainline, not a conformance target —
+  it is not covered by the accessibility decision above.
+- 32 hardcoded `#fff` / `rgba(255,255,255,…)` / `#000000` literals across `app/` and
+  `src/components/` do not react to appearance, plus two hardcoded `StatusBar style="light"`.
+  `useIsDark` already exists for exactly this and has zero callers outside `theme.ts`.
+
+**Check:** `adb shell cmd uimode night yes` on the emulator, then walk Library → Series Detail →
+Discover → For you. Failure: white-on-pale-blue button labels, a light-mode card stranded on a
+dark page, or a status hue that shifts between appearances (status colours are meant to be
+appearance-invariant by design).
+
+### Step 4 — The empty Library's dead end, and the guest wipe · no PRD
+Two P1s, both fixes, both self-contained. Worth landing before plan 4 — a share link sends people
+to an app whose first screen may say nothing but "Nothing here yet".
+- `app/(tabs)/index.tsx:439` and `:573` render the bare string `"Nothing here yet"` with no action.
+  Every guest and every email signup meets the product there, and the three things they could do
+  next are one tab away and two levels inside a `dots-vertical` overflow. Make it an onboarding
+  card: one purpose line, a filled "Find shows to track" → Discover, plus "Import from
+  MyAnimeList" when `malLinked === false`. Give the filtered-empty sibling a "Clear filters".
+- `app/onboarding/account.tsx:215` destroys a guest's whole library on one unconfirmed tap
+  (`handleLogOut` → `signOut()`, unrecoverable for an anonymous session), styled `mode="outlined"`
+  in the same rhythm as every other button, while removing *one show* gets a titled dialog. Put it
+  behind the same dialog shape, naming the count, and add one line under the login screen's guest
+  button so the risk is disclosed where it is taken.
+
+**Check:** sign in fresh as a guest, confirm the empty Library offers somewhere to go, then tap
+"Leave guest mode" and confirm it asks first and names how many shows would be lost.
+
+### Step 5 — Reconcile at real scale · **PRD-sized, the remaining P0**
+`app/onboarding/reconcile.tsx:250` hands the user a flat, collapsed list of their entire MAL
+history with one instruction and one Confirm. No search, no filter, no sort, no bulk tick, no
+reviewed counter — and nothing is persisted, since the only copy of the import lives in component
+state, so abandoning it loses everything and the gate re-fires. For the audience PRODUCT.md
+actually names (years-old list, only season 1 ever marked) that is 250-plus expand-tick-collapse
+cycles in one sitting. It is the highest-probability total task failure in the app.
+
+Two compounding defects, both cheap: entry rows show the generic `'TV Season'`
+(`reconcile.tsx:353`) while Detail and Preview both use `numberEntriesByKind` — which is documented
+as generic over `ReconcileEntry` *precisely so this screen can share it* — and the entry row is a
+plain `View`, so only the 24px checkbox and the title string are tappable, not the row.
+
+The decision its PRD has to make first: does reconcile stay an onboarding step, or become a
+persisted, resumable, searchable queue that lives in the app permanently ("48 shows still look
+unfinished")? The second answer also removes the destructive full-replace re-import, which today
+is the only way to correct marks later and costs every won't-watch mark, manual status and like.
+
+**Trailing housekeeping, not a step:** `.impeccable/design.json` (generated 2026-08-12) still
+describes the pre-warm palette and a "Borders-Not-Shadows Rule" that 10 call sites now contradict,
+and documents no dark palette. It is what the detector loads as design context. `$impeccable
+doctor` reconciles it. Also worth knowing: the detector contributes **no signal** on this codebase
+— proven with a positive control, an RN `.tsx` file with 1.6:1 text at 9px scans clean while the
+same patterns as HTML/CSS fire two rules. Do not read a clean detector run here as a pass.
