@@ -53,9 +53,11 @@ a 404 that surfaces as a generic error.
 `prd/1-recommendation-variety.md` is signed off in shape and has no open questions left that block
 a step. Plan 3 was added 2026-10-11 and is unscheduled.
 
-**What comes next, in order.** Plan 6 (the welcome greeting) was asked for mid-session on
-2026-10-14 and jumps the queue by the user's ask; its PRD is drafted and has **one open question
-that blocks its step 3**. Plan 5 (two bugs found the same day) is small and unblocked. Plan 4 (the
+**What comes next, in order.** Plan 7 (MAL sign-in in dev) is **first by necessity, not by
+preference** — it was found on 2026-10-14 while trying to run plan 6 step 1's check, and it blocks
+that check and every future one that touches sign-in, linking, import or push. Its PRD is drafted
+and awaits sign-off. Then plan 6 (the welcome greeting), whose step 1 is built and deployed but
+unchecked; its open question was settled the same day in favour of showing the MAL username. Plan 5 (three UI fixes found the same day) is small and unblocked. Plan 4 (the
 public share link) was the scheduled next thing and still is, once those clear — PRD signed off
 2026-10-14, no open questions, start at its step 1. Plans 2, 3 and 7 stay unscheduled — though
 plan 7's step 1 is three defect fixes needing no PRD, and its step 4 is worth landing before plan 4
@@ -224,9 +226,11 @@ any sign-in path broken (the MAL redirect URI was not re-registered).
 
 ---
 
-# Plan 5 — Two bugs found 2026-10-14 · **unblocked, small**
+# Plan 5 — Three things found 2026-10-14 · **unblocked, small**
 
-Both found while checking plan 1 step 8. Fixes, not features, so neither needs a PRD.
+The first two were found while checking plan 1 step 8, the third while using the Account screen on a
+wide monitor. Fixes, not features, so none of them needs a PRD — though the third holds one number
+that a design skill should settle before any style is written.
 
 ### Illegal nested `<button>` on Series Detail (web)
 `app/series/[id].tsx:412` sets `accessibilityRole="button"` on the entry row, which
@@ -258,6 +262,38 @@ which can be technical.
 **Check:** trigger a taste-profile failure (easiest: `supabase secrets set GROQ_API_KEY=invalid`)
 and confirm the card names the real reason. This also finally exercises step 7's degrade path,
 which the "still owed" list above has never had observed.
+
+### The Account screen stretches across the full width of a wide monitor
+`app/onboarding/account.tsx:317`'s `container` sets `padding` and `gap` and nothing else, so on a
+1920px browser every control — the email field, the password field, four pill buttons — is drawn
+~1870px wide. A pill that wide reads as a banner rather than a button: its label floats alone in the
+middle of a bar of empty colour, and the eye has to cross the whole screen to tie a field to its
+caret. `app/onboarding/privacy.tsx:133` shares the container and has the worse version of it —
+unbroken prose at that measure runs to roughly 200 characters a line.
+
+The fix is a centered column, not a media query: `alignSelf: 'center'` + `width: '100%'` +
+`maxWidth`. The same style is correct on a phone, where the `maxWidth` simply never binds.
+
+**The number is the whole decision, so ask for it rather than pick one.** Run `$impeccable` over
+this screen before writing the style and let it settle the column width — and whether the form
+column and the prose column want the same one, since a form and a paragraph have different natural
+measures. Whatever lands gets stated in `DESIGN.md`'s wide-web register in the same terms it already
+uses (232px sidebar, 184px cards, 900px breakpoint), and should be weighed against the ad-hoc widths
+already in the tree (`DetailHeroCard`'s 1040, recommend's tab row at 520, the two searchbars at
+480/440) rather than becoming a fifth unrelated number.
+
+Scope is the four onboarding screens only. `login.tsx:105` already centers its column and may need
+nothing — verify it at width, don't assume. `reconcile.tsx` is a full-width `FlatList` whose rows
+put the checkbox a monitor's width from the title it belongs to; the same column fixes that, and
+since plan 7 step 5 rewrites that screen anyway, do only the cheap version here. Library, Discover
+and For you are out of scope — their grids genuinely use the width.
+
+**Check:** open `/onboarding/account` in a maximised desktop browser. The form sits in a centered
+column of the agreed width with background either side, not edge to edge; `/onboarding/privacy`
+reads as a column of prose rather than full-width lines. Then narrow the window to phone width and
+confirm nothing is clipped or stuck off-centre, and open the same screen on the Android emulator to
+confirm it is unchanged there. Failure: controls still spanning the viewport, a column pinned left
+instead of centered, or horizontal scrolling appearing at narrow width.
 
 ---
 
@@ -389,3 +425,25 @@ and documents no dark palette. It is what the detector loads as design context. 
 doctor` reconciles it. Also worth knowing: the detector contributes **no signal** on this codebase
 — proven with a positive control, an RN `.tsx` file with 1.6:1 text at 9px scans clean while the
 same patterns as HTML/CSS fire two rules. Do not read a clean detector run here as a pass.
+
+---
+
+# Plan 7 — MAL sign-in that works in dev and production at once · **first, PRD drafted**
+
+Found 2026-10-14 while trying to run plan 6 step 1's check. Detail, the security reasoning and the
+single step live in **`prd/4-dev-oauth-origin.md`** — not duplicated here. Delete the PRD when its
+step 1 lands.
+
+**It blocks plan 6 step 1's check**, and anything else touching sign-in, linking, import or push:
+the web MAL OAuth popup can only finish on the one origin `SITE_URL` names, so on a local dev
+server MAL authorizes, the popup closes, and nothing happens. No error, nothing in the console —
+which is why it cost a session to find rather than a minute.
+
+One step: carry the initiating origin through the OAuth round trip on the `mal_oauth_sessions` row
+already crossing it, validated against an allowlist of `SITE_URL` plus loopback. A null reproduces
+today's behaviour exactly, so production is a strict superset rather than a changed path.
+
+**The security argument is the part worth re-reading before touching it**: the `Origin` header is
+attacker-controllable, so the allowlist is the whole control, and loopback is safe *only* because
+such a redirect resolves on the machine that follows it. Any future entry naming a routable host
+would be an open redirect handing out session handoff codes.
