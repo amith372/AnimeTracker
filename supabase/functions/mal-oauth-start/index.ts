@@ -6,6 +6,7 @@ import { supabaseAdmin, getRequestUserId } from '../_shared/supabaseAdmin.ts';
 import { buildAuthorizeUrl, generateCodeVerifier, generateOAuthState } from '../_shared/pkce.ts';
 import { MAL_CLIENT_ID } from '../_shared/malAuth.ts';
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
+import { resolveReturnOrigin } from '../_shared/oauthOrigin.ts';
 
 // Fixed for every user/platform — MAL's redirect always lands on mal-oauth-callback, never on the
 // client directly. This is what makes the web variant work with no custom URL scheme, and it means
@@ -28,11 +29,21 @@ Deno.serve(async (req) => {
     const codeVerifier = generateCodeVerifier();
     const state = generateOAuthState();
 
+    // Where the web popup should come back to, carried on the session row alongside the verifier
+    // because it has to survive the same round trip. Web only: the native flow redirects to
+    // `animetracker://auth`, which has no origin to preserve. Null here means "use SITE_URL" —
+    // which is what every caller got before this existed, so a rejected or absent Origin leaves
+    // production behaving exactly as it did. See prd/4-dev-oauth-origin.md for why the allowlist,
+    // not the header, is the control.
+    const returnOrigin =
+      platform === 'web' ? resolveReturnOrigin(req.headers.get('Origin'), Deno.env.get('SITE_URL')) : null;
+
     const { error } = await supabaseAdmin.from('mal_oauth_sessions').insert({
       state,
       user_id: userId,
       code_verifier: codeVerifier,
       platform,
+      return_origin: returnOrigin,
     });
     if (error) throw error;
 

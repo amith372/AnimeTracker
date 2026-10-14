@@ -57,7 +57,10 @@ a step. Plan 3 was added 2026-10-11 and is unscheduled.
 preference** — it was found on 2026-10-14 while trying to run plan 6 step 1's check, and it blocks
 that check and every future one that touches sign-in, linking, import or push. Its PRD is drafted
 and awaits sign-off. Then plan 6 (the welcome greeting), whose step 1 is built and deployed but
-unchecked; its open question was settled the same day in favour of showing the MAL username. Plan 5 (three UI fixes found the same day) is small and unblocked. Plan 4 (the
+unchecked; its open question was settled the same day in favour of showing the MAL username, but a
+display-name amendment asked for later the same day **must be written into its PRD and signed off
+before its step 3** — steps 1 and 2 are unaffected. Plan 5 (four small UI and copy fixes found the
+same day) is unblocked. Plan 4 (the
 public share link) was the scheduled next thing and still is, once those clear — PRD signed off
 2026-10-14, no open questions, start at its step 1. Plans 2, 3 and 7 stay unscheduled — though
 plan 7's step 1 is three defect fixes needing no PRD, and its step 4 is worth landing before plan 4
@@ -98,7 +101,8 @@ Carried forward from finished work. None of these is a defect, and none is sched
   Settled 2026-10-11: anonymous sign-ins are enabled, and `20260812000000_direct_postgres.sql` is
   applied on the remote with the CLI's migration history repaired to match. A stale throwaway user
   `178e75f9…` is still in `auth.users` and can only be cleared from the dashboard — its session is
-  gone, so nothing can sign into it from the app. Never `db push` a migration here expecting a
+  gone, so nothing can sign into it from the app. That orphan has a cause rather than being a
+  one-off, and plan 5's guest-exit item is what stops the app minting more of them. Never `db push` a migration here expecting a
   no-op: `create policy` and `cron.schedule` are not idempotent.
 
 ---
@@ -226,11 +230,12 @@ any sign-in path broken (the MAL redirect URI was not re-registered).
 
 ---
 
-# Plan 5 — Three things found 2026-10-14 · **unblocked, small**
+# Plan 5 — Four things found 2026-10-14 · **unblocked, small**
 
-The first two were found while checking plan 1 step 8, the third while using the Account screen on a
-wide monitor. Fixes, not features, so none of them needs a PRD — though the third holds one number
-that a design skill should settle before any style is written.
+The first two were found while checking plan 1 step 8; the last two while looking at the Account
+screen on a wide monitor. Fixes and copy, not features, so none of them needs a PRD — though the
+width item holds one number that a design skill should settle before any style is written. The last
+two both edit `app/onboarding/account.tsx`, so build them in one sitting.
 
 ### Illegal nested `<button>` on Series Detail (web)
 `app/series/[id].tsx:412` sets `accessibilityRole="button"` on the entry row, which
@@ -295,9 +300,51 @@ confirm nothing is clipped or stuck off-centre, and open the same screen on the 
 confirm it is unchanged there. Failure: controls still spanning the viewport, a column pinned left
 instead of centered, or horizontal scrolling appearing at narrow width.
 
+### A guest has two ways out and only one of them deletes anything
+`app/onboarding/account.tsx` offers a guest both **Leave guest mode (discards this list)** (`:215`,
+→ `logOutAccount`) and **Delete everything** (`:113`, → `deleteAccountAndData`). For a *real*
+account those are properly different actions — one ends a session you can come back to, the other
+erases the library, the MAL link and the `auth.users` row. **For a guest the difference collapses**,
+because an anonymous session can never be signed into again: both lose the library, and the only
+thing that actually differs is invisible to the person choosing. "Leave guest mode" *abandons* the
+rows on the server forever; "Delete everything" erases them. The orphan that leaves behind is not
+hypothetical — the stale `178e75f9…` user in "What is still owed", clearable only from the
+dashboard, is one.
+
+**So the guest branch gets one exit, and it is the one that deletes.** Replace both buttons with a
+single `Leave guest mode and delete this list` calling `deleteAccountAndData()`, which already
+handles an anonymous session unchanged and says so in its own comment
+(`supabase/functions/delete-account/index.ts:66`). A real account keeps both, worded as they are.
+
+**And the guest branch gains a `Log in` button**, beside its existing `Create account`. Signing out
+is currently a guest's only route to the login screen, so collapsing the exits would otherwise mean
+someone who already owns an account must delete their guest list to reach it. The email and
+password fields are already on screen and `logInWithEmail` already exists
+(`src/account/accountRepository.ts:52`) — this is a button and a handler, and it closes a gap that
+was there before this item anyway.
+
+Wording, since that dialog is now the only thing between a guest and a permanent delete: the title
+and the button say **guest** and **list**, never "account" — a guest has no account in any sense
+they would recognise. Keep the existing dialog's line that their MyAnimeList list is untouched; it
+is the most reassuring sentence on the screen and it currently sits *below* the alarming one.
+`dataSection()` takes a wording pair rather than being copied per branch — the whole reason that
+fragment is shared is that a delete button must not go missing from one of them.
+
+**Supersedes half of the design-critique plan's step 4** (`# Plan 7 — What the design critique
+found`), which planned to put the old sign-out tap behind a confirmation; that tap no longer exists
+once this lands. What survives from it is naming the count in this dialog, and the disclosure line
+under the login screen's guest button.
+
+**Check:** continue as a guest and open Account. There is exactly one way out, it names the guest
+list rather than an account, and confirming it leaves nothing behind — verify in the Supabase
+dashboard that the `auth.users` row is gone, not merely signed out. Then confirm `Log in` reaches
+an existing account from the guest branch without deleting anything, and that a real account still
+sees both log-out and Delete everything, unchanged. Failure: a guest told the app is deleting an
+"account", a second silent exit still present, or an `auth.users` row surviving the delete.
+
 ---
 
-# Plan 6 — "Welcome X" in the web sidebar · **next, PRD drafted**
+# Plan 6 — "Welcome X" in the web sidebar · **PRD signed off; step 1 built, its check blocked**
 
 Asked for mid-session 2026-10-14. Detail, decisions, constraints and the three steps live in
 **`prd/3-welcome-greeting.md`** — not duplicated here. Delete the PRD when its step 3 lands.
@@ -305,10 +352,59 @@ Asked for mid-session 2026-10-14. Detail, decisions, constraints and the three s
 Two shape decisions were answered the same day: store the MAL username (the alternatives were a
 synthetic `mal-123456` address or no name at all), and put the line in the web sidebar only.
 
-**One open question blocks step 3**, and only step 3 — steps 1 and 2 can be built first. A guest
-who has linked MAL: show the MAL username, or keep saying "Guest"? The PRD proposes the username;
-the counter-argument is that "Guest" is a warning about impermanence that linking MAL does not
-make false.
+**No open questions in the PRD.** This file previously said one blocked step 3 — a guest who has
+linked MAL, username or "Guest" — and the PRD records it settled the same day in favour of the
+username, with the rejected argument kept rather than lost. The PRD wins on conflict, so that is
+the answer and this is the correction.
+
+### The name the user picks themselves · **asked 2026-10-14, amends the PRD, needs sign-off**
+Asked after the PRD was signed off: when someone creates an account they should choose a **display
+name**, not only an email and a password. Small to build, but it changes two things the PRD has
+already settled, so it lives here until the PRD is amended and re-signed — which has to happen
+before step 3, because step 3 *is* the name resolution.
+
+- It **amends the PRD's "Explicitly out" list**, which bars "a user-editable nickname" and
+  "changing how accounts are created, authenticated, or linked". Both are now in, narrowly: one
+  optional field on one form.
+- It **adds a rung to the top of the resolution order**, today MAL username → email local-part →
+  `Guest`. **Settled 2026-10-14: the display name wins**, making it display name → MAL username →
+  email local-part → `Guest`. The PRD's own reason for MAL beating email is "it is the name the
+  user chose", and a name typed into this app is that more directly than one typed into MAL's.
+- The build is a field on the Create-account form plus an argument to `signUpWithEmail`
+  (`src/account/accountRepository.ts:29`), written into `user_metadata` through `options.data` on
+  the same `supabase.auth.signUp` call — no migration, the same home as `mal_username`, and the
+  PRD's "cosmetic, never an authorization input" constraint carries over untouched. **The
+  guest-conversion branch at `:38` must take it too** (`updateUser` carries `data` the same way):
+  a converting guest is exactly the person who has no name yet.
+- Optional, not required. A blank display name falls through to the next rung rather than blocking
+  signup or rendering `Welcome ` with nothing after it.
+- **Editable on the Account screen afterwards, not only at signup — settled 2026-10-14.** Two
+  reasons, and the second is the one that forces it: a name that is public the moment you share
+  needs a way to change your mind, and a signup-only field would never reach an account that
+  already exists, including the only one this app has. It belongs on the same screen plan 4 puts
+  its share controls on.
+
+**It also settles plan 4's nickname — decided 2026-10-14: reuse, one name, not two.** Plan 4's PRD
+had the public page's name as "an optional nickname the sharer types… nothing MAL-derived, nothing
+the app already holds about them" (`prd/2-public-share.md:75`); the display name becomes that name,
+so the share controls show it rather than asking for a second one. Three things that decision drags
+with it, all of which belong in whichever PRD is amended first, with the other citing it:
+
+- **Only the *typed* display name is ever public.** The share page's name resolves to the display
+  name or to "A shared anime list", full stop — it must **never** fall through the sidebar's chain
+  to a MAL username, an email local-part or "Guest". Plan 4's PRD bars the first two from that page
+  on MAL §4(f) and privacy grounds and **this does not relax it**; reusing one field is not the
+  same as reusing the resolution order, and conflating them is the way this decision turns into a
+  leak.
+- **Where it is said, since the field is now dual-purpose.** The Account screen's field says it
+  appears on your share link if you make one, and plan 4's share confirmation names the name it is
+  about to publish. A name typed for a private sidebar must not become public silently.
+- **Live or copied.** Either the public read function resolves the name at request time (a rename
+  updates the page) or the share row copies it at creation (a rename does not). Live is the
+  obvious one — a public page showing a name its owner has since changed is the worse failure —
+  but it is a shape decision the PRD should state rather than leave to whoever writes the query.
+  Plan 4's existing handling of the nickname as untrusted, length-capped text applies unchanged,
+  and now applies at the Account screen's field too.
 
 ---
 
@@ -394,9 +490,11 @@ to an app whose first screen may say nothing but "Nothing here yet".
   MyAnimeList" when `malLinked === false`. Give the filtered-empty sibling a "Clear filters".
 - `app/onboarding/account.tsx:215` destroys a guest's whole library on one unconfirmed tap
   (`handleLogOut` → `signOut()`, unrecoverable for an anonymous session), styled `mode="outlined"`
-  in the same rhythm as every other button, while removing *one show* gets a titled dialog. Put it
-  behind the same dialog shape, naming the count, and add one line under the login screen's guest
-  button so the risk is disclosed where it is taken.
+  in the same rhythm as every other button, while removing *one show* gets a titled dialog.
+  **Plan 5's guest-exit item deletes that tap outright**, so what is left here is the rest of the
+  same thought: name the count in the dialog that replaces it, and add one line under the login
+  screen's guest button so the risk is disclosed where it is taken. If plan 5 has not landed yet,
+  build it first rather than putting a dialog on a button that is about to be removed.
 
 **Check:** sign in fresh as a guest, confirm the empty Library offers somewhere to go, then tap
 "Leave guest mode" and confirm it asks first and names how many shows would be lost.

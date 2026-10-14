@@ -41,9 +41,13 @@ function redirect(location: string): Response {
  * redirect to a domain we actually control instead, mirroring how the mobile variant already
  * redirects to its own animetracker:// scheme rather than trying to execute anything here.
  */
-function webFinish(payload: Record<string, string>): Response {
+function webFinish(payload: Record<string, string>, returnOrigin?: string | null): Response {
   const qs = new URLSearchParams(payload).toString();
-  return redirect(`${SITE_URL}/oauth-complete?${qs}`);
+  // The origin mal-oauth-start allowlisted for this flow, or SITE_URL when there wasn't one —
+  // which is every flow that predates plan 7 and every caller whose Origin didn't pass. The popup
+  // has to land on the same origin as the window that opened it or its postMessage is never
+  // delivered; see prd/4-dev-oauth-origin.md.
+  return redirect(`${returnOrigin ?? SITE_URL}/oauth-complete?${qs}`);
 }
 
 Deno.serve(async (req) => {
@@ -68,7 +72,7 @@ Deno.serve(async (req) => {
   const finishError = (message: string) =>
     session.platform === 'mobile'
       ? redirect(`animetracker://auth?malError=${encodeURIComponent(message)}`)
-      : webFinish({ malError: message });
+      : webFinish({ malError: message }, session.return_origin);
 
   if (malError || !code) return finishError(malError ?? 'MAL login was cancelled.');
 
@@ -107,7 +111,9 @@ Deno.serve(async (req) => {
           .catch(() => {});
       }
 
-      return session.platform === 'mobile' ? redirect('animetracker://auth?linked=1') : webFinish({ linked: '1' });
+      return session.platform === 'mobile'
+        ? redirect('animetracker://auth?linked=1')
+        : webFinish({ linked: '1' }, session.return_origin);
     }
 
     // Sign-in variant — find the Supabase account this MAL identity already belongs to, or create
@@ -151,7 +157,7 @@ Deno.serve(async (req) => {
 
     return session.platform === 'mobile'
       ? redirect(`animetracker://auth?handoff=${handoffCode}`)
-      : webFinish({ handoff: handoffCode });
+      : webFinish({ handoff: handoffCode }, session.return_origin);
   } catch (e) {
     return finishError(e instanceof Error ? e.message : 'MyAnimeList login failed.');
   }
