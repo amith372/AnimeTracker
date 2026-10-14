@@ -78,12 +78,19 @@ export default function SeriesPreviewScreen() {
         <Text variant="bodySmall" style={styles.summary} numberOfLines={3}>
           {synopsis}
         </Text>
-        {/* The blurb was tappable before this and nothing said so, while a separate ⓘ button in the
+{/* The blurb was tappable before this and nothing said so, while a separate ⓘ button in the
             header opened the very same dialog — two controls for one action, and the discoverable
             one was the redundant one. The icon is gone and the affordance now sits on the thing it
-            acts on. */}
+            acts on.
+
+            Wording is "Read more" because that is what the Detail screen's synopsis already says
+            for the same job. It is also the only option that is not wrong on one platform: this
+            component renders on both, so "click" would be a lie on a phone and "tap" on a desktop.
+            The two screens reveal the text differently — Detail expands in place and can offer
+            "Show less", this one opens a dialog and cannot — but the invitation to read it should
+            not be two different phrases. */}
         <Text variant="labelSmall" style={styles.summaryHint}>
-          (click to see full summary)
+          Read more
         </Text>
       </Pressable>
     );
@@ -289,7 +296,10 @@ const useStyles = makeStyles((colors) => ({
   // (which goes muddy on colour). A hair tighter than the default line height: three lines of body
   // text is already a lot of banner, and this has to leave the cover art room to breathe.
   summary: { color: colors.heroMutedText, lineHeight: 18 },
-  summaryHint: { color: colors.heroMutedText, opacity: 0.85, marginTop: 4 },
+  // Matches the Detail screen's synopsisToggle in role, not in colour: that one sits on the page
+  // background where colors.primary reads as a link, this one sits on the hero gradient where it
+  // would not. Same weight and spacing, a colour that works on the gradient.
+  summaryHint: { color: '#fff', opacity: 0.9, marginTop: spacing.xs },
   addPrompt: { color: colors.textMuted, paddingHorizontal: spacing.lg, paddingTop: spacing.lg },
   statusChipRow: { marginTop: spacing.sm, flexGrow: 0, flexShrink: 0, minHeight: 34 },
   entryList: { flex: 1 },

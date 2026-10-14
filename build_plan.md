@@ -291,9 +291,12 @@ produced before this fix ran with no liked signal at all. The buttons also gaine
 and the heart fills `colors.red`.
 
 The ⓘ button duplicated the summary · **done 2026-10-14** — removed from both registers; the blurb
-says `(click to see full summary)` instead. **One copy decision is still open and belongs to plan
-7:** Detail says "Read more" for the same action, and "click" is wrong on the phone this component
-also renders on. Settle one wording for both.
+now says **"Read more"**, matching what the Detail screen's synopsis already says for the same job.
+The copy question this briefly opened is **closed, not deferred**: "click" was wrong on the phone
+this component also renders on, and "tap" would have been wrong on the desktop, so the only
+candidate that is not false on one platform is the one the app already used. The two screens still
+reveal the text differently — Detail expands in place and can offer "Show less", Preview opens a
+dialog and cannot — but the invitation to read it is now one phrase.
 
 ### Edge Function error messages are unwrapped and then discarded
 `src/api/edgeFunctions.ts:26`'s `invoke()` goes to deliberate trouble to pull the real
@@ -473,10 +476,6 @@ list with no matches, Catch up with nothing outstanding); error states and their
 web hover styles on cards, nav rows and poster tiles; Discover's full-screen search mode; the taste
 profile card in each of its four states (not enough signal, generating, generated-collapsed,
 generated-expanded); and the reconcile screen at real scale, which step 5 below already covers.
-
-**Two copy decisions are waiting on this run**, both from plan 5's ⓘ change: the Preview summary
-hint currently reads `(click to see full summary)` where Detail says `Read more`, and "click" is
-wrong on the phone this same component renders on. Settle one wording for both.
 
 **Ordering note:** step 1 edits the same entry-row block that plan 5's nested-`<button>`
 restructure rewrites (`app/series/[id].tsx` around :408–:412). Build plan 5 first and step 1
