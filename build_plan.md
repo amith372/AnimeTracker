@@ -276,11 +276,20 @@ like a systemic problem. Fixed with `zIndex: 1`.
 for as long as the heart was unclickable the ranking ran with no liked signal at all. Any judgement
 about recommendation quality formed before this fix was formed on a crippled profile.
 
-Two changes came with the fix, asked for 2026-10-14 once the buttons worked: both are wrapped in
-Paper's `Tooltip` (hover on web, long-press on a phone), and the heart fills `colors.red` rather
+Two changes came with the fix, asked for 2026-10-14 once the buttons worked: both name themselves
+on hover via a local `HeroActionButton`, and the heart fills `colors.red` rather
 than white — the outline stays white so an unliked heart reads as an available action rather than a
 state that is already on. The heart also gains the `accessibilityLabel` it never had, which is one
 of the six unlabeled icon buttons plan 7 lists as still live.
+
+**Paper's `Tooltip` was tried and removed the same day** — worth recording so it is not reached for
+again. It waits `leaveTouchDelay = 1500`ms before hiding, draws a 32px near-black Material pill
+that belongs to a different design language than this gradient, and its press container sets
+`cursor: 'default'`, which silently removed the pointer cursor from both buttons it wrapped. The
+replacement is small white text on the gradient, absolutely positioned so it never reflows the row,
+driven by the `useHover` hook the sidebar and poster tiles already use. `useHover` is inert
+off-web, so the caption is kept short enough to be redundant — the full sentence lives in
+`accessibilityLabel`, which is what a phone surfaces anyway.
 
 **Check:** open a watched series' Detail page on web and click the heart — it should fill **red**,
 and stay filled after a reload. Hover it and the trash: each should show a label saying what it

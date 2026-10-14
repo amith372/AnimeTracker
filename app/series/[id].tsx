@@ -10,7 +10,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ActivityIndicator, Button, Chip, Dialog, IconButton, Portal, Snackbar, Text, Tooltip } from 'react-native-paper';
+import { ActivityIndicator, Button, Chip, Dialog, IconButton, Portal, Snackbar, Text } from 'react-native-paper';
 import {
   useSeries,
   deleteSeries,
@@ -202,25 +202,23 @@ export default function SeriesDetailScreen() {
         topRight={
           <View style={styles.heroActions}>
             {canLike && (
-              <Tooltip title={series.liked ? 'Remove from liked' : 'Mark as liked — improves your recommendations'}>
-                <IconButton
-                  icon={series.liked ? 'heart' : 'heart-outline'}
-                  // Red only when filled. The outline stays white so it reads as an available
-                  // action against the gradient rather than a permanently-on state.
-                  iconColor={series.liked ? colors.red : '#fff'}
-                  accessibilityLabel={series.liked ? 'Remove from liked' : 'Mark as liked'}
-                  onPress={() => runWrite(() => setSeriesLiked(series.id, !series.liked))}
-                />
-              </Tooltip>
-            )}
-            <Tooltip title="Remove from library">
-              <IconButton
-                icon="trash-can-outline"
-                iconColor="#fff"
-                accessibilityLabel="Remove from library"
-                onPress={() => setRemoveConfirmVisible(true)}
+              <HeroActionButton
+                icon={series.liked ? 'heart' : 'heart-outline'}
+                // Red only when filled. The outline stays white so it reads as an available
+                // action against the gradient rather than a permanently-on state.
+                iconColor={series.liked ? colors.red : '#fff'}
+                caption={series.liked ? 'Liked' : 'Like'}
+                accessibilityLabel={series.liked ? 'Remove from liked' : 'Mark as liked'}
+                onPress={() => runWrite(() => setSeriesLiked(series.id, !series.liked))}
               />
-            </Tooltip>
+            )}
+            <HeroActionButton
+              icon="trash-can-outline"
+              iconColor="#fff"
+              caption="Remove"
+              accessibilityLabel="Remove from library"
+              onPress={() => setRemoveConfirmVisible(true)}
+            />
           </View>
         }
       >
@@ -296,23 +294,21 @@ export default function SeriesDetailScreen() {
           {/* Same pair as the wide-web hero above, same tooltips and same red fill — see there. */}
           <View style={styles.heroActions}>
             {canLike && (
-              <Tooltip title={series.liked ? 'Remove from liked' : 'Mark as liked — improves your recommendations'}>
-                <IconButton
-                  icon={series.liked ? 'heart' : 'heart-outline'}
-                  iconColor={series.liked ? colors.red : 'rgba(255,255,255,0.85)'}
-                  accessibilityLabel={series.liked ? 'Remove from liked' : 'Mark as liked'}
-                  onPress={() => runWrite(() => setSeriesLiked(series.id, !series.liked))}
-                />
-              </Tooltip>
-            )}
-            <Tooltip title="Remove from library">
-              <IconButton
-                icon="trash-can-outline"
-                iconColor="rgba(255,255,255,0.85)"
-                accessibilityLabel="Remove from library"
-                onPress={() => setRemoveConfirmVisible(true)}
+              <HeroActionButton
+                icon={series.liked ? 'heart' : 'heart-outline'}
+                iconColor={series.liked ? colors.red : 'rgba(255,255,255,0.85)'}
+                caption={series.liked ? 'Liked' : 'Like'}
+                accessibilityLabel={series.liked ? 'Remove from liked' : 'Mark as liked'}
+                onPress={() => runWrite(() => setSeriesLiked(series.id, !series.liked))}
               />
-            </Tooltip>
+            )}
+            <HeroActionButton
+              icon="trash-can-outline"
+              iconColor="rgba(255,255,255,0.85)"
+              caption="Remove"
+              accessibilityLabel="Remove from library"
+              onPress={() => setRemoveConfirmVisible(true)}
+            />
           </View>
         </View>
         <View style={styles.bannerContent}>
@@ -399,6 +395,52 @@ export default function SeriesDetailScreen() {
  * popup instead of toggling anything. Three separate gestures rather than one that cycles through
  * or conflates them.
  */
+/**
+ * A hero icon button that names itself on hover.
+ *
+ * Paper's own `Tooltip` was tried first and removed: it waits 1500ms before hiding, draws a 32px
+ * near-black Material pill that belongs to a different design language than this gradient header,
+ * and its press container sets `cursor: 'default'`, which silently removed the pointer cursor from
+ * the two buttons it wrapped.
+ *
+ * This is small white text on the gradient instead. It is absolutely positioned so appearing and
+ * disappearing never reflows the row, and `useHover` is a no-op off-web (touch has no hover), so
+ * on a phone this renders exactly as a plain IconButton — which is why the caption is kept short
+ * enough to be redundant rather than load-bearing. The full sentence lives in accessibilityLabel.
+ */
+function HeroActionButton({
+  icon,
+  iconColor,
+  caption,
+  accessibilityLabel,
+  onPress,
+}: {
+  icon: string;
+  iconColor: string;
+  caption: string;
+  accessibilityLabel: string;
+  onPress: () => void;
+}) {
+  const styles = useStyles();
+  const [hovered, hoverHandlers] = useHover();
+  return (
+    <View style={styles.heroAction}>
+      <IconButton
+        icon={icon}
+        iconColor={iconColor}
+        accessibilityLabel={accessibilityLabel}
+        onPress={onPress}
+        {...hoverHandlers}
+      />
+      {hovered && (
+        <Text variant="labelSmall" style={styles.heroActionCaption} numberOfLines={1}>
+          {caption}
+        </Text>
+      )}
+    </View>
+  );
+}
+
 function EntryRow({
   entry,
   kindNumber,
@@ -557,6 +599,10 @@ const useStyles = makeStyles((colors) => ({
   banner: { paddingBottom: spacing.xl, borderBottomLeftRadius: 30, borderBottomRightRadius: 30 },
   bannerTopRow: { flexDirection: 'row', justifyContent: 'space-between' },
   heroActions: { flexDirection: 'row', alignItems: 'center' },
+  heroAction: { alignItems: 'center' },
+  // Absolute so showing it never shifts the buttons beside it. `top` clears the 40px IconButton
+  // container (36px icon box + its 6px margin, less a couple to sit close).
+  heroActionCaption: { position: 'absolute', top: 40, color: '#fff', opacity: 0.92, fontSize: 11 },
   bannerContent: { flexDirection: 'row', gap: spacing.lg, paddingHorizontal: spacing.lg },
   cover: { width: 104, height: 148, borderRadius: radii.lg, backgroundColor: 'rgba(255,255,255,0.15)' },
   bannerText: { flex: 1, gap: spacing.sm, paddingTop: spacing.xs },
