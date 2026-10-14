@@ -34,10 +34,11 @@ never read off what the implementation returned.
 
 ## Current state, 2026-10-14
 
-Plan 1's steps 0–6 are done and checked. **Step 7 is built and committed but its check has not been
-run** — it is the last step in the plan, and `prd/1-recommendation-variety.md` gets deleted once it
-passes. Nothing in plan 1 has been pushed — the branch holds every commit from step 0 onward, by the
-user's instruction, so `origin/master` is still at `244f20f`.
+Plan 1's steps 0–7 are done and checked. **Step 8 was added 2026-10-14 after step 7's check** — the
+check passed, and the user then counted the list: 32 rows against a constant claiming 60. It is
+built and awaiting its own check, and `prd/1-recommendation-variety.md` gets deleted once that
+passes rather than when step 7 did. Nothing in plan 1 has been pushed — the branch holds every
+commit from step 0 onward, by the user's instruction, so `origin/master` is still at `244f20f`.
 
 The live project is fully set up for the model steps as of 2026-10-14: the `taste_profiles` and
 `model_call_quota` migrations are applied, `taste-profile` and `taste-candidates` are deployed,
@@ -50,7 +51,7 @@ a 404 that surfaces as a generic error.
 a step. Plan 3 was added 2026-10-11 and is unscheduled.
 
 **What comes after plan 1:** plan 4, the public share link — PRD signed off 2026-10-14, no open
-questions, start at its step 1. Told to "continue" once step 7's check has passed, compress step 7,
+questions, start at its step 1. Told to "continue" once step 8's check has passed, compress step 8,
 delete `prd/1-recommendation-variety.md`, and begin there. Plans 2 and 3 stay unscheduled.
 
 Last shipped before this plan existed: Phase 12's direct-Postgres cutover and web build
@@ -63,6 +64,12 @@ Carried forward from finished work. None of these is a defect, and none is sched
 - **`groupIntoSeries` drops `ova`/`ona`/`special`/`music` entirely** rather than grouping them.
   Fine for the library today, but it means an ONA recommendation silently produces no row — which
   will quietly lower step 7's yield. Its own piece of work if it ever matters.
+- **Step 7's degrade path has never been exercised.** Half 1 of its check passed; the user
+  declined half 2 (revoke `GROQ_API_KEY`, confirm the list still renders with its one-line notice)
+  as not worth running. So the branch where the model provider is unreachable is coded and
+  commented but unobserved — if it is broken, it shows up as a blank or error "For you" during a
+  Groq outage. One `supabase secrets set GROQ_API_KEY=invalid`, one refresh, and setting the real
+  key back is the whole of it, whenever it is worth five minutes.
 - **Phase 13's list-performance cleanup** is still open in `PLAN.md` and untouched by this plan.
 - **`buildGenreAffinity`'s positive half cancels tag frequency rather than correcting for it**
   (found while building step 3). Dividing a tag's accumulated weight by how many of *the user's*
@@ -85,7 +92,7 @@ Carried forward from finished work. None of these is a defect, and none is sched
 # Plan 1 — Recommendations with deeper taste and real variety
 
 Detail, decisions and reasoning: **`prd/1-recommendation-variety.md`**. Not duplicated here — this
-is the work list, that is the brief. Delete the PRD when step 7 lands.
+is the work list, that is the brief. Delete the PRD when step 8 lands.
 
 Step 0 — the pre-commit gate, and the `genres` question · **done 2026-10-11**
 Step 1 — diversify the final list · **done 2026-10-11**
@@ -96,19 +103,36 @@ Step 5 — more taste axes and the obscurity signal · **done 2026-10-11**
 Step 5½ — privacy notice, consent, and delete everything · **done 2026-10-11**
 Step 6 — the taste profile (model, part 1) · **done 2026-10-11**
 
-### Step 7 — The candidate generator (model, part 2) · **built 2026-10-11, awaiting its check**
-One generator request per refresh; MAL-search resolution gate with a similarity threshold and a
-long-TTL `resolve:v1:<normalized>` cache key; `num_list_users` obscurity ceiling; degrade path with
-its one-line notice; per-user daily call ceiling.
+Step 7 — the candidate generator (model, part 2) · **done 2026-10-14**
 
-**Live project is ready** as of 2026-10-14: `20261011020000_model_call_quota.sql` is applied on the
-remote (verified with `migration list`, not assumed from the push), and `taste-candidates` is
-deployed and answers its own `401 {"error":"Not signed in."}` on an anon probe. Nothing is owed
-from the user but the check itself.
+### Step 8 — Make the list as long as it says it is · **built 2026-10-14, awaiting its check**
+No PRD: a slice-placement fix plus one tuning constant, both inside work plan 1 already describes.
 
-**Check:** "For you" shows something with no MAL recommendation path from your library. Then revoke
-the key and confirm the list still renders with the notice. Failure: an error screen, a title you
-can't find on MAL, or the same famous shows.
+Asked for the moment step 7's check passed — "For you" was showing 32 rows with no filters set.
+32 was never a cap. `MAX_RECOMMENDATIONS` was 60 and the list could not reach it, because the slice
+ran on *ungrouped candidate ids*: grouping then collapsed each sequel chain into one row and the
+post-grouping exclusion dropped every row overlapping the library, so sixty ids arrived as roughly
+half that many rows. The question that prompted it — whether the MAL recommendations could be
+unioned without duplicates — was already answered by `selectCandidatePool`, which has always
+round-robined every source series' recommendations through a `claimed` dedupe set; the union was
+never the constraint.
+
+Three changes, chosen as "make 60 real" over a bigger target or a cheaper half:
+- the final slice moved below grouping and exclusion, so it counts rows the user sees;
+- `MAX_CANDIDATE_DETAILS` 80 → 160, since a pool equal to the row count cannot fill it;
+- the grouping stage's closure pass throttled to `DETAIL_FETCH_CONCURRENCY` instead of an
+  unbounded `Promise.all`. Found while making the change, not asked for: that burst scales with the
+  batch handed to `fetchDetailsAndGroup`, so doubling the pool would have doubled a few-hundred-
+  request simultaneous burst against guardrail #3. Same total requests, paced. Discover shares the
+  function and gets the same pacing.
+
+Untestable by Jest — the slice lives in a network-driven repository function and every pure
+function it calls is unchanged, so the 272 existing tests are the regression net, not a new one.
+
+**Check:** open "For you" with no filters set and count the rows — it should now reach 60, or at
+least clearly exceed 32. The first refresh will be slow (a cold pool is now up to 160 detail calls);
+a second refresh should be quick off the warm `api_cache`. Failure: still ~32 rows, an error screen,
+a refresh that never finishes, or obvious junk padding the tail.
 
 ---
 
@@ -137,7 +161,7 @@ proposing new ones.
 # Plan 4 — A public, account-free share link for your list · **next, after plan 1**
 
 Asked for 2026-10-12; **PRD signed off and scheduled 2026-10-14**, to be picked up the moment
-step 7's check passes. Detail, decisions, the compliance reading and the step plan live in
+plan 1's last step (now step 8) has passed its check. Detail, decisions, the compliance reading and the step plan live in
 **`prd/2-public-share.md`** — not duplicated here. Delete the PRD when its step 4 lands. Four shape decisions were settled the same day:
 a public Edge Function returning JSON (so RLS stays owner-only on every table), the whole library
 with every status, one revocable link per account, and an optional nickname rather than any name

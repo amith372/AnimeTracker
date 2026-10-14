@@ -172,17 +172,20 @@ export async function fetchDetailsAndGroup(
   for (let pass = 0; pass < MAX_CLOSURE_PASSES; pass++) {
     const missing = Array.from(missingSequelPrequelIds(animeById));
     if (missing.length === 0) break;
-    await Promise.all(
-      missing.map(async (id) => {
-        try {
-          const detail = await getAnimeDetailCached(id);
-          detailById.set(id, detail);
-          animeById.set(id, toAnimeRelationInput(detail));
-        } catch {
-          // Best-effort: if a related id can't be fetched, it's simply left out of the chain.
-        }
-      }),
-    );
+    // Throttled to the same width as the detail stage above, not fired off at once with
+    // Promise.all. A pass's `missing` set scales with the batch handed to this function, and
+    // Recommendations' candidate pool is now 160 — so an unbounded pass was a burst of a few
+    // hundred simultaneous MAL requests, which is the "never hammer endpoints in tight loops" half
+    // of CLAUDE.md guardrail #3. Total request count is unchanged; only their pacing is.
+    await mapWithConcurrency(missing, DETAIL_FETCH_CONCURRENCY, async (id) => {
+      try {
+        const detail = await getAnimeDetailCached(id);
+        detailById.set(id, detail);
+        animeById.set(id, toAnimeRelationInput(detail));
+      } catch {
+        // Best-effort: if a related id can't be fetched, it's simply left out of the chain.
+      }
+    });
   }
 
   const grouped = groupIntoSeries(animeById);

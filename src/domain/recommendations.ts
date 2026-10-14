@@ -206,13 +206,13 @@ export interface SourceCandidatePool {
  * has to be cut. This used to be a single global sort by MAL tally, which meant popularity decided
  * the pool *before taste was ever consulted* — and because a blockbuster contributes hundreds of
  * strongly-recommended candidates while an obscure favourite contributes ten weakly-recommended
- * ones, the top 80 came almost entirely from the user's two or three biggest shows. Nothing the
- * obscure series recommended was ever scored at all, let alone ranked, so no amount of fixing the
- * ranking downstream could surface it.
+ * ones, the whole budget came almost entirely from the user's two or three biggest shows. Nothing
+ * the obscure series recommended was ever scored at all, let alone ranked, so no amount of fixing
+ * the ranking downstream could surface it.
  *
  * Round-robin fixes that at the only place it can be fixed: every series contributes its own best
  * candidate, then its second best, and so on until the budget runs out. The number of MAL calls is
- * unchanged — it is the same 80, drawn from across the library rather than off the top of it.
+ * unchanged — it is the same budget, drawn from across the library rather than off the top of it.
  *
  * Within a series, "best" is that series' *own* `num_recommendations`, not the global tally: the
  * question being asked of each series in turn is "of the shows you point at, which do MAL's users
@@ -709,8 +709,8 @@ function genreSimilarity(a: string[], b: string[]): number {
  * much of it is shown. Ties fall to the higher raw score, which is the input order, making this
  * stable: identical candidates keep their relative positions instead of shuffling run to run.
  *
- * O(n²) in the candidate count, which is bounded by MAX_CANDIDATE_DETAILS (80) — a few thousand
- * set comparisons, nowhere near worth optimizing.
+ * O(n²) in the candidate count, which is bounded by MAX_CANDIDATE_DETAILS (160) — a few tens of
+ * thousands of set comparisons, nowhere near worth optimizing.
  *
  * `lambda` is a parameter rather than only a constant so a test can state the value its expected
  * order was derived from on paper; production always uses the default.

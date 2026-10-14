@@ -51,20 +51,31 @@ export type RecommendProgress =
 // below are the whole cost, so cutting each stage's wall time is the whole fix.
 const SOURCE_FETCH_CONCURRENCY = 12;
 const CANDIDATE_FETCH_CONCURRENCY = 12;
-// Raised from 30 at the user's request — the wide-web list now wraps into a vertically scrolling
-// grid rather than a horizontal row, so a longer list is genuinely browsable instead of running off
-// the edge of the window. Costs nothing extra by itself: this trims an already-ranked list.
+// How many rows the finished list holds. Raised from 30 at the user's request — the wide-web list
+// now wraps into a vertically scrolling grid rather than a horizontal row, so a longer list is
+// genuinely browsable instead of running off the edge of the window.
+//
+// **Counts grouped, recommendable series — not candidate ids.** It used to trim the ranked
+// candidate list *before* grouping, which made it impossible to honour: grouping then collapsed
+// each sequel chain into one row and the post-grouping exclusion dropped every row overlapping the
+// library, so sixty ids reliably arrived as roughly half that many rows (32 observed, against a
+// constant claiming 60). The slice moved below the grouping stage; this is the first number here
+// that means what a reader of the screen would assume it means.
 const MAX_RECOMMENDATIONS = 60;
 // A watched library can easily tally 200+ unique candidates across all its series'
 // recommendations, and fetching detail for every one of them made this take minutes — so the pool
 // is capped. This is the one knob here that genuinely costs MAL requests (one detail call each,
 // plus closure expansion), which makes it the number to lower first if this ever feels slow; the
-// shared api_cache absorbs repeat runs, but a cold one really does make ~80 calls.
+// shared api_cache absorbs repeat runs, but a cold one really does make one call per entry here.
 //
-// 80 rather than fewer because grouping collapses sequel chains, so a smaller pool can't produce
-// MAX_RECOMMENDATIONS distinct series no matter how it ranks. How the budget is *divided* among the
-// user's watched series is selectCandidatePool's job, not this constant's.
-const MAX_CANDIDATE_DETAILS = 80;
+// Raised 80 → 160 once the slice above started counting rows, because 80 cannot *fill* a
+// sixty-row list: grouping collapses sequel chains and the post-grouping exclusion removes
+// anything touching the library, so the pool has to be comfortably larger than the row count it
+// has to produce, not equal to it. This is now the only bound on the whole pipeline — everything
+// downstream is a subset of it — so it is also what bounds the grouping stage's cost.
+// How the budget is *divided* among the user's watched series is selectCandidatePool's job, not
+// this constant's.
+const MAX_CANDIDATE_DETAILS = 160;
 
 /**
  * Reactive "Catch up" list — unwatched TV seasons inside Watched/Watched X/Y series. Purely local
@@ -256,9 +267,12 @@ export async function fetchRecommendations(
   const modelPicks = new Set(
     generatedIds.filter((id) => isWithinObscurityCeiling(detailById.get(id)?.num_list_users)),
   );
-  // Diversify *before* the slice, not after: MMR's whole job is to decide which candidates make
-  // the cut, so running it on an already-trimmed list would only reshuffle sixty near-duplicates
-  // instead of pulling a different one up into them.
+  // Diversified but deliberately *not* trimmed here — MAX_RECOMMENDATIONS is applied to the
+  // grouped rows at the end of this function instead. Trimming at this point threw away candidates
+  // that would have grouped into rows the list then had no replacement for. Diversification still
+  // has to happen before any trim, which is why it stays here: MMR's whole job is deciding which
+  // candidates make the cut, and running it on an already-trimmed list would only reshuffle
+  // near-duplicates instead of pulling a different one up into them.
   const ranked = diversifyRanked(
     rankCandidates(
       survivors,
@@ -270,7 +284,7 @@ export async function fetchRecommendations(
       ...r,
       genres: genresById.get(r.id) ?? [],
     })),
-  ).slice(0, MAX_RECOMMENDATIONS);
+  );
 
   if (ranked.length === 0) {
     onProgress({ kind: 'READY', series: [], generatorNotice: generated.notice });
@@ -323,8 +337,12 @@ export async function fetchRecommendations(
   );
 
   // groupIntoSeries doesn't preserve rank order (it groups by connected component), so re-sort
-  // the grouped rows by the best ordering key among their constituent MAL ids.
-  const series = recommendable.sort((a, b) => bestOrderKey(b, orderById) - bestOrderKey(a, orderById));
+  // the grouped rows by the best ordering key among their constituent MAL ids — and only then
+  // trim. This is the slice that used to sit above the grouping stage; here it is counting the
+  // rows the user actually sees, so a list of MAX_RECOMMENDATIONS means that many shows.
+  const series = recommendable
+    .sort((a, b) => bestOrderKey(b, orderById) - bestOrderKey(a, orderById))
+    .slice(0, MAX_RECOMMENDATIONS);
   onProgress({ kind: 'READY', series, generatorNotice: generated.notice });
 }
 
