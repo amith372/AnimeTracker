@@ -75,7 +75,7 @@ notice and non-goal amendments that come with publishing anything.
 | Whose list it is | An optional nickname the sharer types, else "A shared anime list" | Nothing MAL-derived, nothing the app already holds about them, and no email anywhere near a public page |
 | Live or snapshot | Live. The page reflects the library at the moment it is opened | The user's words were "whatever the current state is at auto". A snapshot would also be a second copy of the library to keep, invalidate and delete |
 | Slug generation | A Postgres column default, not the client | Unguessable without adding a crypto dependency to the client, and impossible for a client bug to make predictable. `replace(gen_random_uuid()::text,'-','')` is 122 bits and needs no extension |
-| Who may share | Guests included — see open question 1 | Every other feature treats a guest as a real account (CLAUDE.md §1), and special-casing them here would be the only place in the app that does |
+| Who may share | Guests included, with the revoke warning spelled out in the dialog (settled 2026-10-14) | Every other feature treats a guest as a real account (CLAUDE.md §1), and special-casing them here would be the only place in the app that does. The hazard is real and is answered with copy rather than a restriction — see the edge case below |
 
 ## Compliance position (MAL API agreement)
 
@@ -173,7 +173,12 @@ themselves than they meant to (addressed by the notice copy, and by revocation b
 - **The owner deletes their account** — `on delete cascade` takes the share row, and the URL dies
   with it. Nothing to do, but worth having checked.
 - **A guest shares and then loses their session** — the row survives, the link keeps working, and
-  nobody can revoke it. See open question 1; this is the one genuinely unresolved hazard.
+  nobody can revoke it. Accepted knowingly (settled 2026-10-14): a guest may share, and the dialog
+  says plainly that losing the guest session means losing the ability to stop sharing. The two
+  alternatives were requiring a real account first (the only guest special-case in the app) and
+  expiring guest links (a second mechanism to build and test for a case the copy can cover). The
+  residual risk is an abandoned public URL with no reachable owner, which is the user's informed
+  choice to take rather than an oversight.
 - **Two devices share at once** — one row per account, so it is an upsert and the second is a no-op
   rather than a second link.
 - **A series with no cover art** — the same placeholder the Library uses.
@@ -184,13 +189,9 @@ themselves than they meant to (addressed by the notice copy, and by revocation b
 
 ## Open questions
 
-1. **Should a guest be able to share?** Settled *provisionally* as yes, for consistency — but it is
-   the one case where a link can outlive everybody's ability to revoke it: an anonymous session
-   cleared from the device leaves a live public URL with no reachable owner. The alternatives are
-   (a) let guests share and say plainly in the dialog that losing the session means losing the
-   revoke, (b) let guests share only after converting to a real account, or (c) give share rows an
-   expiry when the owner is anonymous. **This one wants the user's answer before step 3 is built**,
-   since it is a privacy call rather than a technical one. It does not block steps 1 or 2.
+1. ~~**Should a guest be able to share?**~~ **Settled 2026-10-14 — yes, with the warning in the
+   dialog.** See the decision table and the matching edge case. Nothing in this plan special-cases
+   an anonymous session, and step 1's confirmation copy carries the cost of that.
 2. **Does the nickname want a profanity or length sanity pass beyond the length cap?** Probably
    not — it is the sharer's own name on their own page, and the only reader is someone they sent the
    link to. Listed so the decision is recorded as a decision.
@@ -219,6 +220,10 @@ implementation returned.
 - Account screen: a "Share your list" block — create, the URL with a copy button, the nickname
   field, and "Stop sharing" behind a confirmation dialog, same bar as the MAL push and
   delete-everything. The dialog says what the link exposes and that anyone holding it can see it.
+  **On a guest session it says one thing more** (settled 2026-10-14): that losing this guest
+  session means losing the ability to stop sharing, since an anonymous account cleared from the
+  device leaves a live URL nobody can reach. That sentence is the whole of what lets guests share
+  at all, so it is part of this step rather than a polish pass.
 - `delete-account`'s `OWNED_TABLES` gains `shared_libraries`, and `__tests__/deleteAccount.test.ts`
   with it.
 - Tests: the slug is never built from the nickname; the hook's shape. Mostly this step is covered by
@@ -252,7 +257,6 @@ implementation returned.
   `MalAttribution` at the bottom. Loading, empty and not-shared states. No navigation into the app,
   no login prompt, no tab bar.
 - `robots.txt` on the static site disallowing `/s/`, plus a `noindex` meta for the route.
-- Resolves open question 1 first, since the guest answer changes what step 1's dialog says.
 - **Check:** open the URL in a private window with no session at all, on a phone browser as well as
   desktop. The whole list should render with correct statuses and no prompt to sign in. Then revoke
   it and reload. Failure looks like a redirect to the login screen, a blank page, an error screen

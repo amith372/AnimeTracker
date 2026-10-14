@@ -32,22 +32,26 @@ never read off what the implementation returned.
 
 ---
 
-## Current state, 2026-10-11
+## Current state, 2026-10-14
 
-Plan 1's steps 0–6 are all done and checked. **Step 7 is the next thing to build, and the last in
-this plan** — `prd/1-recommendation-variety.md` gets deleted when it lands. Nothing in plan 1 has
-been pushed — the branch holds every commit from step 0 onward, by the user's instruction, so
-`origin/master` is still at `244f20f`.
+Plan 1's steps 0–6 are done and checked. **Step 7 is built and committed but its check has not been
+run** — it is the last step in the plan, and `prd/1-recommendation-variety.md` gets deleted once it
+passes. Nothing in plan 1 has been pushed — the branch holds every commit from step 0 onward, by the
+user's instruction, so `origin/master` is still at `244f20f`.
 
-The live project is fully set up for the model steps as of 2026-10-11: the `taste_profiles`
-migration is applied, `taste-profile` is deployed, `GROQ_API_KEY` is set, and Global ZDR is on.
+The live project is fully set up for the model steps as of 2026-10-14: the `taste_profiles` and
+`model_call_quota` migrations are applied, `taste-profile` and `taste-candidates` are deployed,
+`GROQ_API_KEY` is set, and Global ZDR is on.
 **Deploying an Edge Function from this machine needs `--use-api`** — Docker isn't installed, and
 without that flag the deploy fails in a way that is easy to scroll past, leaving the client to get
 a 404 that surfaces as a generic error.
 
 `prd/1-recommendation-variety.md` is signed off in shape and has no open questions left that block
-a step. Plan 3 was added 2026-10-11 and is unscheduled. Plan 4 was added 2026-10-12 with
-`prd/2-public-share.md`; it is unscheduled and the PRD awaits sign-off.
+a step. Plan 3 was added 2026-10-11 and is unscheduled.
+
+**What comes after plan 1:** plan 4, the public share link — PRD signed off 2026-10-14, no open
+questions, start at its step 1. Told to "continue" once step 7's check has passed, compress step 7,
+delete `prd/1-recommendation-variety.md`, and begin there. Plans 2 and 3 stay unscheduled.
 
 Last shipped before this plan existed: Phase 12's direct-Postgres cutover and web build
 (2026-08-12), plus the UI fixes in commits up to `244f20f`. `PLAN.md` holds that history.
@@ -97,10 +101,10 @@ One generator request per refresh; MAL-search resolution gate with a similarity 
 long-TTL `resolve:v1:<normalized>` cache key; `num_list_users` obscurity ceiling; degrade path with
 its one-line notice; per-user daily call ceiling.
 
-**Needs from you before the check can run:** push `supabase/migrations/20261011020000_model_call_quota.sql`
-(`npx -y supabase@latest db push`). `taste-candidates` is already deployed and verified reachable.
-Until that migration lands the generator degrades to the notice on every run, because the quota
-function it calls doesn't exist yet — which looks exactly like the provider being down.
+**Live project is ready** as of 2026-10-14: `20261011020000_model_call_quota.sql` is applied on the
+remote (verified with `migration list`, not assumed from the push), and `taste-candidates` is
+deployed and answers its own `401 {"error":"Not signed in."}` on an anon probe. Nothing is owed
+from the user but the check itself.
 
 **Check:** "For you" shows something with no MAL recommendation path from your library. Then revoke
 the key and confirm the list still renders with the notice. Failure: an error screen, a title you
@@ -130,10 +134,11 @@ proposing new ones.
 
 ---
 
-# Plan 4 — A public, account-free share link for your list · **not scheduled, PRD awaiting sign-off**
+# Plan 4 — A public, account-free share link for your list · **next, after plan 1**
 
-Asked for 2026-10-12. Detail, decisions, the compliance reading and the step plan live in
-**`prd/2-public-share.md`** — not duplicated here. Four shape decisions were settled the same day:
+Asked for 2026-10-12; **PRD signed off and scheduled 2026-10-14**, to be picked up the moment
+step 7's check passes. Detail, decisions, the compliance reading and the step plan live in
+**`prd/2-public-share.md`** — not duplicated here. Delete the PRD when its step 4 lands. Four shape decisions were settled the same day:
 a public Edge Function returning JSON (so RLS stays owner-only on every table), the whole library
 with every status, one revocable link per account, and an optional nickname rather than any name
 the app already holds.
@@ -149,9 +154,9 @@ on which you display MyAnimeList Content", so public pages are anticipated; and 
 a viewer to hold a MAL account. §4(f) is the binding one and is about people, not shows — so no
 email, MAL username, MAL user id or account id goes anywhere near the page.
 
-**One open question blocks step 3, not steps 1–2:** whether a guest may share. A cleared anonymous
-session leaves a live public URL with no reachable owner. See the PRD's open question 1 for the
-three options.
+**No open questions block it.** The guest one was settled 2026-10-14: a guest may share, and the
+confirmation dialog says plainly that losing the guest session means losing the ability to stop
+sharing. Nothing in the plan special-cases an anonymous session.
 
 Four steps: the table plus the sharer's controls; the public read function; the viewer's page; then
 the privacy notice and the CLAUDE.md amendment. Each has its own user-run check in the PRD.
