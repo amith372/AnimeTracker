@@ -55,10 +55,13 @@ a step. Plan 3 was added 2026-10-11 and is unscheduled.
 
 **What comes next, in order.**
 
-1. **Plan 5** — seven small fixes found 2026-10-14. Three are **done and checked**; four remain.
-   Take the first unstarted one. Two of the four need something from the user before any code: the
-   Edge Function error messages carry a judgement call about showing a provider's own wording, and
-   the Account width wants an `$impeccable` run rather than a number picked here.
+1. **Plan 5** — eight small fixes found 2026-10-14. **Four are done and checked; four remain**,
+   and the remaining four are listed under `###` headings while the finished ones are compressed to
+   a paragraph each — so "the first `###` heading" is the next thing to build. Two of the four need
+   something from the user before any code: the Edge Function error messages carry a judgement call
+   about showing a provider's own wording, and the Account width wants an `$impeccable` run rather
+   than a number picked here. The other two — the guest's two exits, and the Library grid laying
+   out 6 cards then 1 — need nothing and can be built straight away.
 2. **Plan 7** — execute what the design critique found. **Scheduled 2026-10-14 at the user's
    request**, after plan 5. Read its own section first: it carries a map of every dialog and
    transient state the critique could not see, and an ordering note about plan 5.
