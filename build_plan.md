@@ -53,10 +53,11 @@ a 404 that surfaces as a generic error.
 `prd/1-recommendation-variety.md` is signed off in shape and has no open questions left that block
 a step. Plan 3 was added 2026-10-11 and is unscheduled.
 
-**What comes next, in order.** Plan 7 (MAL sign-in in dev) is **first by necessity, not by
+**What comes next, in order.** Plan 8 (MAL sign-in in dev) is **first by necessity, not by
 preference** — it was found on 2026-10-14 while trying to run plan 6 step 1's check, and it blocks
-that check and every future one that touches sign-in, linking, import or push. Its PRD is drafted
-and awaits sign-off. Then plan 6 (the welcome greeting), whose step 1 is built and deployed but
+that check and every future one that touches sign-in, linking, import or push. **Its code is
+already written, committed and signed off; what is left is three live commands the dev machine was
+not allowed to run** — see its section for them in order. Do not rebuild it. Then plan 6 (the welcome greeting), whose step 1 is built and deployed but
 unchecked; its open question was settled the same day in favour of showing the MAL username, but a
 display-name amendment asked for later the same day **must be written into its PRD and signed off
 before its step 3** — steps 1 and 2 are unaffected. Plan 5 (four small UI and copy fixes found the
@@ -65,6 +66,11 @@ public share link) was the scheduled next thing and still is, once those clear �
 2026-10-14, no open questions, start at its step 1. Plans 2, 3 and 7 stay unscheduled — though
 plan 7's step 1 is three defect fixes needing no PRD, and its step 4 is worth landing before plan 4
 puts a share link in front of an empty Library.
+
+**Two different plans were numbered 7 on 2026-10-14** — the design critique's and the OAuth fix's
+— because they were written into this file from two directions on the same day. The OAuth one was
+renumbered to 8, since the design-critique plan is cross-referenced from three other sections and
+it from one. Check the highest existing number before adding a plan.
 
 Last shipped before this plan existed: Phase 12's direct-Postgres cutover and web build
 (2026-08-12), plus the UI fixes in commits up to `244f20f`. `PLAN.md` holds that history.
@@ -352,6 +358,17 @@ Asked for mid-session 2026-10-14. Detail, decisions, constraints and the three s
 Two shape decisions were answered the same day: store the MAL username (the alternatives were a
 synthetic `mal-123456` address or no name at all), and put the line in the web sidebar only.
 
+**Step 1 is built, committed (`45c4946`) and already deployed live** — `mal-oauth-callback` is on
+version 9 and asks MAL for `id,name`, writing `mal_username` into `user_metadata` on all three
+paths. Its check is unrunnable until plan 8 is deployed, because MAL sign-in cannot complete on a
+dev server at all. Do not redeploy or rewrite it.
+
+**Step 2 may not be worth building.** It is the `mal-me` backfill, whose only job is giving an
+account its name without re-linking — and step 1's returning-sign-in path already does that for
+anyone who signs in via MAL again, which is what step 1's own check makes the user do. It stays
+correct for an email/password account that linked MAL long ago and never signs in through MAL, so
+delete it only if the user confirms they have no such account.
+
 **No open questions in the PRD.** This file previously said one blocked step 3 — a guest who has
 linked MAL, username or "Guest" — and the PRD records it settled the same day in favour of the
 username, with the rejected argument kept rather than lost. The PRD wins on conflict, so that is
@@ -526,11 +543,25 @@ same patterns as HTML/CSS fire two rules. Do not read a clean detector run here 
 
 ---
 
-# Plan 7 — MAL sign-in that works in dev and production at once · **first, PRD drafted**
+# Plan 8 — MAL sign-in that works in dev and production at once · **first; built, awaiting the user's deploy**
 
 Found 2026-10-14 while trying to run plan 6 step 1's check. Detail, the security reasoning and the
 single step live in **`prd/4-dev-oauth-origin.md`** — not duplicated here. Delete the PRD when its
 step 1 lands.
+
+**Built and committed 2026-10-14 (`d65eada`); its PRD was signed off the same day.** Code is done
+— migration, allowlist predicate, both Edge Functions, twelve tests. **What remains is live work
+this machine was denied**, so a session picking this up does not rebuild anything; it asks the user
+to run these, in this order, because the functions insert into a column that must exist first:
+
+```
+npx supabase db push
+npx supabase functions deploy mal-oauth-start --use-api
+npx supabase functions deploy mal-oauth-callback --use-api
+```
+
+Then the check below. `migration list` on 2026-10-14 showed `20261014000000` as the only unapplied
+migration, so `db push` touches nothing else.
 
 **It blocks plan 6 step 1's check**, and anything else touching sign-in, linking, import or push:
 the web MAL OAuth popup can only finish on the one origin `SITE_URL` names, so on a local dev
