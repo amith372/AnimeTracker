@@ -87,6 +87,12 @@ Carried forward from finished work. None of these is a defect, and none is sched
   Groq outage. One `supabase secrets set GROQ_API_KEY=invalid`, one refresh, and setting the real
   key back is the whole of it, whenever it is worth five minutes.
 - **Phase 13's list-performance cleanup** is still open in `PLAN.md` and untouched by this plan.
+- **An account that linked MAL before 2026-10-14 and never signs in through MAL again has no
+  `mal_username`**, so its sidebar reads "Welcome back" rather than a name. This is the single case
+  plan 6's dropped step 2 (`mal-me`) would have covered. It cannot arise for an account created by
+  "Continue with MyAnimeList", since that path signs in through MAL by definition; it needs an
+  email/password account that linked MAL once, long ago. Worth a backfill function only if such an
+  account turns out to exist.
 - **`MAX_RECOMMENDATIONS` is a ceiling the list only reaches with a large enough library.** Step 8
   made the slice count real rows, but the pool is supply-limited: candidates come from one
   `anime/{rootMalId}?fields=recommendations` call per watched series, so a small library cannot
@@ -348,81 +354,22 @@ sees both log-out and Delete everything, unchanged. Failure: a guest told the ap
 
 ---
 
-# Plan 6 — "Welcome X" in the web sidebar · **first; step 1 deployed, awaiting its check**
+# Plan 6 — "Welcome X" in the web sidebar · **steps 1 and 3 built 2026-10-14, awaiting step 3's check**
 
-Asked for mid-session 2026-10-14. Detail, decisions, constraints and the three steps live in
-**`prd/3-welcome-greeting.md`** — not duplicated here. Delete the PRD when its step 3 lands.
+Step 1 — ask MAL for the username and store it · **done 2026-10-14**
+Step 2 — the `mal-me` backfill · **dropped 2026-10-14, see "What is still owed"**
+Step 3 — the sidebar line · **built, awaiting its check**
 
-Two shape decisions were answered the same day: store the MAL username (the alternatives were a
-synthetic `mal-123456` address or no name at all), and put the line in the web sidebar only.
+`prd/3-welcome-greeting.md` deleted; its decisions live in commits `45c4946` and the step 3 commit.
 
-**Step 1 is built, committed (`45c4946`) and already deployed live** — `mal-oauth-callback` is on
-version 9 and asks MAL for `id,name`, writing `mal_username` into `user_metadata` on all three
-paths. Do not redeploy or rewrite it. Plan 8 unblocked its check on 2026-10-14; what the check
-needs is the Supabase dashboard, Authentication -> the signed-in user -> metadata, showing
-`mal_username` holding the user's MAL name. Failure is the field being absent.
+**Step 2 was dropped on evidence, not assumption**: the username appeared in `user_metadata`
+without `mal-me` ever existing, because step 1 also writes it on a returning MAL sign-in. The one
+case it would still have covered is recorded in "What is still owed".
 
-**Step 2 may not be worth building.** It is the `mal-me` backfill, whose only job is giving an
-account its name without re-linking — and step 1's returning-sign-in path already does that for
-anyone who signs in via MAL again, which is what step 1's own check makes the user do. It stays
-correct for an email/password account that linked MAL long ago and never signs in through MAL, so
-delete it only if the user confirms they have no such account.
-
-**No open questions in the PRD.** This file previously said one blocked step 3 — a guest who has
-linked MAL, username or "Guest" — and the PRD records it settled the same day in favour of the
-username, with the rejected argument kept rather than lost. The PRD wins on conflict, so that is
-the answer and this is the correction.
-
-### The name the user picks themselves · **asked 2026-10-14, amends the PRD, needs sign-off**
-Asked after the PRD was signed off: when someone creates an account they should choose a **display
-name**, not only an email and a password. Small to build, but it changes two things the PRD has
-already settled, so it lives here until the PRD is amended and re-signed — which has to happen
-before step 3, because step 3 *is* the name resolution.
-
-- It **amends the PRD's "Explicitly out" list**, which bars "a user-editable nickname" and
-  "changing how accounts are created, authenticated, or linked". Both are now in, narrowly: one
-  optional field on one form.
-- It **adds a rung to the top of the resolution order**, today MAL username → email local-part →
-  `Guest`. **Settled 2026-10-14: the display name wins**, making it display name → MAL username →
-  email local-part → `Guest`. The PRD's own reason for MAL beating email is "it is the name the
-  user chose", and a name typed into this app is that more directly than one typed into MAL's.
-- The build is a field on the Create-account form plus an argument to `signUpWithEmail`
-  (`src/account/accountRepository.ts:29`), written into `user_metadata` through `options.data` on
-  the same `supabase.auth.signUp` call — no migration, the same home as `mal_username`, and the
-  PRD's "cosmetic, never an authorization input" constraint carries over untouched. **The
-  guest-conversion branch at `:38` must take it too** (`updateUser` carries `data` the same way):
-  a converting guest is exactly the person who has no name yet.
-- Optional, not required. A blank display name falls through to the next rung rather than blocking
-  signup or rendering `Welcome ` with nothing after it.
-- **Editable on the Account screen afterwards, not only at signup — settled 2026-10-14.** Two
-  reasons, and the second is the one that forces it: a name that is public the moment you share
-  needs a way to change your mind, and a signup-only field would never reach an account that
-  already exists, including the only one this app has. It belongs on the same screen plan 4 puts
-  its share controls on.
-
-**It also settles plan 4's nickname — decided 2026-10-14: reuse, one name, not two.** Plan 4's PRD
-had the public page's name as "an optional nickname the sharer types… nothing MAL-derived, nothing
-the app already holds about them" (`prd/2-public-share.md:75`); the display name becomes that name,
-so the share controls show it rather than asking for a second one. Three things that decision drags
-with it, all of which belong in whichever PRD is amended first, with the other citing it:
-
-- **Only the *typed* display name is ever public.** The share page's name resolves to the display
-  name or to "A shared anime list", full stop — it must **never** fall through the sidebar's chain
-  to a MAL username, an email local-part or "Guest". Plan 4's PRD bars the first two from that page
-  on MAL §4(f) and privacy grounds and **this does not relax it**; reusing one field is not the
-  same as reusing the resolution order, and conflating them is the way this decision turns into a
-  leak.
-- **Where it is said, since the field is now dual-purpose.** The Account screen's field says it
-  appears on your share link if you make one, and plan 4's share confirmation names the name it is
-  about to publish. A name typed for a private sidebar must not become public silently.
-- **Live or copied.** Either the public read function resolves the name at request time (a rename
-  updates the page) or the share row copies it at creation (a rename does not). Live is the
-  obvious one — a public page showing a name its owner has since changed is the worse failure —
-  but it is a shape decision the PRD should state rather than leave to whoever writes the query.
-  Plan 4's existing handling of the nickname as untrusted, length-capped text applies unchanged,
-  and now applies at the Account screen's field too.
-
----
+**Check (step 3):** open the web app and read the sidebar under the wordmark — it should say
+`Welcome <your MAL name>`. Then open a private window and continue as a guest: `Welcome Guest`.
+Failure: a raw `mal-123456` address, a blank or missing line, a flash of "Guest" before the real
+name, or the sidebar erroring.
 
 # Plan 7 — What the design critique found · **not scheduled**
 

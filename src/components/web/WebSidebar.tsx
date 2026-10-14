@@ -14,6 +14,7 @@ import { makeStyles, useThemeColors } from '@/theme/useTheme';
 import { fontFamilies } from '@/theme/fonts';
 import { WEB_SIDEBAR_WIDTH } from '@/hooks/useWebLayout';
 import { useHover } from '@/hooks/useHover';
+import { useDisplayName } from '@/account/displayName';
 
 // Gradient-clipped text — a web-only CSS trick (background-clip:text) with no RN Paper/StyleSheet
 // equivalent, so it bypasses the typed style system with a plain object. Only ever rendered here,
@@ -35,6 +36,7 @@ export function WebSidebar() {
   const styles = useStyles();
   const pathname = usePathname();
   const router = useRouter();
+  const { name, loading: nameLoading } = useDisplayName();
 
   return (
     <View style={styles.sidebar}>
@@ -42,6 +44,15 @@ export function WebSidebar() {
         <AtLogoMark size={36} />
         <NativeText style={[styles.wordmark, gradientWordmarkStyle]}>AnimeTracker</NativeText>
       </View>
+      {/* Nothing at all while the session resolves — see useDisplayName for why a greeting that
+          corrects who it is addressing is worse than one that arrives a beat late. "Welcome back"
+          is the honest fallback for a real account whose name we could not resolve; "Guest" there
+          would be a lie about a permanent account. */}
+      {!nameLoading && (
+        <Text style={styles.greeting} numberOfLines={1}>
+          {name != null ? `Welcome ${name}` : 'Welcome back'}
+        </Text>
+      )}
       <View style={styles.navList}>
         {NAV_ITEMS.map((item) => (
           <NavRow key={item.href} label={item.label} active={pathname === item.href} onPress={() => router.push(item.href)} />
@@ -87,6 +98,16 @@ const useStyles = makeStyles((colors) => ({
   },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 11, padding: spacing.lg, paddingBottom: spacing.lg + 2 },
   wordmark: { fontFamily: fontFamilies.webSerifBold, fontSize: 17, letterSpacing: -0.2, color: colors.textPrimary },
+  // Hangs off the brand row above rather than starting a block of its own: brandRow already pays
+  // the bottom padding, so this only needs to clear the nav list beneath it.
+  greeting: {
+    fontFamily: fontFamilies.bodySemiBold,
+    fontSize: 13,
+    color: colors.textMuted,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
+    marginTop: -spacing.sm,
+  },
   navList: { gap: 2, paddingHorizontal: spacing.md },
   navRow: {
     flexDirection: 'row',
