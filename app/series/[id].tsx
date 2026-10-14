@@ -207,7 +207,7 @@ export default function SeriesDetailScreen() {
                 // Red only when filled. The outline stays white so it reads as an available
                 // action against the gradient rather than a permanently-on state.
                 iconColor={series.liked ? colors.red : '#fff'}
-                caption={series.liked ? 'Liked' : 'Like'}
+                caption={series.liked ? 'Remove from liked' : 'Like to improve recommendations'}
                 accessibilityLabel={series.liked ? 'Remove from liked' : 'Mark as liked'}
                 onPress={() => runWrite(() => setSeriesLiked(series.id, !series.liked))}
               />
@@ -215,7 +215,7 @@ export default function SeriesDetailScreen() {
             <HeroActionButton
               icon="trash-can-outline"
               iconColor="#fff"
-              caption="Remove"
+              caption="Remove from library"
               accessibilityLabel="Remove from library"
               onPress={() => setRemoveConfirmVisible(true)}
             />
@@ -297,7 +297,7 @@ export default function SeriesDetailScreen() {
               <HeroActionButton
                 icon={series.liked ? 'heart' : 'heart-outline'}
                 iconColor={series.liked ? colors.red : 'rgba(255,255,255,0.85)'}
-                caption={series.liked ? 'Liked' : 'Like'}
+                caption={series.liked ? 'Remove from liked' : 'Like to improve recommendations'}
                 accessibilityLabel={series.liked ? 'Remove from liked' : 'Mark as liked'}
                 onPress={() => runWrite(() => setSeriesLiked(series.id, !series.liked))}
               />
@@ -305,7 +305,7 @@ export default function SeriesDetailScreen() {
             <HeroActionButton
               icon="trash-can-outline"
               iconColor="rgba(255,255,255,0.85)"
-              caption="Remove"
+              caption="Remove from library"
               accessibilityLabel="Remove from library"
               onPress={() => setRemoveConfirmVisible(true)}
             />
@@ -405,8 +405,11 @@ export default function SeriesDetailScreen() {
  *
  * This is small white text on the gradient instead. It is absolutely positioned so appearing and
  * disappearing never reflows the row, and `useHover` is a no-op off-web (touch has no hover), so
- * on a phone this renders exactly as a plain IconButton — which is why the caption is kept short
- * enough to be redundant rather than load-bearing. The full sentence lives in accessibilityLabel.
+ * on a phone this renders exactly as a plain IconButton. The caption therefore cannot be the only
+ * place something important is said — `accessibilityLabel` carries the same meaning and is what
+ * both platforms surface to a screen reader. The caption says what the button is *for* rather than
+ * what it is ("Like to improve recommendations"), because nothing else in the app mentions that
+ * liking a show changes what it suggests.
  */
 function HeroActionButton({
   icon,
@@ -602,7 +605,19 @@ const useStyles = makeStyles((colors) => ({
   heroAction: { alignItems: 'center' },
   // Absolute so showing it never shifts the buttons beside it. `top` clears the 40px IconButton
   // container (36px icon box + its 6px margin, less a couple to sit close).
-  heroActionCaption: { position: 'absolute', top: 40, color: '#fff', opacity: 0.92, fontSize: 11 },
+  //
+  // `right: 0` rather than centred: these buttons sit at the right edge of the header, and a
+  // caption long enough to be useful ("Like to improve recommendations") would run off the card,
+  // which clips it — the card sets overflow: hidden. Anchored right, it grows inward over the
+  // gradient instead. Only one is ever visible at a time, so the two cannot collide.
+  heroActionCaption: {
+    position: 'absolute',
+    top: 40,
+    right: 0,
+    color: '#fff',
+    opacity: 0.92,
+    fontSize: 11,
+  },
   bannerContent: { flexDirection: 'row', gap: spacing.lg, paddingHorizontal: spacing.lg },
   cover: { width: 104, height: 148, borderRadius: radii.lg, backgroundColor: 'rgba(255,255,255,0.15)' },
   bannerText: { flex: 1, gap: spacing.sm, paddingTop: spacing.xs },
