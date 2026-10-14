@@ -10,7 +10,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ActivityIndicator, Button, Chip, Dialog, IconButton, Portal, Snackbar, Text } from 'react-native-paper';
+import { ActivityIndicator, Button, Chip, Dialog, IconButton, Portal, Snackbar, Text, Tooltip } from 'react-native-paper';
 import {
   useSeries,
   deleteSeries,
@@ -195,21 +195,32 @@ export default function SeriesDetailScreen() {
         statusColor={statusDotColor(series.status.kind)}
         genres={series.genres.join(' · ')}
         onBack={() => router.back()}
+        // Both buttons say what they do on hover (and on long-press, which is what Paper's
+        // Tooltip does on a phone). They are icon-only and one is destructive — the critique
+        // flagged unlabeled IconButtons, and the heart had no accessibilityLabel at all, so it
+        // was unreadable to a screen reader as well as ambiguous to everyone else.
         topRight={
           <View style={styles.heroActions}>
             {canLike && (
-              <IconButton
-                icon={series.liked ? 'heart' : 'heart-outline'}
-                iconColor="#fff"
-                onPress={() => runWrite(() => setSeriesLiked(series.id, !series.liked))}
-              />
+              <Tooltip title={series.liked ? 'Remove from liked' : 'Mark as liked — improves your recommendations'}>
+                <IconButton
+                  icon={series.liked ? 'heart' : 'heart-outline'}
+                  // Red only when filled. The outline stays white so it reads as an available
+                  // action against the gradient rather than a permanently-on state.
+                  iconColor={series.liked ? colors.red : '#fff'}
+                  accessibilityLabel={series.liked ? 'Remove from liked' : 'Mark as liked'}
+                  onPress={() => runWrite(() => setSeriesLiked(series.id, !series.liked))}
+                />
+              </Tooltip>
             )}
-            <IconButton
-              icon="trash-can-outline"
-              iconColor="#fff"
-              accessibilityLabel="Remove from library"
-              onPress={() => setRemoveConfirmVisible(true)}
-            />
+            <Tooltip title="Remove from library">
+              <IconButton
+                icon="trash-can-outline"
+                iconColor="#fff"
+                accessibilityLabel="Remove from library"
+                onPress={() => setRemoveConfirmVisible(true)}
+              />
+            </Tooltip>
           </View>
         }
       >
@@ -282,20 +293,26 @@ export default function SeriesDetailScreen() {
       <LinearGradient colors={[colors.primary, colors.heroGradientEnd]} style={[styles.banner, { paddingTop: insets.top }]}>
         <View style={styles.bannerTopRow}>
           <IconButton icon="arrow-left" iconColor="#fff" onPress={() => router.back()} />
+          {/* Same pair as the wide-web hero above, same tooltips and same red fill — see there. */}
           <View style={styles.heroActions}>
             {canLike && (
-              <IconButton
-                icon={series.liked ? 'heart' : 'heart-outline'}
-                iconColor={series.liked ? '#fff' : 'rgba(255,255,255,0.85)'}
-                onPress={() => runWrite(() => setSeriesLiked(series.id, !series.liked))}
-              />
+              <Tooltip title={series.liked ? 'Remove from liked' : 'Mark as liked — improves your recommendations'}>
+                <IconButton
+                  icon={series.liked ? 'heart' : 'heart-outline'}
+                  iconColor={series.liked ? colors.red : 'rgba(255,255,255,0.85)'}
+                  accessibilityLabel={series.liked ? 'Remove from liked' : 'Mark as liked'}
+                  onPress={() => runWrite(() => setSeriesLiked(series.id, !series.liked))}
+                />
+              </Tooltip>
             )}
-            <IconButton
-              icon="trash-can-outline"
-              iconColor="rgba(255,255,255,0.85)"
-              accessibilityLabel="Remove from library"
-              onPress={() => setRemoveConfirmVisible(true)}
-            />
+            <Tooltip title="Remove from library">
+              <IconButton
+                icon="trash-can-outline"
+                iconColor="rgba(255,255,255,0.85)"
+                accessibilityLabel="Remove from library"
+                onPress={() => setRemoveConfirmVisible(true)}
+              />
+            </Tooltip>
           </View>
         </View>
         <View style={styles.bannerContent}>

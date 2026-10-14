@@ -276,9 +276,17 @@ like a systemic problem. Fixed with `zIndex: 1`.
 for as long as the heart was unclickable the ranking ran with no liked signal at all. Any judgement
 about recommendation quality formed before this fix was formed on a crippled profile.
 
-**Check:** open a watched series' Detail page on web and click the heart — it should fill, and stay
-filled after a reload. Click the trash — the remove confirmation should open from anywhere on the
-button. Failure: either still inert, or only clickable at its right edge.
+Two changes came with the fix, asked for 2026-10-14 once the buttons worked: both are wrapped in
+Paper's `Tooltip` (hover on web, long-press on a phone), and the heart fills `colors.red` rather
+than white — the outline stays white so an unliked heart reads as an available action rather than a
+state that is already on. The heart also gains the `accessibilityLabel` it never had, which is one
+of the six unlabeled icon buttons plan 7 lists as still live.
+
+**Check:** open a watched series' Detail page on web and click the heart — it should fill **red**,
+and stay filled after a reload. Hover it and the trash: each should show a label saying what it
+does. Click the trash — the remove confirmation should open from anywhere on the button. Failure:
+either still inert, only clickable at its right edge, no tooltip on hover, or a heart that fills
+white.
 
 ### The ⓘ button duplicated what the summary already did · **changed 2026-10-14, awaiting its check**
 `app/series/preview.tsx` had an `information-outline` button in both registers' headers opening the
