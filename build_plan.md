@@ -53,17 +53,22 @@ a 404 that surfaces as a generic error.
 `prd/1-recommendation-variety.md` is signed off in shape and has no open questions left that block
 a step. Plan 3 was added 2026-10-11 and is unscheduled.
 
-**What comes next, in order.** Plan 8 (MAL sign-in in dev) is **done and checked 2026-10-14** —
-MAL sign-in now completes on a localhost dev server, which unblocks every future check touching
-sign-in, linking, import or push. First is therefore plan 6 (the welcome greeting), whose step 1 is built and deployed but
-unchecked; its open question was settled the same day in favour of showing the MAL username, but a
-display-name amendment asked for later the same day **must be written into its PRD and signed off
-before its step 3** — steps 1 and 2 are unaffected. Plan 5 (four small UI and copy fixes found the
-same day) is unblocked. Plan 4 (the
-public share link) was the scheduled next thing and still is, once those clear — PRD signed off
-2026-10-14, no open questions, start at its step 1. Plans 2, 3 and 7 stay unscheduled — though
-plan 7's step 1 is three defect fixes needing no PRD, and its step 4 is worth landing before plan 4
-puts a share link in front of an empty Library.
+**What comes next, in order.**
+
+1. **Plan 5** — five small fixes found 2026-10-14. Unblocked, no PRD, and the natural next thing:
+   each is self-contained and two of them (the nested `<button>`, the swallowed Edge Function error
+   messages) are defects a user can hit today. One carries a UX question to settle before code.
+2. **Plan 9** — make "For you" fast. Unblocked, no PRD, changes nothing about what the list
+   contains. Independent of plan 3, which would multiply it rather than replace it.
+3. **Plan 4** — the public share link. PRD signed off 2026-10-14, no open questions, start at its
+   step 1. Worth landing plan 7's step 4 first, so a share link is not put in front of an empty
+   Library.
+
+**Done and checked 2026-10-14:** plan 1 (recommendation variety), plan 6 (the sidebar greeting),
+and plan 8 (MAL sign-in on a localhost dev server, which unblocked every check touching sign-in,
+linking, import or push).
+
+**Unscheduled:** plans 2, 3 and 7 — though plan 7's step 1 is three defect fixes needing no PRD.
 
 **Two different plans were numbered 7 on 2026-10-14** — the design critique's and the OAuth fix's
 — because they were written into this file from two directions on the same day. The OAuth one was
@@ -240,10 +245,10 @@ any sign-in path broken (the MAL redirect URI was not re-registered).
 
 ---
 
-# Plan 5 — Four things found 2026-10-14 · **unblocked, small**
+# Plan 5 — Five things found 2026-10-14 · **unblocked, small**
 
-The first two were found while checking plan 1 step 8; the last two while looking at the Account
-screen on a wide monitor. Fixes and copy, not features, so none of them needs a PRD — though the
+The first two were found while checking plan 1 step 8; the next two while looking at the Account
+screen on a wide monitor; the fifth while looking at the Library on the same monitor. Fixes and copy, not features, so none of them needs a PRD — though the
 width item holds one number that a design skill should settle before any style is written. The last
 two both edit `app/onboarding/account.tsx`, so build them in one sitting.
 
@@ -352,24 +357,45 @@ an existing account from the guest branch without deleting anything, and that a 
 sees both log-out and Delete everything, unchanged. Failure: a guest told the app is deleting an
 "account", a second silent exit still present, or an `auth.users` row surviving the delete.
 
+### The wide-web Library grid lays out 6 cards, then 1, then 6, then 1
+Seen 2026-10-14 on a maximised browser: every row holds six posters and then a seventh sits alone
+on a line of its own, so the grid reads as alternating full and near-empty rows instead of a block.
+Every row should hold the same number of cards.
+
+`app/(tabs)/index.tsx:120` computes `gridColumns` from the width measured by the `onLayout` on the
+wrapping `webGrid` `View` (`:440`), but the cards are laid out inside the FlatList's *content box*,
+which is narrower than that View by the vertical scrollbar (~15px in desktop Chrome) — and `floor`
+over a 206px pitch only has to be wrong by a pixel to return one column too many. `columnWrapperStyle`
+is `flexWrap: 'wrap'` (`:449`, `:797`), so FlatList packs `gridColumns` fixed-184px cards into a row
+that cannot hold them and the last one silently wraps. That is the whole pattern: the one lonely
+card per row is the overflowing column, not a grouping or a sort. It also means the symptom only
+appears in the band of window widths where the slack is smaller than the scrollbar, which is why it
+comes and goes with a window resize rather than being there at every size.
+
+Two halves to the fix, and the second is the one that matters:
+- Measure what the cards are actually laid out in, not its parent — `onLayout` on something inside
+  the scroll view, or subtract a scrollbar allowance from the measured width.
+- **Make the miscount impossible to express.** With `flexWrap` on the row, a column count that is
+  one too high renders as a plausible-looking ragged grid instead of failing visibly; without it,
+  the same miscount would be an obvious overflow. Letting the cards share the row's slack
+  (`flex: 1` with a `maxWidth`, rather than a fixed 184) also stops the grid leaving a card's worth
+  of empty gutter on the right at most widths.
+
+Discover's grid is not affected — it uses a fixed `numColumns` and no `columnWrapperStyle`
+(`app/(tabs)/discover.tsx:289`) — so scope is the Library grid only.
+
+**Check:** open the Library maximised on the wide monitor and drag the window slowly from narrow to
+full width. At every width every row holds the same number of cards, and no row ever holds a single
+card with empty space beside it. Failure: the 6-then-1 pattern reappearing at some width, a card
+clipped at the right edge, or the column count no longer growing with the window at all.
+
 ---
 
-# Plan 6 — "Welcome X" in the web sidebar · **steps 1 and 3 built 2026-10-14, awaiting step 3's check**
+# Plan 6 — "Welcome X" in the web sidebar · **done 2026-10-14**
 
-Step 1 — ask MAL for the username and store it · **done 2026-10-14**
-Step 2 — the `mal-me` backfill · **dropped 2026-10-14, see "What is still owed"**
-Step 3 — the sidebar line · **built, awaiting its check**
-
-`prd/3-welcome-greeting.md` deleted; its decisions live in commits `45c4946` and the step 3 commit.
-
-**Step 2 was dropped on evidence, not assumption**: the username appeared in `user_metadata`
-without `mal-me` ever existing, because step 1 also writes it on a returning MAL sign-in. The one
-case it would still have covered is recorded in "What is still owed".
-
-**Check (step 3):** open the web app and read the sidebar under the wordmark — it should say
-`Welcome <your MAL name>`. Then open a private window and continue as a guest: `Welcome Guest`.
-Failure: a raw `mal-123456` address, a blank or missing line, a flash of "Guest" before the real
-name, or the sidebar erroring.
+Checked both halves: the sidebar greets by MAL username, and a guest reads "Welcome Guest".
+`prd/3-welcome-greeting.md` deleted. Step 2 (`mal-me`) was dropped on evidence — see "What is
+still owed" for the one case it would have covered.
 
 # Plan 7 — What the design critique found · **not scheduled**
 
@@ -499,3 +525,81 @@ than a tuning change: `supabase/functions/_shared/oauthOrigin.ts`'s allowlist is
 loopback, and loopback is only safe because such a redirect resolves on whichever machine follows
 it. Any entry naming a routable host would hand out session handoff codes. The reasoning is in that
 file's header and in commit `d65eada`; `__tests__/oauthOrigin.test.ts` holds the twelve cases.
+
+---
+
+# Plan 9 — Make "For you" fast · **unblocked, no PRD**
+
+Asked for 2026-10-14: the Recommendations list takes too long. Measured against the code rather
+than guessed at, **the wall time is network round trips, not computation** — and most of them are
+to our own Postgres, not to MAL. Plan 3's measurement is the unit: ~390ms per round trip to the
+current region, of which ~350ms is the edge→region leg. `src/repositories/apiCache.ts`'s `cached()`
+makes one of those *per anime*, and a warm run makes roughly `2 × watched series + 172 candidates +
+grouping + closure` of them — several hundred. That is the whole problem, and none of it is MAL's
+fault: the shared cache is doing its job, it is just being asked one key at a time.
+
+**Nothing here changes what the list contains**, which is why it needs no PRD and why every step's
+check is the same list, faster. `MAX_CANDIDATE_DETAILS` stays at 160 — plan 1 step 8 raised it
+precisely so a 60-row list can fill, and lowering it would buy speed with yield. Plan 3 multiplies
+all three steps below (~350ms → ~50ms a trip would cut whatever remains by roughly 7×) and is
+independent of them; neither waits on the other.
+
+### Step 1 — Stop fetching what the pipeline already holds
+`fetchRecommendations` fills a `detailById` map for every candidate, then hands the ranked list to
+`fetchDetailsAndGroup`, which calls `getAnimeDetailCached` for **those same ids all over again**
+(`src/repositories/DiscoverRepository.ts:152`) at `DETAIL_FETCH_CONCURRENCY = 6`. On a library
+producing ~150 ranked candidates that is ~150 round trips — call it ten seconds — for data already
+in memory. The closure-expansion passes below it are genuinely new ids and stay as they are.
+
+Fix: `fetchDetailsAndGroup` takes an optional preloaded `Map<number, AnimeDetailDto>` and skips the
+fetch for any id already in it. Discover's callers pass nothing and are untouched.
+
+**Check:** open "For you" on a warm cache and watch the progress line. `Grouping results (n/N)`
+should reach N almost immediately rather than crawling, and the finished list must be *the same
+shows in the same order* as before the change — compare the first ten rows against a screenshot
+taken first. Failure: a row that was there is missing, the order changed, or the stage still crawls
+(the map isn't reaching it).
+
+### Step 2 — One cache read per stage, not one per anime
+Add `cachedMany(keys, fetchMissing)` beside `cached()` in `apiCache.ts`: a single
+`select('key, json, fetched_at').in('key', keys)`, partition the result into fresh hits / stale /
+missing, run the fetcher only for the misses at the existing concurrency, and write back with one
+array upsert instead of one per key. Chunk the `in` list (~200 keys) so a long one can't run into a
+URL-length limit. `cached()` stays for genuine single-key callers.
+
+Then move the three stages onto it: the source stage's `recs:`/`detail:` pair, the candidate
+detail stage, and each closure pass's `missing` set. **Key space, TTL and version segments are
+unchanged** — these are the same rows, read in bulk — so nothing needs a version bump and no warm
+cache is thrown away. Guardrail #3 is unaffected in the right direction: fewer requests, and the
+batched read goes to our own Postgres, never to MAL.
+
+The partition (which keys count as fresh, stale, or absent) is pure logic and gets a Jest test with
+fixed `fetched_at` values and an injected clock — **expected splits derived on paper from those
+timestamps**, not read off what the implementation returned.
+
+**Check:** time "For you" end to end on a warm cache before and after. Open the browser Network tab
+during a run: requests to `api_cache` should number in the handful, not the hundreds, and the stage
+counters should jump in large increments rather than ticking up one at a time. The list is the same
+list. Failure: a different list, hundreds of `api_cache` requests still, or a MAL call for
+something that was cached a moment ago.
+
+### Step 3 — Keep the finished list; recompute only when taste changes
+`app/(tabs)/recommend.tsx:160` is `useEffect(() => load(), [])`, so the entire pipeline re-runs on
+every mount and every page reload, to rebuild a list that usually cannot have changed.
+`src/domain/tasteProfile.ts` already computes the digest that answers "has the library changed in a
+way that matters" — a like, a drop, or a *finishing* tick — and `taste_profiles.source_fingerprint`
+already stores one. Store the finished rows under the same fingerprint, render them immediately on
+mount, and recompute only when the fingerprint differs or the manual refresh is pressed (which
+already bypasses the MAL cache and must keep doing so).
+
+Three shape decisions to settle while building, none of them wide enough for a PRD: whether the
+rows live in their own table or alongside `taste_profiles`; that a stale-but-present list renders
+*while* the recompute runs rather than being replaced by a spinner (that is the entire point);
+and RLS owner-only, same as `taste_profiles` — this is derived from one person's library, so it is
+as personal as the profile and must never go anywhere near `api_cache`, which is `anon`-readable.
+
+**Check:** open "For you", wait for the list, then reload the page — the same list appears with no
+progress line at all. Now mark the last unwatched season of a show as watched (or like one) and open
+"For you" again: it recomputes, and the old list is on screen while it does. Failure: a reload still
+rebuilding from scratch, a like or a finishing tick not producing a fresh list, or a spinner
+replacing a list that was already there.
