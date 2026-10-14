@@ -252,20 +252,16 @@ screen on a wide monitor; the fifth while looking at the Library on the same mon
 width item holds one number that a design skill should settle before any style is written. The last
 two both edit `app/onboarding/account.tsx`, so build them in one sitting.
 
-### Illegal nested `<button>` on Series Detail (web)
-`app/series/[id].tsx:412` sets `accessibilityRole="button"` on the entry row, which
-react-native-web renders as a real `<button>` (`propsToAccessibilityComponent`'s `roleComponents`
-map), and Paper's close-circle `IconButton` inside it renders another. HTML forbids interactive
-content inside a button, so React logs a validateDOMNesting error on every Detail screen. The arc
-rows at `:471` have the same shape. `SquareCheckbox` is fine — `accessibilityRole="checkbox"` is
-not in the role map, so it stays a `div`.
+### Illegal nested `<button>` on Series Detail (web) · **built 2026-10-14, awaiting its check**
+Settled first: the press target is the text block, not the whole row (asked 2026-10-14). Both
+`EntryRow` and `ArcListRow` are now a plain `View` holding sibling controls, and they are kept
+structurally identical so neither grows a nested button again.
 
-The fix is a restructure, not a prop deletion: the row's three controls (open-info, watched
-checkbox, won't-watch) should be siblings rather than nested. `styles.entryText` is already
-`flex: 1`, so moving the press target onto the text block preserves very nearly the whole tap area.
-**Needs one UX call first:** whether the row's padding should stay tappable.
-**Check:** open a Series Detail page on web with the console open — no nesting error. Tapping the
-title still opens the image popup; the checkbox and the skip button still work and don't trigger it.
+**Check:** open a Series Detail page on web with the console open — no `validateDOMNesting` error
+and no red toast. Tapping the title or subtitle still opens the image popup; the checkbox and the
+skip button still work and neither opens the popup. The One Piece entry's arc header behaves the
+same. Failure: the error still logging, the popup no longer opening, or a control that now triggers
+two things at once.
 
 ### Edge Function error messages are unwrapped and then discarded
 `src/api/edgeFunctions.ts:26`'s `invoke()` goes to deliberate trouble to pull the real

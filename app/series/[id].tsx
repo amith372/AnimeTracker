@@ -408,23 +408,33 @@ function EntryRow({
     entry.kind === 'MOVIE' ? "doesn't count toward X/Y" : `${entry.episodeCount} episode${entry.episodeCount === 1 ? '' : 's'}`;
   const subtitle = wontWatch ? `${kindLabel} · Won't watch` : `${kindLabel} · ${detail}`;
 
+  // The row is a plain View with three sibling controls, not a Pressable wrapping two more.
+  // react-native-web turns accessibilityRole="button" into a real <button> (see
+  // propsToAccessibilityComponent's roleComponents map), and Paper's IconButton below renders
+  // another — HTML forbids interactive content inside a button, so the nested version logged a
+  // validateDOMNesting error on every Detail screen. Siblings are also what a screen reader and
+  // the tab key want here: three independent actions, not one button hiding two.
+  //
+  // The press target is the text block rather than the whole row. It is already flex: 1, so it
+  // fills everything between the checkbox and the skip button; what is given up is the row's
+  // horizontal padding and the gaps, which you would have to aim at to hit. Decided 2026-10-14.
   return (
-    <Pressable
-      style={styles.entryRow}
-      onPress={onOpenInfo}
-      accessibilityRole="button"
-      accessibilityLabel={`${entry.title}, ${subtitle}`}
-      accessibilityHint="Opens the full title, cover art and summary"
-    >
+    <View style={styles.entryRow}>
       <SquareCheckbox checked={watched} onPress={toggleWatched} accessibilityLabel={`Mark ${entry.title} as watched`} />
-      <View style={styles.entryText}>
+      <Pressable
+        style={styles.entryText}
+        onPress={onOpenInfo}
+        accessibilityRole="button"
+        accessibilityLabel={`${entry.title}, ${subtitle}`}
+        accessibilityHint="Opens the full title, cover art and summary"
+      >
         <Text variant="bodyLarge" style={wontWatch ? styles.wontWatchTitle : styles.entryTitle} numberOfLines={1}>
           {entry.title}
         </Text>
         <Text variant="bodySmall" style={styles.entrySubtitle}>
           {subtitle}
         </Text>
-      </View>
+      </Pressable>
       {entry.airingStatus === 'AIRING' && <AiringBadge />}
       <IconButton
         icon={wontWatch ? 'close-circle' : 'close-circle-outline'}
@@ -436,7 +446,7 @@ function EntryRow({
         onPress={toggleWontWatch}
         accessibilityLabel={wontWatch ? `Un-skip ${entry.title}` : `Mark ${entry.title} as won't watch`}
       />
-    </Pressable>
+    </View>
   );
 }
 
@@ -465,22 +475,26 @@ function ArcListRow({
 
   return (
     <View>
-      <Pressable
-        style={styles.entryRow}
-        onPress={onOpenInfo}
-        accessibilityRole="button"
-        accessibilityLabel={`${entry.title}, season ${kindNumber}, ${watchedKeys.size} of ${arcs.length} arcs watched`}
-        accessibilityHint="Opens the full title, cover art and summary"
-      >
-        <View style={styles.entryText}>
+      {/* Same shape as EntryRow above, and for the same reason: the press target is the text
+          block, the row itself is a plain container. This header holds no other control today, but
+          keeping the two structurally identical is what stops one of them growing a nested button
+          again the next time either is touched. */}
+      <View style={styles.entryRow}>
+        <Pressable
+          style={styles.entryText}
+          onPress={onOpenInfo}
+          accessibilityRole="button"
+          accessibilityLabel={`${entry.title}, season ${kindNumber}, ${watchedKeys.size} of ${arcs.length} arcs watched`}
+          accessibilityHint="Opens the full title, cover art and summary"
+        >
           <Text variant="bodyLarge" style={styles.entryTitle} numberOfLines={1}>
             {entry.title}
           </Text>
           <Text variant="bodySmall" style={styles.entrySubtitle}>
             Season {kindNumber} · {watchedKeys.size} of {arcs.length} arcs
           </Text>
-        </View>
-      </Pressable>
+        </Pressable>
+      </View>
       {arcs.map((arc) => {
         const watched = watchedKeys.has(arc.key);
         return (
