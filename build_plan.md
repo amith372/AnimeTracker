@@ -102,6 +102,18 @@ Carried forward from finished work. None of these is a defect, and none is sched
   Groq outage. One `supabase secrets set GROQ_API_KEY=invalid`, one refresh, and setting the real
   key back is the whole of it, whenever it is worth five minutes.
 - **Phase 13's list-performance cleanup** is still open in `PLAN.md` and untouched by this plan.
+- **`src/theme/colors.ts`'s `shadows` use the deprecated `shadow*` style props.** react-native-web
+  warns on every web dev run ("shadow* style props are deprecated. Use boxShadow"). Nothing is
+  broken — the shadows render — but it is not a find-and-replace either: `shadow*` is still the
+  correct API for native iOS, while `boxShadow` is the web/new-architecture one, so a fix needs
+  platform handling rather than a swap. Its own small piece of work.
+  Two other warnings on the same run are **not ours** and should not be chased: `props.pointerEvents
+  is deprecated` (no match anywhere in `app/` or `src/` — it comes from Paper or Expo internals) and
+  the `useNativeDriver` notice (Paper's animations on web, where there is no native animation
+  module). Checked 2026-10-14.
+  For the avoidance of a future false alarm: **"Development-level warnings: ON. Performance
+  optimizations: OFF."** on a web dev run is react-native-web's normal dev banner, not a
+  misconfiguration. A production export flips it.
 - **An account that linked MAL before 2026-10-14 and never signs in through MAL again has no
   `mal_username`**, so its sidebar reads "Welcome back" rather than a name. This is the single case
   plan 6's dropped step 2 (`mal-me`) would have covered. It cannot arise for an account created by
