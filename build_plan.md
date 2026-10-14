@@ -34,11 +34,14 @@ never read off what the implementation returned.
 
 ## Current state, 2026-10-14
 
-Plan 1's steps 0–7 are done and checked. **Step 8 was added 2026-10-14 after step 7's check** — the
-check passed, and the user then counted the list: 32 rows against a constant claiming 60. It is
-built and awaiting its own check, and `prd/1-recommendation-variety.md` gets deleted once that
-passes rather than when step 7 did. Nothing in plan 1 has been pushed — the branch holds every
-commit from step 0 onward, by the user's instruction, so `origin/master` is still at `244f20f`.
+**Plan 1 is complete** — every step built and checked, and `prd/1-recommendation-variety.md`
+deleted. Step 8's check passed on 48 rows rather than the 60 the constant allows, which is the
+correct behaviour rather than a shortfall: the pool is supply-limited, not budget-limited, so the
+list grows with the library and `MAX_RECOMMENDATIONS` is a ceiling it reaches only once enough
+series are watched. Confirmed live — adding watched series raised the count.
+
+Nothing in plan 1 has been pushed — the branch holds every commit from step 0 onward, by the
+user's instruction, so `origin/master` is still at `244f20f`.
 
 The live project is fully set up for the model steps as of 2026-10-14: the `taste_profiles` and
 `model_call_quota` migrations are applied, `taste-profile` and `taste-candidates` are deployed,
@@ -50,9 +53,11 @@ a 404 that surfaces as a generic error.
 `prd/1-recommendation-variety.md` is signed off in shape and has no open questions left that block
 a step. Plan 3 was added 2026-10-11 and is unscheduled.
 
-**What comes after plan 1:** plan 4, the public share link — PRD signed off 2026-10-14, no open
-questions, start at its step 1. Told to "continue" once step 8's check has passed, compress step 8,
-delete `prd/1-recommendation-variety.md`, and begin there. Plans 2 and 3 stay unscheduled.
+**What comes next, in order.** Plan 6 (the welcome greeting) was asked for mid-session on
+2026-10-14 and jumps the queue by the user's ask; its PRD is drafted and has **one open question
+that blocks its step 3**. Plan 5 (two bugs found the same day) is small and unblocked. Plan 4 (the
+public share link) was the scheduled next thing and still is, once those clear — PRD signed off
+2026-10-14, no open questions, start at its step 1. Plans 2 and 3 stay unscheduled.
 
 Last shipped before this plan existed: Phase 12's direct-Postgres cutover and web build
 (2026-08-12), plus the UI fixes in commits up to `244f20f`. `PLAN.md` holds that history.
@@ -71,6 +76,11 @@ Carried forward from finished work. None of these is a defect, and none is sched
   Groq outage. One `supabase secrets set GROQ_API_KEY=invalid`, one refresh, and setting the real
   key back is the whole of it, whenever it is worth five minutes.
 - **Phase 13's list-performance cleanup** is still open in `PLAN.md` and untouched by this plan.
+- **`MAX_RECOMMENDATIONS` is a ceiling the list only reaches with a large enough library.** Step 8
+  made the slice count real rows, but the pool is supply-limited: candidates come from one
+  `anime/{rootMalId}?fields=recommendations` call per watched series, so a small library cannot
+  fill 60 no matter what the budget is. Growing supply (second-degree recommendations, or every
+  entry rather than each series' root) is a real option and its own piece of work.
 - **`buildGenreAffinity`'s positive half cancels tag frequency rather than correcting for it**
   (found while building step 3). Dividing a tag's accumulated weight by how many of *the user's*
   series carry it yields the mean weight per carrying series, so in a library with no `liked`
@@ -91,8 +101,8 @@ Carried forward from finished work. None of these is a defect, and none is sched
 
 # Plan 1 — Recommendations with deeper taste and real variety
 
-Detail, decisions and reasoning: **`prd/1-recommendation-variety.md`**. Not duplicated here — this
-is the work list, that is the brief. Delete the PRD when step 8 lands.
+**Complete 2026-10-14.** `prd/1-recommendation-variety.md` held the detail and was deleted when
+step 8 landed, as planned; `git log` is where that reasoning lives now.
 
 Step 0 — the pre-commit gate, and the `genres` question · **done 2026-10-11**
 Step 1 — diversify the final list · **done 2026-10-11**
@@ -105,34 +115,7 @@ Step 6 — the taste profile (model, part 1) · **done 2026-10-11**
 
 Step 7 — the candidate generator (model, part 2) · **done 2026-10-14**
 
-### Step 8 — Make the list as long as it says it is · **built 2026-10-14, awaiting its check**
-No PRD: a slice-placement fix plus one tuning constant, both inside work plan 1 already describes.
-
-Asked for the moment step 7's check passed — "For you" was showing 32 rows with no filters set.
-32 was never a cap. `MAX_RECOMMENDATIONS` was 60 and the list could not reach it, because the slice
-ran on *ungrouped candidate ids*: grouping then collapsed each sequel chain into one row and the
-post-grouping exclusion dropped every row overlapping the library, so sixty ids arrived as roughly
-half that many rows. The question that prompted it — whether the MAL recommendations could be
-unioned without duplicates — was already answered by `selectCandidatePool`, which has always
-round-robined every source series' recommendations through a `claimed` dedupe set; the union was
-never the constraint.
-
-Three changes, chosen as "make 60 real" over a bigger target or a cheaper half:
-- the final slice moved below grouping and exclusion, so it counts rows the user sees;
-- `MAX_CANDIDATE_DETAILS` 80 → 160, since a pool equal to the row count cannot fill it;
-- the grouping stage's closure pass throttled to `DETAIL_FETCH_CONCURRENCY` instead of an
-  unbounded `Promise.all`. Found while making the change, not asked for: that burst scales with the
-  batch handed to `fetchDetailsAndGroup`, so doubling the pool would have doubled a few-hundred-
-  request simultaneous burst against guardrail #3. Same total requests, paced. Discover shares the
-  function and gets the same pacing.
-
-Untestable by Jest — the slice lives in a network-driven repository function and every pure
-function it calls is unchanged, so the 272 existing tests are the regression net, not a new one.
-
-**Check:** open "For you" with no filters set and count the rows — it should now reach 60, or at
-least clearly exceed 32. The first refresh will be slow (a cold pool is now up to 160 detail calls);
-a second refresh should be quick off the warm `api_cache`. Failure: still ~32 rows, an error screen,
-a refresh that never finishes, or obvious junk padding the tail.
+Step 8 — make the list as long as it says it is · **done 2026-10-14**
 
 ---
 
@@ -158,10 +141,10 @@ proposing new ones.
 
 ---
 
-# Plan 4 — A public, account-free share link for your list · **next, after plan 1**
+# Plan 4 — A public, account-free share link for your list · **scheduled, behind plans 5 and 6**
 
 Asked for 2026-10-12; **PRD signed off and scheduled 2026-10-14**, to be picked up the moment
-plan 1's last step (now step 8) has passed its check. Detail, decisions, the compliance reading and the step plan live in
+plans 5 and 6 clear. Detail, decisions, the compliance reading and the step plan live in
 **`prd/2-public-share.md`** — not duplicated here. Delete the PRD when its step 4 lands. Four shape decisions were settled the same day:
 a public Edge Function returning JSON (so RLS stays owner-only on every table), the whole library
 with every status, one revocable link per account, and an optional nickname rather than any name
@@ -236,3 +219,55 @@ it before anything is migrated.
 floor — call it under ~120ms rather than ~390ms. Then open the app cold and confirm the Library
 draws noticeably faster. Failure looks like an unchanged `total` (the new region is no closer), or
 any sign-in path broken (the MAL redirect URI was not re-registered).
+
+---
+
+# Plan 5 — Two bugs found 2026-10-14 · **unblocked, small**
+
+Both found while checking plan 1 step 8. Fixes, not features, so neither needs a PRD.
+
+### Illegal nested `<button>` on Series Detail (web)
+`app/series/[id].tsx:412` sets `accessibilityRole="button"` on the entry row, which
+react-native-web renders as a real `<button>` (`propsToAccessibilityComponent`'s `roleComponents`
+map), and Paper's close-circle `IconButton` inside it renders another. HTML forbids interactive
+content inside a button, so React logs a validateDOMNesting error on every Detail screen. The arc
+rows at `:471` have the same shape. `SquareCheckbox` is fine — `accessibilityRole="checkbox"` is
+not in the role map, so it stays a `div`.
+
+The fix is a restructure, not a prop deletion: the row's three controls (open-info, watched
+checkbox, won't-watch) should be siblings rather than nested. `styles.entryText` is already
+`flex: 1`, so moving the press target onto the text block preserves very nearly the whole tap area.
+**Needs one UX call first:** whether the row's padding should stay tappable.
+**Check:** open a Series Detail page on web with the console open — no nesting error. Tapping the
+title still opens the image popup; the checkbox and the skip button still work and don't trigger it.
+
+### Edge Function error messages are unwrapped and then discarded
+`src/api/edgeFunctions.ts:26`'s `invoke()` goes to deliberate trouble to pull the real
+`{error: "..."}` body off a non-2xx Edge Function response — and every screen then feeds it to
+`userFacingMessage()`, which only displays a `UserFacingError` and replaces anything else with a
+generic fallback. So four genuinely different failures of the taste profile (no privacy consent,
+Groq refused, function unreachable, not signed in) all render as the identical sentence
+"Couldn't describe your taste just now", which tells the user nothing and cost a live debugging
+session on 2026-10-14 to get behind.
+
+Fix: have `invoke()` throw `UserFacingError`, since our own functions' error strings are written
+for users. Judgement call to confirm — the Groq branch interpolates the provider's own wording,
+which can be technical.
+**Check:** trigger a taste-profile failure (easiest: `supabase secrets set GROQ_API_KEY=invalid`)
+and confirm the card names the real reason. This also finally exercises step 7's degrade path,
+which the "still owed" list above has never had observed.
+
+---
+
+# Plan 6 — "Welcome X" in the web sidebar · **next, PRD drafted**
+
+Asked for mid-session 2026-10-14. Detail, decisions, constraints and the three steps live in
+**`prd/3-welcome-greeting.md`** — not duplicated here. Delete the PRD when its step 3 lands.
+
+Two shape decisions were answered the same day: store the MAL username (the alternatives were a
+synthetic `mal-123456` address or no name at all), and put the line in the web sidebar only.
+
+**One open question blocks step 3**, and only step 3 — steps 1 and 2 can be built first. A guest
+who has linked MAL: show the MAL username, or keep saying "Guest"? The PRD proposes the username;
+the counter-argument is that "Guest" is a warning about impermanence that linking MAL does not
+make false.

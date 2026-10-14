@@ -124,7 +124,7 @@ The neutrals are **warm** — paper and ink, not fog and slate. This is where th
 - **Warm Hairline** (`#E6DDCF`): the one border color used for every card, chip, and input outline in the system.
 - **Warm Ink** (`#1F1A16`): primary text.
 - **Muted Ink** (`#6E6259`): secondary text (subtitles, descriptions, genre lines).
-- **Faint Ink** (`#857868`): faint text (counts, footnotes, timestamps). Clears 4.5:1 on Warm Paper — the cool grey this replaced sat at roughly 2.5:1 and failed AA everywhere it was used.
+- **Faint Ink** (`#857868`): faint text (counts, footnotes, timestamps). Measured **3.80:1 on Warm Paper** and 4.28:1 on Pure White, so it does *not* clear AA's 4.5:1 — an earlier version of this line claimed it did, which was wrong. It stays anyway: this is a private, non-commercial app and WCAG conformance is a recorded out-of-scope decision (see PRODUCT.md's Accessibility & Inclusion note), not an oversight. The cool grey it replaced sat at roughly 2.5:1, so this is a real improvement without being a pass. Don't re-assert AA here without re-measuring; `#6B6054` is the nearest value that would actually clear it.
 - **Pale Sand** (`#D3C7B6`): unchecked-checkbox / disabled-adjacent strokes — visually close to Faint Ink and Warm Hairline by design; don't add a fourth near-identical neutral without checking these three first.
 - **Deep Ink** (`#26201B`): a near-black warm brown reserved for high-contrast inverted surfaces — the selected filter chip on the mobile Library screen, and the floating toast/snackbar background on web. Not a text color.
 
