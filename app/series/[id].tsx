@@ -637,7 +637,8 @@ const useStyles = makeStyles((colors) => ({
   statusChipTextActive: { fontFamily: fontFamilies.bodySemiBold, color: '#fff' },
   synopsisRow: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg },
   synopsis: { color: colors.textMuted, lineHeight: 21 },
-  synopsisToggle: { color: colors.primary, marginTop: spacing.xs },
+  // Bold for the same reason as AddSeriesDialog's — see there.
+  synopsisToggle: { color: colors.primary, fontFamily: fontFamilies.bodyBold, marginTop: spacing.xs },
   sectionLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.sm },
   sectionLabel: { color: colors.textFaint, letterSpacing: 1 },
   sectionCount: { color: colors.textFaint },

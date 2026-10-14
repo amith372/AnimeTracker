@@ -394,17 +394,15 @@ an existing account from the guest branch without deleting anything, and that a 
 sees both log-out and Delete everything, unchanged. Failure: a guest told the app is deleting an
 "account", a second silent exit still present, or an `auth.users` row surviving the delete.
 
-### Discover's Add dialog truncates the synopsis with no way to read the rest
-Found 2026-10-14 while checking the ⓘ removal. `src/components/AddSeriesDialog.tsx` — reached by
-tapping any Discover poster — shows the synopsis cut off mid-sentence with a trailing `…` and
-offers no way to see the remainder. It is the same gap the ⓘ change just closed on Preview, in the
-one place a user is most likely to want it: this dialog is where the decision to add a show is
-actually made, and the blurb is most of what there is to decide on.
+Discover's Add dialog truncated the synopsis · **done 2026-10-14** — `AddSeriesDialog` now expands
+the summary in place, with the same "Read more" / "Show less" wording as Detail and Preview. It
+expands rather than linking away because this dialog is where the decision to add is made; sending
+someone to another screen to finish a sentence meant cancelling the dialog they were completing.
+`Dialog.ScrollArea` already scrolled, so the longer text cost nothing.
 
-Preview solves it by making the blurb tappable and labelling it "Read more". Whether the same fits
-a dialog that already has Cancel/Add and a radio list is a layout question, not a copy one — which
-is why this is listed rather than done. Worth handing to plan 7 if it is still open when that runs.
-**Check:** open Discover, tap a poster, and confirm the summary can be read in full.
+The affordance is **bold** (`fontFamilies.bodyBold`, overriding Paper's `labelSmall` Medium) in all
+three places, asked for 2026-10-14. It is the one thing on the dialog a user has to notice
+unprompted — nothing else says the clipped text continues — and at 500 it read as more paragraph.
 
 ### The wide-web Library grid lays out 6 cards, then 1, then 6, then 1
 Seen 2026-10-14 on a maximised browser: every row holds six posters and then a seventh sits alone

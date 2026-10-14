@@ -299,7 +299,7 @@ const useStyles = makeStyles((colors) => ({
   // Matches the Detail screen's synopsisToggle in role, not in colour: that one sits on the page
   // background where colors.primary reads as a link, this one sits on the hero gradient where it
   // would not. Same weight and spacing, a colour that works on the gradient.
-  summaryHint: { color: '#fff', opacity: 0.9, marginTop: spacing.xs },
+  summaryHint: { color: '#fff', opacity: 0.9, fontFamily: fontFamilies.bodyBold, marginTop: spacing.xs },
   addPrompt: { color: colors.textMuted, paddingHorizontal: spacing.lg, paddingTop: spacing.lg },
   statusChipRow: { marginTop: spacing.sm, flexGrow: 0, flexShrink: 0, minHeight: 34 },
   entryList: { flex: 1 },
