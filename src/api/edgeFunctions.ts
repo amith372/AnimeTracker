@@ -5,6 +5,7 @@
 // unauthenticated call (mal-discover, mal-anime-detail, mal-recommendations, the sign-in variant
 // of mal-oauth-start) just goes through with none.
 import { supabase } from '@/account/supabaseClient';
+import { UserFacingError, isUserFacingEdgeStatus } from '@/repositories/errorMessage';
 
 async function invoke<T>(name: string, body?: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.functions.invoke(name, { body });
@@ -15,6 +16,7 @@ async function invoke<T>(name: string, body?: Record<string, unknown>): Promise<
     // it, so unwrap the real detail here rather than losing it at every call site.
     const context = (error as { context?: Response }).context;
     let detail: string | undefined;
+    const status = context?.status;
     if (context && typeof context.json === 'function') {
       try {
         const body = await context.clone().json();
@@ -23,6 +25,13 @@ async function invoke<T>(name: string, body?: Record<string, unknown>): Promise<
         // context wasn't JSON (or already consumed) — fall through to the generic message below.
       }
     }
+    // Unwrapping the body was only half the job: every screen passes what it catches through
+    // userFacingMessage(), which shows a UserFacingError and replaces anything else with its own
+    // fallback. So a sentence one of our functions deliberately wrote for the user has to arrive
+    // marked as one, or it is unwrapped and then discarded — which is what made "not linked",
+    // "no consent", "provider refused" and "unreachable" all read as the same generic line.
+    // isUserFacingEdgeStatus() is the whole rule: anything but a catch-all 500 is ours to show.
+    if (detail !== undefined && isUserFacingEdgeStatus(status)) throw new UserFacingError(detail);
     throw new Error(detail ?? error.message ?? `${name} failed`);
   }
   if (data?.error) throw new Error(data.error);

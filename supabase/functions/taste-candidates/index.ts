@@ -211,11 +211,15 @@ Deno.serve(async (req) => {
     if (!response.ok) {
       // The provider's own body is usually the only thing that says *why* (bad model id, rate
       // limit, revoked key), and it holds no user data — the request carried titles and nothing
-      // else. Its status is passed through rather than flattened to 500 so a 429 stays
-      // recognisably a rate limit, the one failure here a later retry genuinely fixes.
+      // else. It is logged rather than returned, for the same reason as taste-profile's twin of
+      // this branch: the sentence below now reaches the user verbatim (see
+      // src/repositories/errorMessage.ts's isUserFacingEdgeStatus) and the provider's body is
+      // developer JSON. The status stays, and is passed through rather than flattened to 500 so a
+      // 429 stays recognisably a rate limit, the one failure here a later retry genuinely fixes.
       const detail = await response.text().catch(() => '');
+      console.error(`taste-candidates: provider returned ${response.status}: ${detail}`);
       return jsonResponse(
-        { error: `The model provider refused the request (${response.status}). ${detail}`.trim() },
+        { error: `The model provider refused the request (${response.status}).` },
         response.status === 429 ? 429 : 502,
       );
     }

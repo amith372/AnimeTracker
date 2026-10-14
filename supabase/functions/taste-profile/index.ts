@@ -142,12 +142,16 @@ Deno.serve(async (req) => {
 
     if (!response.ok) {
       // The provider's own body is usually the only thing that says *why* (bad model id, rate
-      // limit, revoked key), and it holds no user data — the request carried only titles. Its
-      // status is passed through rather than flattened to 500 so a 429 stays recognisably a rate
-      // limit, which is the one failure here that a later retry genuinely fixes.
+      // limit, revoked key), and it holds no user data — the request carried only titles. It is
+      // logged rather than returned: this sentence is now shown to the user verbatim (see
+      // src/repositories/errorMessage.ts's isUserFacingEdgeStatus), and Groq's body is JSON
+      // written for a developer. The status stays in the sentence, which is what distinguishes a
+      // 429 from a revoked key, and is passed through rather than flattened to 500 so a 429 stays
+      // recognisably a rate limit — the one failure here that a later retry genuinely fixes.
       const detail = await response.text().catch(() => '');
+      console.error(`taste-profile: provider returned ${response.status}: ${detail}`);
       return jsonResponse(
-        { error: `The model provider refused the request (${response.status}). ${detail}`.trim() },
+        { error: `The model provider refused the request (${response.status}).` },
         response.status === 429 ? 429 : 502,
       );
     }

@@ -55,13 +55,15 @@ a step. Plan 3 was added 2026-10-11 and is unscheduled.
 
 **What comes next, in order.**
 
-1. **Plan 5** — eight small fixes found 2026-10-14. **Four are done and checked; four remain**,
-   and the remaining four are listed under `###` headings while the finished ones are compressed to
-   a paragraph each — so "the first `###` heading" is the next thing to build. Two of the four need
-   something from the user before any code: the Edge Function error messages carry a judgement call
-   about showing a provider's own wording, and the Account width wants an `$impeccable` run rather
-   than a number picked here. The other two — the guest's two exits, and the Library grid laying
-   out 6 cards then 1 — need nothing and can be built straight away.
+1. **Plan 5** — eight small fixes found 2026-10-14. **Five are built; three remain**, and the
+   remaining three are listed under `###` headings while the built ones are compressed to a
+   paragraph each — so "the first `###` heading" is the next thing to build. The fifth (the Edge
+   Function error messages) is built but **its check has not been run yet**: it needs
+   `supabase secrets set GROQ_API_KEY=invalid` and a redeploy of `taste-profile` and
+   `taste-candidates` (with `--use-api`), which is the user's to run. One of the remaining three
+   needs something from the user before any code — the Account width wants an `$impeccable` run
+   rather than a number picked here. The other two — the guest's two exits, and the Library grid
+   laying out 6 cards then 1 — need nothing and can be built straight away.
 2. **Plan 7** — execute what the design critique found. **Scheduled 2026-10-14 at the user's
    request**, after plan 5. Read its own section first: it carries a map of every dialog and
    transient state the critique could not see, and an ordering note about plan 5.
@@ -307,21 +309,19 @@ once.** It is pushed from **exactly one place**: `app/(tabs)/recommend.tsx:173` 
 `AddSeriesDialog`; Catch-up cards go to the real Detail screen. Nothing about the screen's name
 suggests it is reachable only from recommendations, so check it there or not at all.
 
-### Edge Function error messages are unwrapped and then discarded
-`src/api/edgeFunctions.ts:26`'s `invoke()` goes to deliberate trouble to pull the real
-`{error: "..."}` body off a non-2xx Edge Function response — and every screen then feeds it to
-`userFacingMessage()`, which only displays a `UserFacingError` and replaces anything else with a
-generic fallback. So four genuinely different failures of the taste profile (no privacy consent,
-Groq refused, function unreachable, not signed in) all render as the identical sentence
-"Couldn't describe your taste just now", which tells the user nothing and cost a live debugging
-session on 2026-10-14 to get behind.
-
-Fix: have `invoke()` throw `UserFacingError`, since our own functions' error strings are written
-for users. Judgement call to confirm — the Groq branch interpolates the provider's own wording,
-which can be technical.
-**Check:** trigger a taste-profile failure (easiest: `supabase secrets set GROQ_API_KEY=invalid`)
-and confirm the card names the real reason. This also finally exercises step 7's degrade path,
-which the "still owed" list above has never had observed.
+Edge Function error messages were unwrapped and then discarded · **done 2026-10-14** —
+`invoke()` now throws `UserFacingError` when the response status is anything but a catch-all 500,
+so the sentence a function deliberately wrote for the user survives `userFacingMessage()` instead
+of being replaced by a generic fallback. **The status is the tag**, decided 2026-10-14: every
+branch that worded its own error returns a deliberate status, every handler's catch-all returns 500
+with `describeError(e)` or a raw PostgrestError message. `isUserFacingEdgeStatus` in
+`src/repositories/errorMessage.ts` is the rule and `__tests__/errorMessage.test.ts` holds the
+functions to their half of it — a developer string returned at 403 would otherwise land in a
+Snackbar with nothing to notice it. The provider-wording judgement call is **closed**: both model
+functions log Groq's body and return only `The model provider refused the request (429).`, since
+the status is what distinguishes a revoked key from a rate limit and the body is developer JSON.
+**Out of scope deliberately:** fresh picks still degrade to one notice
+(`GeneratedCandidateRepository.ts:139`) — that is the PRD's decision, not this discard.
 
 ### The Account screen stretches across the full width of a wide monitor
 `app/onboarding/account.tsx:317`'s `container` sets `padding` and `gap` and nothing else, so on a

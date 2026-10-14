@@ -51,3 +51,25 @@ export function userFacingMessage(e: unknown, fallback: string): string {
   if (isAuthError(e)) return 'Your session expired. Sign in again to continue.';
   return fallback;
 }
+
+/**
+ * Whether a non-2xx Edge Function response's `{error: "..."}` body was written for the user.
+ *
+ * Our functions (supabase/functions/*) follow one convention: a branch that *decided* something
+ * went wrong words its own sentence and returns a deliberate status ("MyAnimeList is not linked to
+ * this account." at 403, the daily-limit line at 429, "no model key is configured." at 503), while
+ * the handler's catch-all returns 500 with `${describeError(e)}` or a raw PostgrestError message —
+ * developer text. So the status is the tag, and 500 is the only one that means "do not show this".
+ * `__tests__/errorMessage.test.ts` asserts the functions still hold up their half of that.
+ *
+ * Without this rule, src/api/edgeFunctions.ts went to real trouble to unwrap the body and then
+ * every screen's userFacingMessage() threw it away, so four different taste-profile failures (no
+ * consent, provider refused, unreachable, not signed in) all read as one generic sentence.
+ */
+export function isUserFacingEdgeStatus(status: number | undefined): boolean {
+  if (status === undefined) return false;
+  // 4xx/5xx only: a 2xx or 3xx carrying an `{error}` body isn't a shape our functions produce, and
+  // Supabase's own gateway errors (a 404 for an undeployed function, a 546 worker boot failure)
+  // don't use our body shape at all, so they fall through to the caller's fallback either way.
+  return status >= 400 && status < 600 && status !== 500;
+}
