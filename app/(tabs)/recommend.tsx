@@ -41,6 +41,7 @@ import { userFacingMessage } from '@/repositories/errorMessage';
 import { useHover } from '@/hooks/useHover';
 import { fetchRecommendations, useCatchUp, type RecommendProgress } from '@/repositories/RecommendationRepository';
 import { useTasteProfile } from '@/repositories/TasteProfileRepository';
+import { useStoredRecommendations } from '@/repositories/RecommendationCacheRepository';
 import { TasteProfileCard } from '@/components/TasteProfileCard';
 import {
   meetsMinimumEpisodes,
@@ -115,7 +116,18 @@ export default function RecommendScreen() {
   // the query is cached and shared, so switching tabs doesn't pay a fresh round trip on a
   // backend where every one of those is ~350ms.
   const tasteProfile = useTasteProfile();
+  // Plan 9 step 3: the list this account last computed, read from Postgres so a mount or a page
+  // reload renders it immediately rather than rebuilding something that usually cannot have changed.
+  const storedRecommendations = useStoredRecommendations();
   const [state, setState] = useState<ScreenState>({ kind: 'LOADING', message: 'Loading...' });
+  // Whether the stored list has been read and acted on. A plain flag rather than a `[]` effect,
+  // because the read it waits for is asynchronous: the effect below has to re-run as the row and
+  // the library arrive, and then do its work exactly once.
+  const [hydrated, setHydrated] = useState(false);
+  // Progress text for a recompute running *underneath* a list that is already on screen; null when
+  // nothing is recomputing. Deliberately not part of ScreenState: that machine's LOADING branch
+  // replaces the whole screen with a spinner, which is precisely what must not happen here.
+  const [recomputeMessage, setRecomputeMessage] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('CATCH_UP');
   // Which Catch up kind is showing — Seasons / Movies / Future releases. Held by title rather than
   // an enum because the tab list is built from the sections themselves, so there's one source of
@@ -134,37 +146,75 @@ export default function RecommendScreen() {
   const [minEpisodes, setMinEpisodes] = useState<MinEpisodeThreshold>(0);
   const [lengthDialogVisible, setLengthDialogVisible] = useState(false);
 
-  function load(opts?: { bypassCache?: boolean }) {
-    setState({ kind: 'LOADING', message: 'Loading...' });
+  /**
+   * Runs the pipeline. `keepVisible` is plan 9 step 3's whole point: a recompute that happens
+   * while a list is already on screen reports its progress *beside* that list instead of replacing
+   * it with a spinner, because the list that is there is still the best answer we have until a
+   * better one arrives.
+   */
+  function load(opts?: { bypassCache?: boolean; keepVisible?: boolean }) {
+    const keepVisible = opts?.keepVisible ?? false;
+    const report = (message: string) => {
+      if (keepVisible) setRecomputeMessage(message);
+      else setState({ kind: 'LOADING', message });
+    };
+    report('Loading...');
     fetchRecommendations((progress: RecommendProgress) => {
       switch (progress.kind) {
         case 'FETCHING_SOURCES':
-          setState({ kind: 'LOADING', message: `Checking your watched series (${progress.completed}/${progress.total})...` });
+          report(`Checking your watched series (${progress.completed}/${progress.total})...`);
           break;
         case 'FETCHING_CANDIDATES':
-          setState({ kind: 'LOADING', message: `Fetching candidate details (${progress.completed}/${progress.total})...` });
+          report(`Fetching candidate details (${progress.completed}/${progress.total})...`);
           break;
         case 'GROUPING':
-          setState({ kind: 'LOADING', message: `Grouping results (${progress.completed}/${progress.total})...` });
+          report(`Grouping results (${progress.completed}/${progress.total})...`);
           break;
         case 'READY':
+          setRecomputeMessage(null);
           setState({ kind: 'READY', series: progress.series, generatorNotice: progress.generatorNotice });
           break;
         case 'FAILED':
-          setState({ kind: 'ERROR', message: progress.message });
+          setRecomputeMessage(null);
+          // A recompute that fails underneath a list already on screen leaves that list alone. It
+          // was computed from a library that has since moved, so it is imperfect — but it is a
+          // real list, and swapping it for an error message would make a background refresh worse
+          // than never having tried. A *first* load has nothing to fall back on, so it reports.
+          if (!keepVisible) setState({ kind: 'ERROR', message: progress.message });
           break;
       }
-    }, opts);
+    }, { bypassCache: opts?.bypassCache });
   }
 
-  useEffect(() => load(), []);
+  // Hydrate from the stored list, once, as soon as both it and the library it has to be compared
+  // against have been read — `isLoading` covers both, and deciding before it clears would compare
+  // a stored fingerprint against an empty library and recompute on every single visit, which is
+  // the bug this step exists to fix.
+  //
+  // Three outcomes: a stored list that still matches the library renders and costs nothing at all;
+  // one that no longer matches renders anyway and a recompute runs underneath it; nothing stored
+  // computes from scratch exactly as this screen always did.
+  useEffect(() => {
+    if (hydrated || storedRecommendations.isLoading) return;
+    setHydrated(true);
+    const stored = storedRecommendations.stored;
+    if (!stored) {
+      load();
+      return;
+    }
+    setState({ kind: 'READY', series: stored.series, generatorNotice: stored.generatorNotice });
+    if (storedRecommendations.isStale) load({ keepVisible: true });
+  }, [hydrated, storedRecommendations.isLoading, storedRecommendations.stored, storedRecommendations.isStale]);
 
   // Skips reading the shared api_cache table (never skips writing it) so this genuinely re-asks
   // MAL rather than rebuilding the same answer from cached data — the escape hatch for when a
   // cached detail has gone stale. Doesn't clear the cache itself: it's shared across every
   // account, so wiping it here would cost everyone else's warm cache too (see apiCache.ts).
+  //
+  // Keeps the current list on screen while it re-asks, same as a staleness recompute: the user
+  // pressed refresh on a list they can see, and blanking it is the one outcome they didn't ask for.
   function refreshFromMal() {
-    load({ bypassCache: true });
+    load({ bypassCache: true, keepVisible: state.kind === 'READY' });
   }
 
   // "For you" cards open the not-yet-tracked preview screen (full profile + summary + status
@@ -279,7 +329,10 @@ export default function RecommendScreen() {
           </Text>
           <Text style={styles.headerSubtitle}>Finish what you started, or start something new.</Text>
         </View>
-        {state.kind === 'LOADING' ? (
+        {/* The spinner stands in for the refresh button during a recompute as well as a first
+            load — it is the only thing in the header saying work is happening while the list below
+            is still the old one, and it also stops a second refresh being fired into the first. */}
+        {state.kind === 'LOADING' || recomputeMessage !== null ? (
           <ActivityIndicator style={styles.headerSpinner} />
         ) : (
           <IconButton icon="refresh" accessibilityLabel="Refresh recommendations" onPress={refreshFromMal} />
@@ -480,6 +533,15 @@ export default function RecommendScreen() {
               generator didn't contribute, so a working run says nothing at all rather than adding
               a permanent line of chrome. Without it, "the provider is down" and "the model had
               dull ideas" look identical from here. */}
+          {/* A recompute's progress, shown beside the list rather than instead of it (plan 9 step
+              3). It sits directly above the rows it is about to replace, so the list visibly stays
+              put while the work happens — the alternative, a spinner where the list was, is the
+              exact failure this step is written against. */}
+          {recomputeMessage !== null && (
+            <Text variant="bodySmall" style={styles.generatorNotice}>
+              {recomputeMessage}
+            </Text>
+          )}
           {state.kind === 'READY' && state.generatorNotice && (
             <Text variant="bodySmall" style={styles.generatorNotice}>
               {state.generatorNotice}

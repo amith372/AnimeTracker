@@ -33,4 +33,8 @@ export const libraryKeys = {
   // its own removeQueries and would be forgotten exactly once — leaving one account's taste
   // description on screen after another signs in on the same device.
   taste: (userId: string) => ['library', userId, 'taste'] as const,
+  // Plan 9 step 3's stored "For you" list. Under the same root, for the same reason as `taste`
+  // above: it is derived from one account's library, and a list computed for one account must not
+  // survive another signing in on the same device.
+  recommendations: (userId: string) => ['library', userId, 'recommendations'] as const,
 };

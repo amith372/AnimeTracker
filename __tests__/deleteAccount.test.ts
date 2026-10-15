@@ -30,6 +30,10 @@ describe('delete-account', () => {
     // Plan 1 step 7's daily model-call counter. Listed here for the same reason as the rest: this
     // test is the only thing that fails when a per-user table is added and the sweep isn't.
     'model_call_quota',
+    // Plan 9 step 3's stored "For you" list. It is derived from which shows this account finished,
+    // liked and dropped, so it is personal data in the same way the taste profile is, and leaving
+    // it behind would leave a description of someone's taste keyed to a deleted account.
+    'recommendation_lists',
   ];
 
   test.each(ownedTables)('deletes %s', (table) => {

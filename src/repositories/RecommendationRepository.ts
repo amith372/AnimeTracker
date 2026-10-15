@@ -32,6 +32,8 @@ import type { ReconcileSeries } from '@/domain/reconcileSeries';
 import { isWithinObscurityCeiling } from '@/domain/candidateGenerator';
 import { fetchDetailsAndGroup, type DiscoverProgress } from './DiscoverRepository';
 import { fetchGeneratedCandidates } from './GeneratedCandidateRepository';
+import { saveRecommendations } from './RecommendationCacheRepository';
+import { recommendationListFingerprint } from '@/domain/recommendationCache';
 import { useMemo } from 'react';
 import { getAllSeriesOnce, useLibrary } from './AnimeRepository';
 
@@ -108,8 +110,27 @@ export async function fetchRecommendations(
   const allSeries = await getAllSeriesOnce();
   const sourceSeries = allSeries.filter(isRecommendationSource);
 
+  // Plan 9 step 3. Every exit below goes through this rather than calling onProgress directly, so
+  // a finished list is always stored under the digest of the library snapshot it was computed
+  // from — `allSeries`, read once above, not the live library, which may have moved during the
+  // minute this pipeline takes. Storing it against a library it doesn't describe would be worse
+  // than not storing it at all: the next visit would render a stale list and call it fresh.
+  //
+  // An empty list is stored like any other. "Nothing to recommend" is a real answer, arrived at
+  // the same expensive way, and it is the answer least worth recomputing on every visit.
+  //
+  // Not awaited and never allowed to fail the run: the list is already correct and on its way to
+  // the screen, and a cache write that couldn't happen costs one slow visit (see
+  // saveRecommendations). The fingerprint is computed here rather than inside it so the snapshot,
+  // not the repository's own later read, is what it describes.
+  const fingerprint = recommendationListFingerprint(allSeries);
+  const finish = (series: ReconcileSeries[], generatorNotice: string | null) => {
+    void saveRecommendations(series, generatorNotice, fingerprint);
+    onProgress({ kind: 'READY', series, generatorNotice });
+  };
+
   if (sourceSeries.length === 0) {
-    onProgress({ kind: 'READY', series: [], generatorNotice: null });
+    finish([], null);
     return;
   }
 
@@ -248,7 +269,7 @@ export async function fetchRecommendations(
   const candidateIds = [...deterministicIds, ...generatedIds];
 
   if (candidateIds.length === 0) {
-    onProgress({ kind: 'READY', series: [], generatorNotice: generated.notice });
+    finish([], generated.notice);
     return;
   }
 
@@ -318,7 +339,7 @@ export async function fetchRecommendations(
   );
 
   if (ranked.length === 0) {
-    onProgress({ kind: 'READY', series: [], generatorNotice: generated.notice });
+    finish([], generated.notice);
     return;
   }
 
@@ -378,7 +399,7 @@ export async function fetchRecommendations(
   const series = recommendable
     .sort((a, b) => bestOrderKey(b, orderById) - bestOrderKey(a, orderById))
     .slice(0, MAX_RECOMMENDATIONS);
-  onProgress({ kind: 'READY', series, generatorNotice: generated.notice });
+  finish(series, generated.notice);
 }
 
 /** The best (largest) ordering key among a grouped series' entries — grouping collapses several

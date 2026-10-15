@@ -34,14 +34,20 @@ never read off what the implementation returned.
 
 ## Current state, 2026-10-15
 
-**What a session told "continue" should build: plan 9's step 3.** Plan 9's steps 1 and 2 both
-landed 2026-10-15; everything else scheduled either needs you or needs a conversation first.
+**What a session told "continue" should build: plan 4's step 1** — the public share link, whose
+PRD is signed off and whose precondition is met. Plan 9 is finished as of 2026-10-15 (all three
+steps built), and everything else scheduled either needs you or needs a conversation first.
 
-**Checks waiting on you, and nothing else is blocking them.** Seven pieces of built work are
+**Checks waiting on you, and nothing else is blocking them.** Eight pieces of built work are
 waiting on a check only you can run: plan 5's two remaining items (the Edge Function error
-messages, the onboarding column width), plan 7's steps 1 and 4, and plan 9's steps 1 and 2. Each
-one's **Check:** block says what to open and what failure looks like. Nothing is pushed until they
-are confirmed.
+messages, the onboarding column width), plan 7's steps 1 and 4, and all three of plan 9's steps.
+Each one's **Check:** block says what to open and what failure looks like. Nothing is pushed until
+they are confirmed.
+
+**And one thing needs you before a check can pass at all:** plan 9 step 3 added
+`supabase/migrations/20261015000000_recommendation_lists.sql`, which needs `supabase db push` from
+a machine with the project linked. Until then the app degrades to its old behaviour rather than
+breaking.
 
 **Everything scheduled, in order:**
 
@@ -53,11 +59,11 @@ are confirmed.
    sign-off**, and **step 5 is PRD-sized**. All three are a conversation first, so don't open this
    plan expecting to build. Read its section before any UI work anyway — it carries a map of every
    dialog and transient state the critique could not see.
-3. **Plan 9** — make "For you" fast. Unblocked, no PRD, changes nothing about what the list
-   contains. **Start at step 3.** Independent of plan 3, which would multiply it rather than
-   replace it.
+3. **Plan 9** — make "For you" fast. **All three steps built**, nothing left to write; the three
+   checks and one `db push` above are what remain. Changed nothing about what the list contains.
+   Plan 3 would multiply its gains rather than replace them.
 4. **Plan 4** — the public share link. PRD signed off 2026-10-14, no open questions, its one
-   precondition met (plan 7's step 4 landed), so start at its step 1.
+   precondition met (plan 7's step 4 landed). **This is what to build next**; start at its step 1.
 
 **Unscheduled:** plans 2 and 3. Plan 3 needs a PRD before any of it is touched.
 
@@ -482,7 +488,7 @@ a code exchangeable for a session — lives in that file's header and in `__test
 
 ---
 
-# Plan 9 — Make "For you" fast · **unblocked, no PRD**
+# Plan 9 — Make "For you" fast · **all three steps built, three checks outstanding**
 
 Asked for 2026-10-14: the Recommendations list takes too long. Measured against the code rather
 than guessed at, **the wall time is network round trips, not computation** — and most of them are
@@ -537,23 +543,55 @@ counters should jump in large increments rather than ticking up one at a time. T
 list. Failure: a different list, hundreds of `api_cache` requests still, or a MAL call for
 something that was cached a moment ago.
 
-### Step 3 — Keep the finished list; recompute only when taste changes
-`app/(tabs)/recommend.tsx:160` is `useEffect(() => load(), [])`, so the entire pipeline re-runs on
-every mount and every page reload, to rebuild a list that usually cannot have changed.
-`src/domain/tasteProfile.ts` already computes the digest that answers "has the library changed in a
-way that matters" — a like, a drop, or a *finishing* tick — and `taste_profiles.source_fingerprint`
-already stores one. Store the finished rows under the same fingerprint, render them immediately on
-mount, and recompute only when the fingerprint differs or the manual refresh is pressed (which
-already bypasses the MAL cache and must keep doing so).
+### Step 3 — Keep the finished list; recompute only when taste changes · **done 2026-10-15, check outstanding**
+The finished list is stored in a new `recommendation_lists` table, one row per account, and the
+screen hydrates from it on mount. A stored list whose fingerprint still matches the library renders
+and costs nothing; one that no longer matches renders *anyway* and the recompute runs underneath
+it; nothing stored computes from scratch as before. `useEffect(() => load(), [])` is gone.
 
-Three shape decisions to settle while building, none of them wide enough for a PRD: whether the
-rows live in their own table or alongside `taste_profiles`; that a stale-but-present list renders
-*while* the recompute runs rather than being replaced by a spinner (that is the entire point);
-and RLS owner-only, same as `taste_profiles` — this is derived from one person's library, so it is
-as personal as the profile and must never go anywhere near `api_cache`, which is `anon`-readable.
+The three shape decisions the step asked for, as settled:
+- **Its own table, not a column on `taste_profiles`.** `taste_profiles.profile` is `not null`, so
+  an account under `MIN_TASTE_VERDICTS` has no row there at all — and those are exactly the small
+  libraries whose recommendations still work, since the MAL-tally and genre halves need no model.
+  Sharing the row would have meant either denying them the cache or making `profile` nullable. The
+  migration's header carries all three reasons.
+- **A stale list stays on screen while the recompute runs**, which is the entire point. The
+  progress line moves to a `bodySmall` line directly above the rows and the header's refresh
+  button becomes a spinner; `ScreenState.LOADING` (which blanks the screen) is reached only when
+  there is genuinely nothing to show. A recompute that *fails* underneath a list leaves that list
+  alone rather than replacing it with an error — only a first load reports one. The manual refresh
+  keeps the list up too: it was pressed on a list the user can see.
+- **RLS owner-only**, same policy and grants as `taste_profiles`, and the table is in
+  `delete-account`'s sweep — `__tests__/deleteAccount.test.ts` is what fails if a per-user table is
+  ever added and the sweep isn't.
 
-**Check:** open "For you", wait for the list, then reload the page — the same list appears with no
-progress line at all. Now mark the last unwatched season of a show as watched (or like one) and open
-"For you" again: it recomputes, and the old list is on screen while it does. Failure: a reload still
-rebuilding from scratch, a like or a finishing tick not producing a fresh list, or a spinner
-replacing a list that was already there.
+Two things worth carrying:
+- **The fingerprint is `tasteFingerprint` plus a row-shape version segment** (`r1:`), the same
+  convention as `apiCache`'s `DETAIL_CACHE_VERSION`: bump it when what a stored row *contains*
+  changes and every stored list rebuilds itself, where otherwise an old row is still valid JSON
+  and a new field would read as `undefined` for as long as the library sat still.
+- **The taste fingerprint is enough even though the ranking also depends on which shows are
+  tracked.** Adding a show to Plan to watch doesn't move it — but the screen already filters
+  whatever list it holds against the live tracked-id set on every render, so a newly tracked show
+  disappears from a restored list with no recompute at all. A *fresh ranking* after a removal still
+  needs the refresh button, exactly as before this step.
+  `__tests__/recommendationCache.test.ts` pins that division of labour rather than leaving it to
+  the comment, along with the ticks that must and must not invalidate a list.
+
+**This needs `supabase db push` before the check can pass** — this dev environment has no linked
+project to run it from. Until the migration is applied the app degrades to exactly its old
+behaviour (the read fails, nothing is stored, the pipeline runs on every mount), so nothing is
+broken in the meantime, but nothing is cached either. `delete-account` also wants a redeploy
+(`--use-api`) to pick up the sweep; it is belt-and-braces, since the table's `on delete cascade` is
+what actually removes the row.
+
+**Check:** open "For you" and wait for the list, then reload the page — the same list appears with
+no progress line at all. Now mark the last unwatched season of a show as watched (or like one) and
+open "For you" again: it recomputes, and **the old list is on screen while it does**, with the
+progress line above it and a spinner where the refresh button was. Press refresh on a loaded list
+and confirm the same thing — the list stays put rather than blanking. Finally tick a season that
+*doesn't* finish a show (3/5 → 4/5) and reopen "For you": it must render instantly with no
+recompute. Failure: a reload still rebuilding from scratch, a like or a finishing tick not
+producing a fresh list, a spinner replacing a list that was already there, or a mid-progress tick
+costing a rebuild.
+

@@ -169,6 +169,16 @@ liked / finished / dropped, which is what makes a profile stale: comparing it ag
 library means a like, a drop or a *finishing* episode tick costs one model call and every other
 tick costs none. Must never live in `api_cache` — that table is `anon`-readable.
 
+**`recommendation_lists`** — one row per account holding the finished "For you" list, so a mount or
+a page reload renders it instead of re-running the whole MAL pipeline: `series jsonb` (the
+`ReconcileSeries[]` the screen renders), `generator_notice`, `generated_at`, `source_fingerprint`.
+RLS is owner-only, same as `taste_profiles` and for the same reason — it is derived from which
+shows one person finished, liked and dropped. The fingerprint is `src/domain/recommendationCache.ts`'s
+row-shape version plus `tasteFingerprint`, so a like, a drop or a *finishing* tick rebuilds the
+list and every other tick costs nothing; the screen still filters whatever list it holds against
+the live tracked-id set on every render, which is what makes a newly-tracked show disappear from a
+restored list with no recompute. Must never live in `api_cache` — that table is `anon`-readable.
+
 **`api_cache`** — the MAL response cache (guardrail #3), **shared across every account** (not
 per-user): anime detail/recommendation data is user-independent, so `anon`-readable, `authenticated`-writable,
 pruned daily by `pg_cron`. See `src/repositories/apiCache.ts`.

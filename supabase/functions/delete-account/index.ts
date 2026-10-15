@@ -42,6 +42,7 @@ const OWNED_TABLES = [
   'mal_accounts',
   'taste_profiles',
   'model_call_quota',
+  'recommendation_lists',
 ] as const;
 
 /**
