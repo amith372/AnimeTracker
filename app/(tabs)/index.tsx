@@ -58,11 +58,18 @@ const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
   ...STATUS_FILTER_KINDS.map((kind) => ({ value: kind as StatusFilter, label: statusKindLabel(kind) })),
 ];
 
-// Matches gridCard's width and webGridRow's gap below — kept as constants because the column-count
-// math needs the same numbers the styles use.
+// Matches the grid card's width and webGridRow's gap below — kept as constants because the
+// column-count math needs the same numbers the styles use.
 const GRID_CARD_WIDTH = 184;
 const GRID_GAP = 22;
 const GRID_PADDING = 28;
+// Desktop Chrome's classic vertical scrollbar is ~15px wide, and the cards are laid out in the
+// FlatList's *content* box — narrower than the View we measure by exactly that much. floor() over a
+// 206px pitch only has to be a pixel out to claim a column that cannot fit, so the measured width
+// is discounted before the division. Where there is no scrollbar (overlay scrollbars, or a library
+// short enough not to scroll) this errs one column low in a narrow band of widths, which with the
+// flexible cards below costs a little gutter on the right rather than a broken row.
+const GRID_SCROLLBAR_ALLOWANCE = 16;
 
 export default function LibraryScreen() {
   const styles = useStyles();
@@ -113,11 +120,19 @@ export default function LibraryScreen() {
     }, [refreshMalLinked]),
   );
 
-  // How many 184px cards fit across the measured grid width at the fixed 22px gap/28px padding —
-  // same arithmetic a CSS repeat(auto-fill, minmax(184px,1fr)) grid would do, since FlatList only
-  // takes a fixed numColumns rather than an auto-fill keyword.
+  // How many 184px cards fit across the measured grid width at the fixed 22px gap/28px padding,
+  // less the scrollbar the cards are actually laid out inside of — same arithmetic a CSS
+  // repeat(auto-fill, minmax(184px,1fr)) grid would do, since FlatList only takes a fixed
+  // numColumns rather than an auto-fill keyword. The cards divide up whatever slack this leaves, so
+  // the result is a column target rather than a claim about an exact fit.
   const gridColumns = useMemo(
-    () => Math.max(1, Math.floor((gridWidth - GRID_PADDING * 2 + GRID_GAP) / (GRID_CARD_WIDTH + GRID_GAP))),
+    () =>
+      Math.max(
+        1,
+        Math.floor(
+          (gridWidth - GRID_SCROLLBAR_ALLOWANCE - GRID_PADDING * 2 + GRID_GAP) / (GRID_CARD_WIDTH + GRID_GAP),
+        ),
+      ),
     [gridWidth],
   );
 
@@ -450,6 +465,7 @@ export default function LibraryScreen() {
                 renderItem={({ item }) => (
                   <LibraryGridCard
                     series={item}
+                    flexible={gridColumns > 1}
                     onPress={() => router.push(`/series/${item.id}`)}
                     onLongPress={() => setPendingRemoval(item)}
                   />
@@ -627,22 +643,29 @@ function SeriesRow({ series, onPress, onLongPress }: { series: Series; onPress: 
 }
 
 /** Wide-web poster-card grid tile — cover, title, status dot + label, matching the design doc's
- * Library grid card. Same data/onPress as SeriesRow above, just a different shape. */
+ * Library grid card. Same data/onPress as SeriesRow above, just a different shape.
+ *
+ * `flexible` picks which of the two width styles the card wears, and it has to be told rather than
+ * worked out here: at one column FlatList gives a cell no row wrapper at all, so the card's parent
+ * is laid out in `column` direction, where a flexGrow would stretch the card's *height* down the
+ * page instead of its width across one. */
 function LibraryGridCard({
   series,
   onPress,
   onLongPress,
+  flexible,
 }: {
   series: Series;
   onPress: () => void;
   onLongPress: () => void;
+  flexible: boolean;
 }) {
   const styles = useStyles();
   const isNew = hasVisibleNewSeasonAlert(series);
   const [hovered, hoverHandlers] = useHover();
   return (
     <Pressable
-      style={[styles.gridCard, hovered && styles.gridCardHovered]}
+      style={[flexible ? styles.gridCardFlexible : styles.gridCard, hovered && styles.gridCardHovered]}
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={500}
@@ -790,12 +813,22 @@ const useStyles = makeStyles((colors) => ({
   webGrid: { flex: 1 },
   // width:'100%' is load-bearing on react-native-web: without it, a vertical ScrollView's
   // contentContainerStyle doesn't reliably stretch to the scrollview's own cross-axis width inside
-  // a flexDirection:'row' ancestor, so the flexWrap grid below never gets the width it needs to
-  // wrap past its first few columns — confirmed live (only 3 columns rendered on a window with
+  // a flexDirection:'row' ancestor, so each grid row below never gets the width it needs to hold
+  // more than its first few columns — confirmed live (only 3 columns rendered on a window with
   // room for 7+).
-  webGridContent: { padding: 28, width: '100%' },
-  webGridRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 22 },
-  gridCard: { width: 184 },
+  webGridContent: { padding: GRID_PADDING, width: '100%' },
+  // Deliberately *not* flexWrap. It used to be, and that is what let a column count one too high
+  // render as a plausible-looking ragged grid — six cards, then a seventh alone on a line of its
+  // own — rather than as something obviously wrong. A single non-wrapping row of shrinkable cards
+  // cannot produce a row break at all, so the miscount has nowhere to show up.
+  webGridRow: { flexDirection: 'row', gap: GRID_GAP },
+  // The one-column fallback: a fixed card, since there is no row to share slack with.
+  gridCard: { width: GRID_CARD_WIDTH },
+  // Every wider case: the cards divide the row between them, capped at the design's 184 so a short
+  // last row leaves a gutter instead of stretching into banners, and shrinkable so a count one too
+  // high costs a few pixels a card rather than a wrap. minWidth:0 because the title text would
+  // otherwise hold each card open at its min-content width and defeat the shrink.
+  gridCardFlexible: { flexGrow: 1, flexShrink: 1, flexBasis: 0, maxWidth: GRID_CARD_WIDTH, minWidth: 0 },
   // Opacity dip on hover rather than a background wash — this precedent comes straight from the
   // approved design mockup (poster-grid cards there use style-hover="opacity:.92"); a wash would
   // mean padding the card, which shifts the cover art off its exact 184px spec.

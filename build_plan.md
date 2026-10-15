@@ -55,17 +55,16 @@ a step. Plan 3 was added 2026-10-11 and is unscheduled.
 
 **What comes next, in order.**
 
-1. **Plan 5** — eight small fixes found 2026-10-14. **Seven are built; one remains**, and the
-   remaining one is listed under a `###` heading while the built ones are compressed to a
-   paragraph each — so the next thing to build is the one `###` heading **inside plan 5's own
-   section**. Plan 2's `###` headings sit earlier in the file and are not scheduled; don't start
-   there. Three built items
-   are still waiting on a check the user runs: the Edge Function error messages need
-   `supabase secrets set GROQ_API_KEY=invalid` and a redeploy of `taste-profile` and
-   `taste-candidates` (with `--use-api`); the onboarding column width needs a maximised browser,
-   then the Android emulator; and the guest's single exit needs a guest session plus the Supabase
-   dashboard. The remaining item, the Library grid laying out 6 cards then 1, needs nothing from
-   the user and can be built straight away.
+1. **Plan 5** — eight small fixes found 2026-10-14. **All eight are built**, and nothing in it is
+   left to write — it has no `###` heading of its own any more. (Plan 2's `###` headings sit
+   earlier in the file and are not scheduled; don't start there.) **Four of the eight are waiting
+   on a check the user runs**, and they are the only thing holding the plan open: the Edge Function
+   error messages need `supabase secrets set GROQ_API_KEY=invalid` and a redeploy of
+   `taste-profile` and `taste-candidates` (with `--use-api`); the onboarding column width needs a
+   maximised browser, then the Android emulator; the guest's single exit needs a guest session plus
+   the Supabase dashboard; and the Library grid needs a maximised browser resized slowly across its
+   whole range. **So the next thing to build is plan 7's step 1** — but ask about the outstanding
+   checks first, since plan 5 is what the push condition below most likely means.
 2. **Plan 7** — execute what the design critique found. **Scheduled 2026-10-14 at the user's
    request**, after plan 5. Read its own section first: it carries a map of every dialog and
    transient state the critique could not see, and an ordering note about plan 5.
@@ -278,13 +277,13 @@ any sign-in path broken (the MAL redirect URI was not re-registered).
 
 ---
 
-# Plan 5 — Eight things found 2026-10-14 · **unblocked, small**
+# Plan 5 — Eight things found 2026-10-14 · **all eight built, four checks outstanding**
 
 Found while checking plan 1 step 8, then while looking at the Account screen and the Library on a
 wide monitor. Fixes and copy, not features, so none of them needs a PRD — though the width item
-held one number that a design skill settled before any style was written. **Seven have landed and
-are compressed to a paragraph each below; the one left is the `###` heading at the end of this
-section.**
+held one number that a design skill settled before any style was written. **Nothing here is left to
+write.** Each item is a paragraph below, and the four that still carry a **Check:** block are the
+four waiting on the user; the rest are checked and done.
 
 Nested `<button>` on Series Detail · **done 2026-10-14** — the row is a plain `View` with sibling
 controls; the press target is the text block. `ArcListRow` matches it deliberately so neither can
@@ -380,32 +379,25 @@ The affordance is **bold** (`fontFamilies.bodyBold`, overriding Paper's `labelSm
 three places, asked for 2026-10-14. It is the one thing on the dialog a user has to notice
 unprompted — nothing else says the clipped text continues — and at 500 it read as more paragraph.
 
-### The wide-web Library grid lays out 6 cards, then 1, then 6, then 1
-Seen 2026-10-14 on a maximised browser: every row holds six posters and then a seventh sits alone
-on a line of its own, so the grid reads as alternating full and near-empty rows instead of a block.
-Every row should hold the same number of cards.
+The wide-web Library grid laid out 6 cards, then 1 · **done 2026-10-15** — both halves of the fix
+went in. The measured width is now discounted by a `GRID_SCROLLBAR_ALLOWANCE` before the division,
+and `webGridRow` is **deliberately no longer `flexWrap`**, with the cards flexible
+(`gridCardFlexible`: grow/shrink from a zero basis, `maxWidth` 184, `minWidth: 0`) instead of fixed
+at 184. **The second half is the one that holds**: a non-wrapping row of shrinkable cards has
+nowhere to put a row break, so a residual miscount costs a few pixels a card rather than the ragged
+grid. The arithmetic, derived on paper: the pitch is 206, so the old `floor((w - 34) / 206)` asked
+for 7 columns from `w >= 1476` while 7 cards plus their gaps genuinely need `w >= 1491` once the
+~15px scrollbar is taken off — the 6-then-1 band was exactly those 15 pixels, which is why it came
+and went with a resize. The new threshold is 1492, one pixel conservative.
 
-`app/(tabs)/index.tsx:120` computes `gridColumns` from the width measured by the `onLayout` on the
-wrapping `webGrid` `View` (`:440`), but the cards are laid out inside the FlatList's *content box*,
-which is narrower than that View by the vertical scrollbar (~15px in desktop Chrome) — and `floor`
-over a 206px pitch only has to be wrong by a pixel to return one column too many. `columnWrapperStyle`
-is `flexWrap: 'wrap'` (`:449`, `:797`), so FlatList packs `gridColumns` fixed-184px cards into a row
-that cannot hold them and the last one silently wraps. That is the whole pattern: the one lonely
-card per row is the overflowing column, not a grouping or a sort. It also means the symptom only
-appears in the band of window widths where the slack is smaller than the scrollbar, which is why it
-comes and goes with a window resize rather than being there at every size.
-
-Two halves to the fix, and the second is the one that matters:
-- Measure what the cards are actually laid out in, not its parent — `onLayout` on something inside
-  the scroll view, or subtract a scrollbar allowance from the measured width.
-- **Make the miscount impossible to express.** With `flexWrap` on the row, a column count that is
-  one too high renders as a plausible-looking ragged grid instead of failing visibly; without it,
-  the same miscount would be an obvious overflow. Letting the cards share the row's slack
-  (`flex: 1` with a `maxWidth`, rather than a fixed 184) also stops the grid leaving a card's worth
-  of empty gutter on the right at most widths.
-
-Discover's grid is not affected — it uses a fixed `numColumns` and no `columnWrapperStyle`
-(`app/(tabs)/discover.tsx:289`) — so scope is the Library grid only.
+**One thing that was not in the item.** `gridCardHovered`'s comment still says a wash would shift
+the cover art "off its exact 184px spec", and 184 is now a ceiling rather than an exact width — in
+the band where the cards absorb the slack a cover is a few pixels narrower. That is the trade the
+item asked for, and the comment's point about hover styling is unaffected, so it was left alone.
+`flexible` is a prop rather than being worked out inside the card because FlatList gives a
+single-column cell no row wrapper at all, and a flexGrow in a `column`-direction parent would
+stretch the card's height down the page; the one-column case keeps the fixed `gridCard`. Discover's
+grid was confirmed unaffected (fixed `numColumns`, no `columnWrapperStyle`) and untouched.
 
 **Check:** open the Library maximised on the wide monitor and drag the window slowly from narrow to
 full width. At every width every row holds the same number of cards, and no row ever holds a single
