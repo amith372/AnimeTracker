@@ -53,7 +53,9 @@ a 404 that surfaces as a generic error.
 `prd/1-recommendation-variety.md` is signed off in shape and has no open questions left that block
 a step. Plan 3 was added 2026-10-11 and is unscheduled.
 
-**What comes next, in order.**
+**What comes next, in order.** As of 2026-10-15 the first thing a session told "continue" should
+actually build is **plan 9's step 1** — items 1 and 2 below are both build-complete, and what is
+left in them needs you, not code.
 
 1. **Plan 5** — eight small fixes found 2026-10-14. **All eight are built**, and nothing in it is
    left to write — it has no `###` heading of its own any more. (Plan 2's `###` headings sit
@@ -75,8 +77,8 @@ a step. Plan 3 was added 2026-10-11 and is unscheduled.
 3. **Plan 9** — make "For you" fast. Unblocked, no PRD, changes nothing about what the list
    contains. Independent of plan 3, which would multiply it rather than replace it.
 4. **Plan 4** — the public share link. PRD signed off 2026-10-14, no open questions, start at its
-   step 1. Worth landing plan 7's step 4 first, so a share link is not put in front of an empty
-   Library.
+   step 1. Its one precondition is **met**: plan 7's step 4 landed 2026-10-15, so an empty Library
+   now offers somewhere to go rather than being what a share link puts people in front of.
 
 **Done and checked 2026-10-14:** plan 1 (recommendation variety), plan 6 (the sidebar greeting),
 and plan 8 (MAL sign-in on a localhost dev server, which unblocked every check touching sign-in,
@@ -85,7 +87,7 @@ linking, import or push).
 **Unscheduled:** plans 2 and 3.
 
 **Nothing is pushed yet, and there is now a condition on it.** `origin/master` is at `244f20f`,
-50 commits behind the branch as of 2026-10-15 (`git rev-list --count 244f20f..HEAD` — count it
+53 commits behind the branch as of 2026-10-15 (`git rev-list --count 244f20f..HEAD` — count it
 again rather than trusting this number). The user's standing "do not push" was
 lifted that day to: **push once we are done with the current build plan.**
 
@@ -201,7 +203,7 @@ proposing new ones.
 
 ---
 
-# Plan 4 — A public, account-free share link for your list · **scheduled, behind plans 5 and 6**
+# Plan 4 — A public, account-free share link for your list · **scheduled, unblocked**
 
 Asked for 2026-10-12; **PRD signed off and scheduled 2026-10-14**, to be picked up the moment
 plans 5 and 6 clear. Detail, decisions, the compliance reading and the step plan live in
