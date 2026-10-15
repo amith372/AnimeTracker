@@ -44,10 +44,12 @@ messages, the onboarding column width), plan 7's steps 1 and 4, and all three of
 Each one's **Check:** block says what to open and what failure looks like. Nothing is pushed until
 they are confirmed.
 
-**And one thing needs you before a check can pass at all:** plan 9 step 3 added
-`supabase/migrations/20261015000000_recommendation_lists.sql`, which needs `supabase db push` from
-a machine with the project linked. Until then the app degrades to its old behaviour rather than
-breaking.
+**The live project is in step with the code.** Plan 9 step 3's
+`20261015000000_recommendation_lists.sql` was pushed 2026-10-15 and `npx supabase migration list`
+shows every migration applied with no drift, so nothing is waiting on a schema change. The one
+deploy still outstanding is `delete-account` (`--use-api`), to pick up `recommendation_lists` in
+its sweep — belt-and-braces, since the table's `on delete cascade` is what actually removes the
+row, so it blocks no check.
 
 **Everything scheduled, in order:**
 
@@ -60,12 +62,18 @@ breaking.
    plan expecting to build. Read its section before any UI work anyway — it carries a map of every
    dialog and transient state the critique could not see.
 3. **Plan 9** — make "For you" fast. **All three steps built**, nothing left to write; the three
-   checks and one `db push` above are what remain. Changed nothing about what the list contains.
-   Plan 3 would multiply its gains rather than replace them.
+   checks above are what remain, and its migration is applied. Changed nothing about what the list
+   contains. Plan 3 would multiply its gains rather than replace them.
 4. **Plan 4** — the public share link. PRD signed off 2026-10-14, no open questions, its one
    precondition met (plan 7's step 4 landed). **This is what to build next**; start at its step 1.
 
 **Unscheduled:** plans 2 and 3. Plan 3 needs a PRD before any of it is touched.
+
+**Do not take "the first step not marked done" by file order** — this list is the order, not the
+file. Three sets of `###` headings sit *above* plan 4 and none of them is what to build: plan 2's
+two headings are unscheduled, plan 7's steps 2, 3 and 5 each need a PRD or sign-off first, and
+plan 5's two remaining items are built and waiting on a check. Plan 4's own steps are not `###`
+headings in this file at all — they live in `prd/2-public-share.md`.
 
 **Done and checked:** plan 1 (recommendation variety), plan 6 (the sidebar greeting) and plan 8
 (MAL sign-in on a localhost dev server, which unblocked every check touching sign-in, linking,
@@ -578,12 +586,10 @@ Two things worth carrying:
   `__tests__/recommendationCache.test.ts` pins that division of labour rather than leaving it to
   the comment, along with the ticks that must and must not invalidate a list.
 
-**This needs `supabase db push` before the check can pass** — this dev environment has no linked
-project to run it from. Until the migration is applied the app degrades to exactly its old
-behaviour (the read fails, nothing is stored, the pipeline runs on every mount), so nothing is
-broken in the meantime, but nothing is cached either. `delete-account` also wants a redeploy
-(`--use-api`) to pick up the sweep; it is belt-and-braces, since the table's `on delete cascade` is
-what actually removes the row.
+**The migration is applied** — pushed 2026-10-15 and confirmed against `npx supabase migration
+list`, so the check below can run as written. `delete-account` still wants a redeploy (`--use-api`)
+to pick up the new table in its sweep; that is belt-and-braces, since the table's `on delete
+cascade` is what actually removes the row, and it blocks nothing.
 
 **Check:** open "For you" and wait for the list, then reload the page — the same list appears with
 no progress line at all. Now mark the last unwatched season of a show as watched (or like one) and
