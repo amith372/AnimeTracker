@@ -79,6 +79,11 @@ export default function RootLayout() {
               <Stack.Screen name="onboarding/login" options={{ title: 'Log in', headerShown: false }} />
               <Stack.Screen name="onboarding/account" options={{ title: 'Account' }} />
               <Stack.Screen name="onboarding/privacy" options={{ title: 'Your data' }} />
+              {/* Plan 4's share controls. Top level rather than under onboarding/ — it is nothing
+                  to do with getting started, and it is reached from the Library's three-dot menu.
+                  Step 3's public page is a separate route (app/s/[slug].tsx) that a stranger
+                  opens; this one is the owner's side of it. */}
+              <Stack.Screen name="share" options={{ title: 'Share your list' }} />
               <Stack.Screen name="auth" options={{ headerShown: false }} />
               <Stack.Screen name="onboarding/reconcile" options={{ title: 'Import your MyAnimeList' }} />
             </Stack>

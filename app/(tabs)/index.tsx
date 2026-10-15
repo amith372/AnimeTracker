@@ -332,6 +332,22 @@ export default function LibraryScreen() {
               <Text variant="bodyLarge">Export to MyAnimeList</Text>
             </Pressable>
           )}
+          {/* Plan 4's public share link (app/share.tsx). Not gated on `malLinked`, unlike the three
+              items above: sharing publishes what is in our own Postgres and never touches MAL, so
+              an account that imported nothing and added shows by hand can still share. Lives here
+              rather than on the account screen because it is something you do with your library,
+              not a setting on your account. */}
+          <Pressable
+            style={styles.moreMenuRow}
+            accessibilityRole="menuitem"
+            onPress={() => {
+              setMoreMenuVisible(false);
+              router.push('/share');
+            }}
+          >
+            <MaterialCommunityIcons name="link-variant" size={22} color={colors.textPrimary} />
+            <Text variant="bodyLarge">Share your list</Text>
+          </Pressable>
           {/* Phase 7's app-account system — see app/onboarding/account.tsx, which is also where
               signing out, converting a guest session to a real account, and linking MyAnimeList
               (if not already linked) all live now. Reachable at every session state — a guest is

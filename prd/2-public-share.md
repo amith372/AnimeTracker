@@ -209,7 +209,15 @@ implementation returned.
 
 ### Step 1 — The table and the sharer's own controls · **built 2026-10-15, check outstanding**
 
-**Three things it settled that the text below did not say.** Recorded here rather than in
+**The controls live on their own screen** (`app/share.tsx`), reached from the Library's three-dot
+menu — not in a block on the account screen as the bullet below says. Moved 2026-10-15 at the
+user's request, and right for two reasons beyond that: sharing is something you do with your
+library rather than a setting on your account, and the account screen was already the longest in
+the app (email, password, MAL linking, the notice, two exits), so a URL and a text field at the
+bottom of it put the thing you return to behind the thing you visit once. Step 3's public page is
+a separate route (`app/s/[slug].tsx`) that a stranger opens; this one is the owner's side.
+
+**Three further things step 1 settled that the text below did not say.** Recorded here rather than in
 `build_plan.md` because this file is what later steps read, and the first of them contradicts the
 bullet two paragraphs down:
 
