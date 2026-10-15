@@ -320,6 +320,15 @@ something to the person tracking and to nobody else, and a public bucket reading
 details)" publishes something faintly embarrassing for no reader's benefit. Neither changes what
 `deriveSeriesStatus` derived.
 
+**The Series/Movies filter is the Library's COUNT lens, not a type filter.** Asked for 2026-10-15,
+and settled as the lens after the first reading ("rows whose type is STANDALONE_MOVIE") turned out
+to leave the 176 film entries sitting inside TV series out of reach of every filter on the page.
+Picking Series re-derives each row with `deriveScopedSeriesStatus` over its seasons only — Demon
+Slayer reads "Watched 5/5 seasons" there and "Watched 1/2 movies" under Movies — and a show with
+both halves appears under both, which is honest rather than duplicated. The page carries
+`manualStatus` and the raw entries for exactly this, so the scoped answer stays the real function's
+answer rather than the mapping's impression of one.
+
 **Viewer-side filtering is not the per-link filter the scope rules out.** That one is the *sharer*
 restricting what gets published, which is still out. This is a reader narrowing a list they can
 already see in full, and it publishes nothing extra.

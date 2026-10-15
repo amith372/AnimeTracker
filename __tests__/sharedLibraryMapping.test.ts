@@ -10,6 +10,7 @@
 //
 // Every figure below is counted by hand from the entries written above it, never read off what the
 // implementation returned.
+import { deriveScopedSeriesStatus } from '@/domain/seriesStatus';
 import {
   sharedLibraryHeading,
   toSharedLibrary,
@@ -246,6 +247,47 @@ describe('toSharedLibrary', () => {
 
     expect(row.status).toEqual({ kind: 'DROPPED' });
     expect(row.progress.seasons).toEqual({ watched: 1, total: 4 });
+  });
+
+  test('carries what the page needs to re-derive under a lens', () => {
+    // The Series/Movies filter on the public page is the Library's COUNT scope, not a row filter:
+    // it re-runs the real deriveScopedSeriesStatus over one half of the entries. That only works
+    // if the mapping hands the page both inputs that function takes, so this pins them.
+    const entries = [
+      season(1, 'WATCHED'),
+      season(2, 'WATCHED'),
+      season(3, 'WATCHED'),
+      season(4, 'WATCHED'),
+      season(5, 'WATCHED'),
+      movie(1, 'WATCHED'),
+      movie(2, 'UNWATCHED'),
+    ];
+    const [row] = toSharedLibrary(payload([series({ entries })])).series;
+
+    expect(row.manualStatus).toBe('NONE');
+    expect(row.entries).toHaveLength(7);
+
+    const input = row.entries.map((e) => ({ kind: e.kind, orderIndex: e.orderIndex, watchState: e.watchState }));
+
+    // Both halves: 5 of 5 seasons are done but one film is not, so the show is still partial.
+    expect(row.status).toEqual({
+      kind: 'WATCHED_PARTIAL',
+      watchedSeasons: 5,
+      totalSeasons: 5,
+      watchedMovies: 1,
+      totalMovies: 2,
+    });
+    // Seasons only: every season is watched and the unwatched film is out of scope, so this half
+    // reads as finished — the lens is what makes "Watched" a true answer here rather than a lie.
+    expect(deriveScopedSeriesStatus(row.manualStatus, input, 'SEASONS')).toEqual({ kind: 'WATCHED' });
+    // Films only: 1 of 2, with no seasons counted at all.
+    expect(deriveScopedSeriesStatus(row.manualStatus, input, 'MOVIES')).toEqual({
+      kind: 'WATCHED_PARTIAL',
+      watchedSeasons: 0,
+      totalSeasons: 0,
+      watchedMovies: 1,
+      totalMovies: 2,
+    });
   });
 
   test('an empty library maps to an empty list, not a failure', () => {

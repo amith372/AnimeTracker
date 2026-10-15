@@ -47,7 +47,16 @@ export interface SharedSeries {
   coverUrl: string | null;
   genres: string[];
   type: SeriesType;
+  /** The status as the owner's Library shows it — both halves counted. */
   status: SeriesStatus;
+  /**
+   * The two inputs `deriveSeriesStatus` was given, kept so the page can ask the same function a
+   * narrower question: "counting seasons only, where is this?" (`deriveScopedSeriesStatus`, the
+   * Library's own COUNT lens). Re-deriving beats storing a second precomputed status, because the
+   * scoped answer stays the real function's answer rather than this file's impression of it.
+   */
+  manualStatus: ManualStatus;
+  entries: SharedEntryPayload[];
   /**
    * Resolved-of-total for both halves, as a plain tally.
    *
@@ -118,6 +127,8 @@ export function toSharedLibrary(payload: SharedLibraryPayload): SharedLibrary {
             watchState: entry.watchState,
           })),
         ),
+        manualStatus: row.manualStatus,
+        entries,
         progress: { seasons: tally(entries, 'TV_SEASON'), movies: tally(entries, 'MOVIE') },
       };
     }),

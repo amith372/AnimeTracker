@@ -36,8 +36,8 @@ import { AtLogoMark } from '@/components/AtLogoMark';
 import { LoadFailure } from '@/components/LoadFailure';
 import { MalAttribution } from '@/components/MalAttribution';
 import { SeriesTitleText } from '@/components/SeriesTitleText';
-import type { SeriesStatus } from '@/domain/seriesStatus';
-import { progressPhrase, statusLabel } from '@/domain/statusLabel';
+import { deriveScopedSeriesStatus, type CountScope, type SeriesStatus } from '@/domain/seriesStatus';
+import { progressPhrase, statusLabel, type ProgressHalves } from '@/domain/statusLabel';
 import { useIsWideWeb } from '@/hooks/useWebLayout';
 import { useSharedLibrary } from '@/repositories/SharedLibraryRepository';
 import { sharedLibraryHeading, type SharedSeries } from '@/repositories/sharedLibraryMapping';
@@ -117,6 +117,10 @@ export default function SharedListScreen() {
   const { library, notShared, isLoading, error, refetch } = useSharedLibrary(slug);
 
   const [bucket, setBucket] = useState<BucketKey | 'ALL'>('ALL');
+  // Null is "both halves", the way the genre chips work — pressing a selected one clears it. A
+  // second "Everything" row would be a second reset for the same page and leave two of them
+  // disagreeing about what they reset.
+  const [scope, setScope] = useState<Exclude<CountScope, 'ALL'> | null>(null);
   const [genre, setGenre] = useState<string | null>(null);
   const all = useMemo(() => library?.series ?? [], [library]);
 
@@ -125,35 +129,52 @@ export default function SharedListScreen() {
   // filter changes.
   const summary = useMemo(() => {
     const counts: Record<string, number> = {};
+    // How many shows have a seasons half and how many have a films half. A show with both is in
+    // both, which is the honest answer — Demon Slayer genuinely is five seasons and two films.
+    const kinds: Record<string, number> = { SEASONS: 0, MOVIES: 0 };
     let watchedEntries = 0;
     let totalEntries = 0;
     for (const series of all) {
       const key = bucketOf(series.status);
       counts[key] = (counts[key] ?? 0) + 1;
+      if (series.progress.seasons.total > 0) kinds.SEASONS += 1;
+      if (series.progress.movies.total > 0) kinds.MOVIES += 1;
       watchedEntries += series.progress.seasons.watched + series.progress.movies.watched;
       totalEntries += series.progress.seasons.total + series.progress.movies.total;
     }
-    return { counts, watchedEntries, totalEntries };
+    return { counts, kinds, watchedEntries, totalEntries };
   }, [all]);
 
+  // Status, then kind, then genre. The order is what the counts are read against: status and kind
+  // both count the whole library (so their numbers are stable as you press things), while the
+  // genres on offer are rebuilt from whatever the first two left.
   const byBucket = useMemo(
     () => (bucket === 'ALL' ? all : all.filter((series) => bucketOf(series.status) === bucket)),
     [all, bucket],
   );
+  const byKind = useMemo(
+    () =>
+      scope === 'SEASONS'
+        ? byBucket.filter((series) => series.progress.seasons.total > 0)
+        : scope === 'MOVIES'
+          ? byBucket.filter((series) => series.progress.movies.total > 0)
+          : byBucket,
+    [byBucket, scope],
+  );
 
-  // Built from what the status filter already left, so a genre chip can never match nothing. The
+  // Built from what the filters above already left, so a genre chip can never match nothing. The
   // selection is then applied only if it survived that rebuild, which avoids an effect to prune it
   // — switching status with a genre picked simply shows the status, rather than an empty list the
   // viewer has to work out how to escape.
   const genreOptions = useMemo(() => {
     const seen = new Set<string>();
-    for (const series of byBucket) for (const g of series.genres) seen.add(g);
+    for (const series of byKind) for (const g of series.genres) seen.add(g);
     return [...seen].sort();
-  }, [byBucket]);
+  }, [byKind]);
   const activeGenre = genre && genreOptions.includes(genre) ? genre : null;
   const rows = useMemo(
-    () => (activeGenre ? byBucket.filter((series) => series.genres.includes(activeGenre)) : byBucket),
-    [byBucket, activeGenre],
+    () => (activeGenre ? byKind.filter((series) => series.genres.includes(activeGenre)) : byKind),
+    [byKind, activeGenre],
   );
 
   if (isLoading) {
@@ -225,6 +246,9 @@ export default function SharedListScreen() {
       total={all.length}
       active={bucket}
       onSelect={(next) => setBucket(next)}
+      kindCounts={summary.kinds}
+      activeKind={scope}
+      onSelectKind={(next) => setScope(next === scope ? null : next)}
       genres={genreOptions}
       activeGenre={activeGenre}
       onSelectGenre={(next) => setGenre(next === activeGenre ? null : next)}
@@ -240,7 +264,7 @@ export default function SharedListScreen() {
       // index to get wrong.
       keyExtractor={(_, index) => String(index)}
       contentContainerStyle={styles.listContent}
-      renderItem={({ item }) => <SeriesRow series={item} wide={isWide} />}
+      renderItem={({ item }) => <SeriesRow series={item} wide={isWide} scope={scope} />}
       ListHeaderComponent={isWide ? null : <View style={styles.narrowFilters}>{filters}</View>}
       ListEmptyComponent={
         <View style={styles.emptyRows}>
@@ -293,6 +317,9 @@ function StatusFilters({
   total,
   active,
   onSelect,
+  kindCounts,
+  activeKind,
+  onSelectKind,
   genres,
   activeGenre,
   onSelectGenre,
@@ -302,6 +329,9 @@ function StatusFilters({
   total: number;
   active: BucketKey | 'ALL';
   onSelect: (key: BucketKey | 'ALL') => void;
+  kindCounts: Record<string, number>;
+  activeKind: Exclude<CountScope, 'ALL'> | null;
+  onSelectKind: (scope: Exclude<CountScope, 'ALL'>) => void;
   genres: string[];
   activeGenre: string | null;
   onSelectGenre: (genre: string) => void;
@@ -346,6 +376,44 @@ function StatusFilters({
     );
   });
 
+  // Not a filter over *rows* but a lens over each one — the Library's own COUNT scope
+  // (deriveScopedSeriesStatus), which is why picking Series hides the film half of every row's
+  // progress rather than merely hiding the shows that are films. Demon Slayer under Series reads
+  // "Watched 5/5 seasons"; under Movies, "Watched 1/2 movies". A show with both halves appears
+  // under both, which is the honest answer rather than a duplicate.
+  //
+  // This is the reason it is not a plain `type` filter: that one would have put the 176 films
+  // sitting inside TV series out of reach of every filter on the page, visible only under
+  // Everything.
+  //
+  // Hidden outright unless the library actually holds both kinds. Most libraries are all series,
+  // and a "Movies (0)" row is a filter that can only disappoint.
+  const KINDS: { key: Exclude<CountScope, 'ALL'>; label: string }[] = [
+    { key: 'SEASONS', label: 'Series' },
+    { key: 'MOVIES', label: 'Movies' },
+  ];
+  const kindsShown = KINDS.filter((k) => (kindCounts[k.key] ?? 0) > 0);
+  const kindList = kindsShown.map((k) => {
+    const selected = k.key === activeKind;
+    return (
+      <Pressable
+        key={k.key}
+        onPress={() => onSelectKind(k.key)}
+        accessibilityRole="button"
+        accessibilityState={{ selected }}
+        style={[wide ? styles.sideRow : styles.chip, selected && (wide ? styles.sideRowActive : styles.chipActive)]}
+      >
+        <Text variant="bodySmall" style={selected ? styles.filterTextActive : styles.filterText}>
+          {k.label}
+        </Text>
+        {wide && <View style={styles.spacer} />}
+        <Text variant="bodySmall" style={selected ? styles.filterCountActive : styles.filterCount}>
+          {kindCounts[k.key] ?? 0}
+        </Text>
+      </Pressable>
+    );
+  });
+
   const genreList = genres.map((g) => {
     const selected = g === activeGenre;
     return (
@@ -370,6 +438,14 @@ function StatusFilters({
           STATUS
         </Text>
         <View style={styles.sideGroup}>{statusList}</View>
+        {kindsShown.length > 1 && (
+          <>
+            <Text variant="labelSmall" style={styles.sideHeading}>
+              KIND
+            </Text>
+            <View style={styles.sideGroup}>{kindList}</View>
+          </>
+        )}
         {genres.length > 1 && (
           <>
             <Text variant="labelSmall" style={styles.sideHeading}>
@@ -392,6 +468,16 @@ function StatusFilters({
       >
         {statusList}
       </ScrollView>
+      {kindsShown.length > 1 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.chipRow}
+          contentContainerStyle={styles.chipRowContent}
+        >
+          {kindList}
+        </ScrollView>
+      )}
       {genres.length > 1 && (
         <ScrollView
           horizontal
@@ -406,6 +492,8 @@ function StatusFilters({
   );
 }
 
+const EMPTY_HALF = { watched: 0, total: 0 };
+
 /**
  * One show. Thumbnail, title, genres, then the status and how far through it is.
  *
@@ -413,15 +501,47 @@ function StatusFilters({
  * reader of someone else's list actually wants and a cover cannot say. On a phone the status block
  * sits under the title instead of beside it, because 216px of it next to a 44px thumbnail leaves a
  * title about four characters wide.
+ *
+ * Under a lens (`scope`) the status is **re-derived**, not filtered: `deriveScopedSeriesStatus` is
+ * the app's own function running over one half of the entries, so "Watched 5/5 seasons" under
+ * Series and "Watched 1/2 movies" under Movies are both answers the Library would give to the same
+ * question. Hiding half the phrase while leaving the status pill saying something about both
+ * halves would be this page inventing a third reading of the data.
  */
-function SeriesRow({ series, wide }: { series: SharedSeries; wide: boolean }) {
+function SeriesRow({
+  series,
+  wide,
+  scope,
+}: {
+  series: SharedSeries;
+  wide: boolean;
+  scope: Exclude<CountScope, 'ALL'> | null;
+}) {
   const styles = useStyles();
-  const label = statusLabel(series.status);
-  const colour = statusDotColor(series.status.kind);
-  const done = series.progress.seasons.watched + series.progress.movies.watched;
-  const total = series.progress.seasons.total + series.progress.movies.total;
+  const status = scope
+    ? deriveScopedSeriesStatus(
+        series.manualStatus,
+        series.entries.map((entry) => ({
+          kind: entry.kind,
+          orderIndex: entry.orderIndex,
+          watchState: entry.watchState,
+        })),
+        scope,
+      )
+    : series.status;
+  // The halves the bar and the figures count, narrowed the same way the status just was.
+  const halves: ProgressHalves =
+    scope === 'SEASONS'
+      ? { seasons: series.progress.seasons, movies: EMPTY_HALF }
+      : scope === 'MOVIES'
+        ? { seasons: EMPTY_HALF, movies: series.progress.movies }
+        : series.progress;
+  const label = statusLabel(status);
+  const colour = statusDotColor(status.kind);
+  const done = halves.seasons.watched + halves.movies.watched;
+  const total = halves.seasons.total + halves.movies.total;
   const fraction = total > 0 ? done / total : 0;
-  const counts = progressPhrase(series.progress);
+  const counts = progressPhrase(halves);
 
   const statusBlock = (
     <View style={wide ? styles.statusColumn : styles.statusStacked}>
