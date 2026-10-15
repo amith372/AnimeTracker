@@ -55,15 +55,15 @@ a step. Plan 3 was added 2026-10-11 and is unscheduled.
 
 **What comes next, in order.**
 
-1. **Plan 5** — eight small fixes found 2026-10-14. **Six are built; two remain**, and the
-   remaining three are listed under `###` headings while the built ones are compressed to a
-   paragraph each — so "the first `###` heading" is the next thing to build. The fifth (the Edge
-   Function error messages) is built but **its check has not been run yet**: it needs
+1. **Plan 5** — eight small fixes found 2026-10-14. **Seven are built; one remains**, and the
+   remaining one is listed under a `###` heading while the built ones are compressed to a
+   paragraph each — so "the first `###` heading" is the next thing to build. Three built items
+   are still waiting on a check the user runs: the Edge Function error messages need
    `supabase secrets set GROQ_API_KEY=invalid` and a redeploy of `taste-profile` and
-   `taste-candidates` (with `--use-api`), which is the user's to run. The sixth (the onboarding
-   column width) is built and measured but its live check — a maximised browser, then the Android
-   emulator — has not been run either. The remaining two, the guest's two exits and the Library
-   grid laying out 6 cards then 1, need nothing from the user and can be built straight away.
+   `taste-candidates` (with `--use-api`); the onboarding column width needs a maximised browser,
+   then the Android emulator; and the guest's single exit needs a guest session plus the Supabase
+   dashboard. The remaining item, the Library grid laying out 6 cards then 1, needs nothing from
+   the user and can be built straight away.
 2. **Plan 7** — execute what the design critique found. **Scheduled 2026-10-14 at the user's
    request**, after plan 5. Read its own section first: it carries a map of every dialog and
    transient state the critique could not see, and an ordering note about plan 5.
@@ -342,47 +342,30 @@ like it overflowed and the measurement says it doesn't** — the window-size scr
 layout viewport. Privacy and reconcile both need a session, so neither could be reached headlessly;
 they share account's verified container exactly, and the user's check is what covers them.
 
-### A guest has two ways out and only one of them deletes anything
-`app/onboarding/account.tsx` offers a guest both **Leave guest mode (discards this list)** (`:215`,
-→ `logOutAccount`) and **Delete everything** (`:113`, → `deleteAccountAndData`). For a *real*
-account those are properly different actions — one ends a session you can come back to, the other
-erases the library, the MAL link and the `auth.users` row. **For a guest the difference collapses**,
-because an anonymous session can never be signed into again: both lose the library, and the only
-thing that actually differs is invisible to the person choosing. "Leave guest mode" *abandons* the
-rows on the server forever; "Delete everything" erases them. The orphan that leaves behind is not
-hypothetical — the stale `178e75f9…` user in "What is still owed", clearable only from the
-dashboard, is one.
-
-**So the guest branch gets one exit, and it is the one that deletes.** Replace both buttons with a
-single `Leave guest mode and delete this list` calling `deleteAccountAndData()`, which already
-handles an anonymous session unchanged and says so in its own comment
-(`supabase/functions/delete-account/index.ts:66`). A real account keeps both, worded as they are.
-
-**And the guest branch gains a `Log in` button**, beside its existing `Create account`. Signing out
-is currently a guest's only route to the login screen, so collapsing the exits would otherwise mean
-someone who already owns an account must delete their guest list to reach it. The email and
-password fields are already on screen and `logInWithEmail` already exists
-(`src/account/accountRepository.ts:52`) — this is a button and a handler, and it closes a gap that
-was there before this item anyway.
-
-Wording, since that dialog is now the only thing between a guest and a permanent delete: the title
-and the button say **guest** and **list**, never "account" — a guest has no account in any sense
-they would recognise. Keep the existing dialog's line that their MyAnimeList list is untouched; it
-is the most reassuring sentence on the screen and it currently sits *below* the alarming one.
-`dataSection()` takes a wording pair rather than being copied per branch — the whole reason that
-fragment is shared is that a delete button must not go missing from one of them.
-
-**Supersedes half of the design-critique plan's step 4** (`# Plan 7 — What the design critique
-found`), which planned to put the old sign-out tap behind a confirmation; that tap no longer exists
-once this lands. What survives from it is naming the count in this dialog, and the disclosure line
-under the login screen's guest button.
+A guest had two ways out and only one deleted anything · **done 2026-10-15** — the guest branch
+of `app/onboarding/account.tsx` now has exactly one exit, `Leave guest mode and delete this list`,
+calling `deleteAccountAndData()`; `logOutAccount` is reachable from the real-account branch only.
+`dataSection()` takes a `DeleteWording` pair (button, title, scope, warning, confirm) rather than
+being branched on inside, so the two branches' words can differ while the delete button's existence
+cannot. The guest wording never says "account" or "log out" — both are false for an anonymous
+session. **Scope leads and the warning follows**, decided 2026-10-15: saying what is and isn't
+deleted before the irreversible sentence is what makes the alarm land on the right thing, and it
+stops the one reassuring line (MyAnimeList untouched) sitting under a paragraph. The guest branch
+also gained `Log in to an existing account`, since signing out was a guest's only route to the
+login screen and collapsing the exits would otherwise have made owning an account cost the guest
+list. **One thing that was not in the item and should be read before the check:** logging in from
+a guest session abandons the guest's rows exactly as signing out did — the same orphan this item
+exists to stop — so the button carries a `bodySmall` line saying the list stays behind and offering
+the delete first. Cut it if that is the wrong call; the alternative is a confirmation dialog on
+`Log in`, which is more machinery than a disclosure.
 
 **Check:** continue as a guest and open Account. There is exactly one way out, it names the guest
 list rather than an account, and confirming it leaves nothing behind — verify in the Supabase
-dashboard that the `auth.users` row is gone, not merely signed out. Then confirm `Log in` reaches
-an existing account from the guest branch without deleting anything, and that a real account still
-sees both log-out and Delete everything, unchanged. Failure: a guest told the app is deleting an
-"account", a second silent exit still present, or an `auth.users` row surviving the delete.
+dashboard that the `auth.users` row is gone, not merely signed out. Then confirm `Log in to an
+existing account` reaches an existing account from the guest branch without deleting anything, and
+that a real account still sees both log-out and Delete everything, unchanged. Failure: a guest told
+the app is deleting an "account", a second silent exit still present, or an `auth.users` row
+surviving the delete.
 
 Discover's Add dialog truncated the synopsis · **done 2026-10-14** — `AddSeriesDialog` now expands
 the summary in place, with the same "Read more" / "Show less" wording as Detail and Preview. It

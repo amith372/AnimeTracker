@@ -9,6 +9,14 @@
 // Three render branches, not two: a real signed-in account, a guest (anonymous session — see
 // src/account/guestMode.ts), and signed-out. The guest branch is what lets someone who started
 // without an account upgrade in place, keeping everything they already tracked.
+//
+// The two signed-in branches get *different* exits, which is the one place they deliberately
+// diverge. A real account has two genuinely different actions — log out ends a session you can
+// come back to, Delete everything erases the library and the auth.users row. For a guest that
+// difference collapses: an anonymous session can never be signed into again, so signing out
+// abandons the rows on the server forever while deleting erases them, and the only thing that
+// differs is invisible to the person choosing. So the guest branch has exactly one exit and it is
+// the one that deletes.
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
@@ -19,6 +27,40 @@ import { useIsGuest } from '@/account/guestMode';
 import { linkMalAccount, useMalLinkStatus } from '@/account/malLinkRepository';
 import { layout, radii, spacing } from '@/theme/colors';
 import { makeStyles, useThemeColors } from '@/theme/useTheme';
+
+// The words on the destructive exit, which are the whole difference between the two signed-in
+// branches (see the header). A pair of constants rather than inline strings so neither branch can
+// quietly end up with the other's wording — for a guest, "account" and "log out" are both false,
+// and this dialog is now the only thing between them and a permanent delete.
+type DeleteWording = {
+  button: string;
+  title: string;
+  // Reads first: what is, and isn't, being deleted.
+  scope: string;
+  // Reads second: why it can't be undone.
+  warning: string;
+  confirm: string;
+};
+
+const ACCOUNT_DELETE_WORDING: DeleteWording = {
+  button: 'Delete everything',
+  title: 'Delete everything?',
+  scope:
+    'This deletes everything this app stores — your library, your MyAnimeList link and the account itself. ' +
+    'Your list on MyAnimeList is not touched; it stays exactly as it is on their site.',
+  warning: 'It can’t be undone.',
+  confirm: 'Delete everything',
+};
+
+const GUEST_DELETE_WORDING: DeleteWording = {
+  button: 'Leave guest mode and delete this list',
+  title: 'Leave guest mode and delete this list?',
+  scope:
+    'This deletes what this app has stored for your guest session — the shows you’ve tracked here and your ' +
+    'MyAnimeList link. Your list on MyAnimeList is not touched; it stays exactly as it is on their site.',
+  warning: 'A guest list can’t be signed into again, so this can’t be undone.',
+  confirm: 'Delete this list',
+};
 
 export default function AccountScreen() {
   const styles = useStyles();
@@ -70,9 +112,10 @@ export default function AccountScreen() {
     if (!result.success) setMessage(result.message);
   }
 
-  // For a real account this ends the session outright. For a guest (anonymous session) this is
-  // effectively "discard this guest library" — there's no way back into the same anonymous
-  // identity once its session is gone, which is the intended lifespan (see guestMode.ts).
+  // The real-account branch's exit only. A guest never reaches this: signing out of an anonymous
+  // session abandons its rows on the server with no way back into the same identity, which is the
+  // silent half of the exit problem described in the header — so the guest branch offers
+  // handleDeleteEverything instead.
   async function handleLogOut() {
     setBusy(true);
     await logOutAccount();
@@ -103,33 +146,38 @@ export default function AccountScreen() {
   // Rendered in both signed-in branches (real account and guest), because both have real data and
   // both are offered the same two things: the notice to re-read, and the way out. Written once as a
   // local fragment rather than copied into each branch — a delete button that exists in one branch
-  // only is exactly the kind of drift that leaves a guest with no way to delete anything.
-  function dataSection() {
+  // only is exactly the kind of drift that leaves a guest with no way to delete anything. The
+  // branch-specific half is passed in rather than branched on in here, so the structure (and the
+  // button's existence) can't diverge even though the words have to: a guest has no "account" in
+  // any sense they would recognise, and for them this is also the only exit.
+  function dataSection(wording: DeleteWording) {
     return (
       <>
         <Button mode="text" onPress={() => router.push('/onboarding/privacy')} disabled={busy} style={styles.button}>
           What this app stores
         </Button>
         <Button mode="outlined" onPress={() => setDeleteConfirmVisible(true)} disabled={busy} textColor={colors.red} style={styles.button}>
-          Delete everything
+          {wording.button}
         </Button>
         <Portal>
           <Dialog visible={deleteConfirmVisible} onDismiss={() => setDeleteConfirmVisible(false)}>
-            <Dialog.Title>Delete everything?</Dialog.Title>
+            <Dialog.Title>{wording.title}</Dialog.Title>
             <Dialog.Content>
-              <Text variant="bodyMedium">
-                This permanently deletes your library, your MyAnimeList link and this account
-                itself. It can’t be undone.
+              {/* Scope first, then why it can't be undone: saying what is and isn't being deleted
+                  before the alarming sentence is what makes the alarm land on the right thing, and
+                  it stops the one reassuring line on the screen sitting under a paragraph. */}
+              <Text variant="bodyMedium">{wording.scope}</Text>
+              <Text variant="bodyMedium" style={styles.dialogNote}>
+                {wording.warning}
               </Text>
               <Text variant="bodyMedium" style={styles.dialogNote}>
-                Your list on MyAnimeList is not touched — it stays exactly as it is on their site.
-                The shared anime details this app caches stay too; they hold nothing about you.
+                The shared anime details this app caches stay; they hold nothing about you.
               </Text>
             </Dialog.Content>
             <Dialog.Actions>
               <Button onPress={() => setDeleteConfirmVisible(false)}>Cancel</Button>
               <Button onPress={handleDeleteEverything} textColor={colors.red}>
-                Delete everything
+                {wording.confirm}
               </Button>
             </Dialog.Actions>
           </Dialog>
@@ -158,7 +206,7 @@ export default function AccountScreen() {
   // no email/password yet. Two ways to make it permanent: link MyAnimeList (works unchanged, it
   // attaches to whichever session is currently signed in), or set an email/password below, which
   // upgrades this same session in place rather than starting a new one — either way nothing already
-  // added is lost. The only way to lose it is "Leave guest mode" below.
+  // added is lost. The only way to lose it is the delete at the bottom, which says so.
   if (session && isGuest) {
     return (
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -177,7 +225,7 @@ export default function AccountScreen() {
         )}
         {malLinked === true && (
           <Text variant="bodySmall" style={styles.hint}>
-            MyAnimeList is linked to this account.
+            MyAnimeList is linked.
           </Text>
         )}
         <TextInput
@@ -214,10 +262,17 @@ export default function AccountScreen() {
         >
           Create account
         </Button>
-        <Button mode="outlined" onPress={handleLogOut} loading={busy} disabled={busy} style={styles.button}>
-          Leave guest mode (discards this list)
+        {/* Log in, because signing out used to be a guest's only route to the login screen — so
+            with one exit left, someone who already owns an account would otherwise have to delete
+            their guest list to reach it. The fields above are the same two this needs. */}
+        <Button mode="text" onPress={handleLogIn} disabled={busy || !email || !password} style={styles.button}>
+          Log in to an existing account
         </Button>
-        {dataSection()}
+        <Text variant="bodySmall" style={styles.hint}>
+          Logging in switches to that account. This guest list stays behind and can’t be reached
+          again — delete it below first if you don’t want it kept.
+        </Text>
+        {dataSection(GUEST_DELETE_WORDING)}
       </ScrollView>
       </KeyboardAvoidingView>
     );
@@ -254,7 +309,7 @@ export default function AccountScreen() {
           <Button mode="outlined" onPress={handleLogOut} loading={busy} disabled={busy} style={styles.button}>
             Log out
           </Button>
-          {dataSection()}
+          {dataSection(ACCOUNT_DELETE_WORDING)}
         </View>
       </View>
     );
