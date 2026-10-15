@@ -44,6 +44,15 @@ messages, the onboarding column width), plan 7's steps 1 and 4, and all three of
 Each one's **Check:** block says what to open and what failure looks like. Nothing is pushed until
 they are confirmed.
 
+**The monthly sync has never actually worked, and now can.** Found 2026-10-15 while checking
+plan 4 step 3: `series`/`series_entries` were granted to `authenticated` only, never to
+`service_role` (every table added after Phase 7 got both). So `mal-monthly-sync` — which selects
+eligible series, inserts new `TV_SEASON` rows and flips `new_season_available`, all as
+service_role — has been failing with "permission denied for table series" since Phase 11, in the
+cron run and behind the "Check for new seasons" button alike. `20261015020000_service_role_library_grants.sql`
+fixes it and is pushed. **Plan 11's check is worth re-running now that it can pass**, and a new
+season appearing is the only way to know it really does.
+
 **The live project is in step with the code, and nothing is owed on it.**
 `20261015010000_shared_libraries.sql` was pushed 2026-10-15 and `npx supabase migration list` shows
 every migration applied with no drift. `delete-account` was deployed the same day (`--use-api`,
