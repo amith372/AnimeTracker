@@ -116,3 +116,27 @@ export function callTasteCandidates(payload: {
 export function callDeleteAccount(): Promise<{ deleted: boolean; remaining: string[] }> {
   return invoke('delete-account');
 }
+
+/**
+ * Plan 4 step 3's read of a public share link. The only call in this file a viewer with no account
+ * makes — `functions.invoke` attaches the anon key every bundle carries, which is exactly how
+ * mal-discover already serves guests, so nothing here needs a session.
+ *
+ * Returns `null` for a slug that isn't being shared rather than throwing, because that is not an
+ * error: it is the normal answer for a revoked link, a mistyped one, or one that never existed,
+ * and the page renders the same plain "this list isn't being shared" for all three. Anything else
+ * — a 500, a dropped connection — still throws, so the page can tell "nothing here" apart from
+ * "something broke" and offer a retry only for the second.
+ *
+ * Deliberately not routed through `invoke` above: that helper turns a 404 into a thrown
+ * UserFacingError, which would make the distinction above a string comparison.
+ */
+export async function callSharedLibrary(slug: string): Promise<unknown | null> {
+  const { data, error } = await supabase.functions.invoke('shared-library', { body: { slug } });
+  if (error) {
+    const status = (error as { context?: Response }).context?.status;
+    if (status === 404) return null;
+    throw error;
+  }
+  return data;
+}

@@ -65,9 +65,10 @@ version 3), which cleared the one deploy that had been outstanding and picked up
    contains. Plan 3 would multiply its gains rather than replace them.
 4. **Plan 4** — the public share link. PRD signed off 2026-10-14, no open questions. **Step 1
    landed and was checked 2026-10-15** (the table, the sharer's controls — create, copy, rename,
-   and a revoke that genuinely mints a fresh slug on re-share). **Step 2 — the public read
-   function — is what to build next**, and its own steps live in `prd/2-public-share.md`, not
-   here. Nothing is public until step 3.
+   and a revoke that genuinely mints a fresh slug on re-share). **Step 2 landed 2026-10-15 and is
+   deployed**, with its curl check outstanding. **Step 3 landed 2026-10-15**, check outstanding.
+   **Step 4 — the privacy notice and the CLAUDE.md amendment — is what is left**, and the steps
+   live in `prd/2-public-share.md`, not here.
 
 **Unscheduled:** plans 2 and 3. Plan 3 needs a PRD before any of it is touched.
 

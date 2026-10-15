@@ -1,0 +1,9 @@
+# Share links are unlisted, not secret-by-obscurity alone: an unguessable slug keeps a list from
+# being found, and this keeps a link someone pasted in public from being archived and surfaced in
+# search long after it was revoked. See prd/2-public-share.md.
+#
+# This withholds nothing from MyAnimeList: §2(b) of their API agreement grants them crawler rights
+# over pages displaying MyAnimeList Content, and that is about their access to our pages rather
+# than about the rest of the web's.
+User-agent: *
+Disallow: /s/

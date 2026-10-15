@@ -301,7 +301,20 @@ header describes them ("the taste profile", "the MAL token table") instead of na
   again, confirming it returns nothing. Failure looks like a response for a revoked slug, or any
   field in it you wouldn't post publicly.
 
-### Step 3 — The viewer's page
+### Step 3 — The viewer's page · **built 2026-10-15, check outstanding**
+
+Two things it settled. **`noindex` is set against the DOM in an effect, not through
+`expo-router/head`** — that component wraps react-helmet-async and needs a `Head.Provider` at the
+app root, which is a change to every screen for one meta tag. It is the weaker of the two guards
+and knows it: `public/robots.txt`'s disallow is what stops a crawler reaching the page at all, and
+the meta tag catches the ones that render first. (`public/` is copied into `dist/` by
+`expo export --platform web` — verified, not assumed.)
+
+**The response carries no ids, so the list is keyed by index** — correct here rather than a
+shortcut, since it renders once per load with no reordering, insertion or removal.
+
+Also worth knowing for step 4: the page needs the SPA rewrite (`/*` → `/index.html`) to work on
+Render, since `/s/<slug>` is not a file. Locally, `expo start --web` serves it already.
 
 - `app/s/[slug].tsx`, outside the tabs group: covers, titles, derived status labels via the real
   `src/domain/` functions, the genre chips the Recommendations screen already uses, and

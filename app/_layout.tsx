@@ -81,6 +81,12 @@ export default function RootLayout() {
               <Stack.Screen name="onboarding/privacy" options={{ title: 'Your data' }} />
               <Stack.Screen name="auth" options={{ headerShown: false }} />
               <Stack.Screen name="onboarding/reconcile" options={{ title: 'Import your MyAnimeList' }} />
+              {/* Plan 4's public page. headerShown:false because a viewer has no app around this
+                  screen — a native header would offer a back button to nothing and label the page
+                  as part of an app they don't have. It draws its own heading instead. Outside
+                  (tabs) deliberately: the login-and-consent gate lives there, and a stranger must
+                  reach this with no session and no redirect. */}
+              <Stack.Screen name="s/[slug]" options={{ headerShown: false }} />
             </Stack>
           </PaperProvider>
         </SafeAreaView>
