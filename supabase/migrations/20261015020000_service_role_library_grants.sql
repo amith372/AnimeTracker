@@ -1,0 +1,30 @@
+-- The third time this exact gap has had to be closed, and the one that had been open longest:
+-- RLS decides *which rows* a role may see, but Postgres still requires a base table-level GRANT
+-- before a role may touch a table at all. The two are separate mechanisms, and `service_role`
+-- bypassing RLS does not give it a grant.
+--
+-- 20260807000001_grants.sql granted `series`/`series_entries` to `authenticated` and stopped
+-- there, because at the time nothing server-side read them. Every table added since
+-- (mal_accounts, api_cache, user_library_meta, taste_profiles, model_call_quota,
+-- recommendation_lists, shared_libraries) was granted to service_role on arrival. These two never
+-- were, and two things have quietly depended on it since:
+--
+--  1. **mal-monthly-sync** (Phase 11) selects eligible series, inserts new TV_SEASON entries and
+--     flips new_season_available -- all as service_role. Every one of those calls has been failing
+--     with "permission denied for table series", in the cron run and behind the "Check for new
+--     seasons" button alike. It could never have reported a new season.
+--  2. **delete-account**'s explicit sweep deletes from both tables. It is best-effort and reports
+--     failures in `remaining` rather than throwing, and the `on delete cascade` does the real
+--     work, so the failure never surfaced -- which is exactly why a belt-and-braces mechanism
+--     needs its own check.
+--
+-- Found 2026-10-15 while checking plan 4 step 3: the public `shared-library` function returned a
+-- 500 whose PostgREST error named this directly. Fixing it for one function only would have left
+-- the monthly sync broken with the cause now known, so this grants the same set every other table
+-- gives service_role.
+--
+-- No change for `anon`, which still has no grant on either table and must never have one: the
+-- public share page reaches these rows through an Edge Function that resolves a slug first, never
+-- through a direct client read (prd/2-public-share.md's constraints).
+grant select, insert, update, delete on public.series to service_role;
+grant select, insert, update, delete on public.series_entries to service_role;

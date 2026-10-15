@@ -120,7 +120,14 @@ Deno.serve(async (req) => {
       // back, the failure without this line is a deleted show reappearing on a public page.
       .is('deleted_at', null)
       .order('title');
-    if (error) return jsonResponse({ error: 'Couldn’t load this list.' }, 500);
+    if (error) {
+      // Logged, not returned: a viewer can do nothing with a PostgREST message, and a public
+      // endpoint that narrates schema errors is handing a stranger a map. This is also the line
+      // that would have made the missing service_role grant obvious in seconds rather than
+      // needing a throwaway deploy to find.
+      console.error('shared-library: library read failed', error.code, error.message);
+      return jsonResponse({ error: 'Couldn’t load this list.' }, 500);
+    }
 
     // Field by field, camelCase, matching src/domain/'s model rather than the column names — the
     // page is TypeScript and runs the app's real status derivation on this, so landing in the
