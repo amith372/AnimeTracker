@@ -63,11 +63,14 @@ a step. Plan 3 was added 2026-10-11 and is unscheduled.
    `taste-profile` and `taste-candidates` (with `--use-api`); the onboarding column width needs a
    maximised browser, then the Android emulator; the guest's single exit needs a guest session plus
    the Supabase dashboard; and the Library grid needs a maximised browser resized slowly across its
-   whole range. **So the next thing to build is plan 7's step 1** — but ask about the outstanding
-   checks first, since plan 5 is what the push condition below most likely means.
+   whole range. Ask about these outstanding checks before pushing anything, since plan 5 is what
+   the push condition below most likely means.
 2. **Plan 7** — execute what the design critique found. **Scheduled 2026-10-14 at the user's
    request**, after plan 5. Read its own section first: it carries a map of every dialog and
    transient state the critique could not see, and an ordering note about plan 5.
+   **Step 1 landed 2026-10-15 and its check is outstanding.** Of what remains, **step 4 is the
+   only one that can simply be started**: step 2 needs a PRD before any code, step 3 needs
+   sign-off, and step 5 is PRD-sized — all three are a conversation first.
 3. **Plan 9** — make "For you" fast. Unblocked, no PRD, changes nothing about what the list
    contains. Independent of plan 3, which would multiply it rather than replace it.
 4. **Plan 4** — the public share link. PRD signed off 2026-10-14, no open questions, start at its
@@ -467,17 +470,14 @@ nested-`<button>` restructure rewrote (`app/series/[id].tsx` around :408–:412)
 landed, so step 1 is now the two-line change inside a structure that is already correct. Nothing
 blocks it.
 
-### Step 1 — Make the movie half of the rollup tell the truth · no PRD
-Three defects, not design changes: the code contradicts `deriveSeriesStatus`.
-- `app/series/[id].tsx:408` and `app/series/preview.tsx:257` print `"doesn't count toward X/Y"` on
-  every movie row. It has counted since the dual-count work landed —
-  `src/domain/seriesStatus.ts:87-88` carries `watchedMovies`/`totalMovies` as its own half and
-  `:74-80` requires both halves resolved to reach `WATCHED`. Replace with a real subtitle
-  (`Movie 1`, or the runtime/year).
-- `app/series/[id].tsx:342-349` heads the section `SEASONS & MOVIES` and then renders a
-  seasons-only count, because `seasonProgress` filters to `TV_SEASON`. Show both halves.
-- The same header row is gated on `progress.total > 0`, so a standalone movie's Detail screen gets
-  no section header and no count at all. Drop the gate so it reads `0/1 movies`.
+### Step 1 — Make the movie half of the rollup tell the truth · **done 2026-10-15, check outstanding**
+All three defects fixed. The one decision worth carrying: `seasonProgress` became `entryProgress`
+(both halves), and the counter is now worded by a **shared** `progressPhrase` in `statusLabel.ts`
+that the status pill is also built from — so the counter and the pill cannot word the same counts
+differently, which was the whole defect. They still differ in the seasons *number* on a show with a
+gap in it (pill = consecutive run from season 1, counter = plain total); that is deliberate, is
+commented in both places, and `__tests__/entryProgress.test.ts` pins it. The movie row's subtitle is
+now just `Movie 1` — there is no runtime or release year on a `SeriesEntry` to put there instead.
 
 **Check:** open a series with both seasons and films (Demon Slayer) and confirm the Detail counter
 and the status pill agree, and that no row claims a movie doesn't count. Then open a standalone

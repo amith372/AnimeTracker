@@ -1,6 +1,7 @@
 import type { Arc } from './arcs';
 import { isResolved, type AiringStatus, type EntryKind, type ManualStatus, type SeriesType, type WatchState } from './types';
 import type { SeriesStatus } from './seriesStatus';
+import type { ProgressHalves } from './statusLabel';
 
 export interface SeriesEntry {
   id: string;
@@ -46,15 +47,22 @@ export function hasVisibleNewSeasonAlert(series: Series, nowEpochMillis: number 
 }
 
 /**
- * Powers the Series Detail screen's "X of Y seasons" counter — a plain resolved-count over TV
- * seasons only (movies aren't part of this tally, same reasoning as deriveSeriesStatus: they're a
- * separate backlog with no running order). Unlike deriveSeriesStatus's "X" (the longest
- * *consecutive* run from season 1), this is a plain count — the counter is meant to answer "how
- * much of this have I gotten through", not "where's the gap".
+ * Powers the Series Detail screen's section counter — resolved-of-total for **both** halves of the
+ * backlog, seasons and movies, because the section it heads lists both. Counting seasons only
+ * under a "SEASONS & MOVIES" header was the defect this replaced: ticking a film moved the status
+ * pill and left the counter beside it unchanged, and a standalone movie got no count at all.
+ *
+ * Unlike deriveSeriesStatus's season "X" (the longest *consecutive* run from season 1), both halves
+ * here are plain counts — the counter answers "how much of this have I gotten through", not
+ * "where's the gap". Hand the result to progressPhrase for the wording, which is what keeps this
+ * and the status pill saying the same thing in the same way.
  */
-export function seasonProgress(entries: SeriesEntry[]): { watched: number; total: number } {
-  const seasons = entries.filter((e) => e.kind === 'TV_SEASON');
-  return { watched: seasons.filter((e) => isResolved(e.watchState)).length, total: seasons.length };
+export function entryProgress(entries: SeriesEntry[]): ProgressHalves {
+  const half = (kind: EntryKind) => {
+    const of = entries.filter((e) => e.kind === kind);
+    return { watched: of.filter((e) => isResolved(e.watchState)).length, total: of.length };
+  };
+  return { seasons: half('TV_SEASON'), movies: half('MOVIE') };
 }
 
 /**

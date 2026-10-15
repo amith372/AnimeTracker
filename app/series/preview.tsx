@@ -263,8 +263,11 @@ export default function SeriesPreviewScreen() {
 function PreviewEntryRow({ entry, kindNumber, onOpenInfo }: { entry: ReconcileEntry; kindNumber: number; onOpenInfo: () => void }) {
   const styles = useStyles();
   const kindLabel = entry.kind === 'MOVIE' ? `Movie ${kindNumber}` : `Season ${kindNumber}`;
-  const detail =
-    entry.kind === 'MOVIE' ? "doesn't count toward X/Y" : `${entry.episodeCount} episode${entry.episodeCount === 1 ? '' : 's'}`;
+  // Same correction as the real Detail screen's EntryRow — see the comment there for why the old
+  // "doesn't count toward X/Y" was false. Nothing is tracked on this screen yet, so there is no
+  // won't-watch case to fold in.
+  const detail = entry.kind === 'MOVIE' ? null : `${entry.episodeCount} episode${entry.episodeCount === 1 ? '' : 's'}`;
+  const subtitle = detail === null ? kindLabel : `${kindLabel} · ${detail}`;
 
   return (
     <Pressable style={styles.entryRow} onPress={onOpenInfo}>
@@ -273,7 +276,7 @@ function PreviewEntryRow({ entry, kindNumber, onOpenInfo }: { entry: ReconcileEn
           {entry.title}
         </Text>
         <Text variant="bodySmall" style={styles.entrySubtitle}>
-          {kindLabel} · {detail}
+          {subtitle}
         </Text>
       </View>
       {entry.airingStatus === 'AIRING' && <AiringBadge />}

@@ -24,27 +24,55 @@ export function statusKindLabel(kind: SeriesStatus['kind']): string {
 }
 
 /**
- * Turns one series' SeriesStatus into the exact text shown in the UI (Library rows, Detail
- * header). Identical to statusKindLabel except for WATCHED_PARTIAL, where the real counts replace
- * the generic "X/Y" — "Watched 3/5 seasons, 2/3 movies".
+ * The two independent halves of a series' backlog, each as resolved-of-total. Either half can be
+ * 0/0 — a standalone movie has no seasons, and most series have no films.
+ */
+export interface ProgressHalves {
+  seasons: { watched: number; total: number };
+  movies: { watched: number; total: number };
+}
+
+/**
+ * The counts phrase that every seasons/movies rollup in the app is built from —
+ * "3/5 seasons, 2/3 movies". Shared between statusLabel (the Library row and the Detail hero's
+ * status pill) and the Detail screen's section counter (see `entryProgress` in series.ts) so the
+ * two can never drift apart in wording, or in which half they drop.
+ *
+ * They do still differ in one number, deliberately: the status pill's season count is the
+ * *consecutive* run from season 1, while the section counter is a plain total. A show watched in
+ * order reads identically in both; one with a gap in the middle reads differently on purpose.
  *
  * Each half is dropped when the series has none of that kind, which is the common case both ways:
- * most series have no films ("Watched 3/5 seasons") and a standalone movie has no seasons
- * ("Watched 0/1 movies"). Printing "0/0 seasons" would be noise on nearly every row.
+ * most series have no films ("3/5 seasons") and a standalone movie has no seasons ("0/1 movies").
+ * Printing "0/0 seasons" would be noise on nearly every row. With nothing at all to count this
+ * returns "", leaving the caller to render nothing rather than forcing an empty label on it.
+ */
+export function progressPhrase(halves: ProgressHalves): string {
+  const parts: string[] = [];
+  if (halves.seasons.total > 0) {
+    parts.push(`${halves.seasons.watched}/${halves.seasons.total} seasons`);
+  }
+  if (halves.movies.total > 0) {
+    parts.push(`${halves.movies.watched}/${halves.movies.total} movies`);
+  }
+  return parts.join(', ');
+}
+
+/**
+ * Turns one series' SeriesStatus into the exact text shown in the UI (Library rows, Detail
+ * header). Identical to statusKindLabel except for WATCHED_PARTIAL, where the real counts replace
+ * the generic "X/Y" — "Watched 3/5 seasons, 2/3 movies", worded by progressPhrase above.
  */
 export function statusLabel(status: SeriesStatus): string {
   if (status.kind !== 'WATCHED_PARTIAL') return statusKindLabel(status.kind);
 
-  const parts: string[] = [];
-  if (status.totalSeasons > 0) {
-    parts.push(`${status.watchedSeasons}/${status.totalSeasons} seasons`);
-  }
-  if (status.totalMovies > 0) {
-    parts.push(`${status.watchedMovies}/${status.totalMovies} movies`);
-  }
+  const phrase = progressPhrase({
+    seasons: { watched: status.watchedSeasons, total: status.totalSeasons },
+    movies: { watched: status.watchedMovies, total: status.totalMovies },
+  });
   // Nothing to count at all can't happen alongside WATCHED_PARTIAL (a series with no entries
-  // derives to WATCHED), but a bare "Watched" beats an empty string if it ever did.
-  return parts.length > 0 ? `Watched ${parts.join(', ')}` : 'Watched';
+  // derives to WATCHED), but a bare "Watched" beats a trailing space if it ever did.
+  return phrase.length > 0 ? `Watched ${phrase}` : 'Watched';
 }
 
 /** Every derived status kind, in the order the Library's filter chips show them. */

@@ -23,8 +23,8 @@ import {
 } from '@/repositories/AnimeRepository';
 import { userFacingMessage } from '@/repositories/errorMessage';
 import { LoadFailure } from '@/components/LoadFailure';
-import { MANUAL_STATUS_CHOICES, statusLabel } from '@/domain/statusLabel';
-import { hasVisibleNewSeasonAlert, numberEntriesByKind, seasonProgress, type Series, type SeriesEntry } from '@/domain/series';
+import { MANUAL_STATUS_CHOICES, progressPhrase, statusLabel } from '@/domain/statusLabel';
+import { entryProgress, hasVisibleNewSeasonAlert, numberEntriesByKind, type Series, type SeriesEntry } from '@/domain/series';
 import { arcsForMalId, type Arc } from '@/domain/arcs';
 import { getSynopsis } from '@/repositories/SynopsisRepository';
 import { AiringBadge } from '@/components/AiringBadge';
@@ -136,7 +136,10 @@ export default function SeriesDetailScreen() {
   }
 
   const canLike = LIKEABLE_STATUS_KINDS.includes(series.status.kind);
-  const progress = seasonProgress(series.entries);
+  // "3/5 seasons, 2/3 movies" — the same phrase the status pill above the list is built from, so
+  // the two can be read against each other at a glance. Empty only for a series with no entries,
+  // which grouping can't produce; both registers below render no count rather than a blank one.
+  const progressText = progressPhrase(entryProgress(series.entries));
 
   // Navigates away first, then commits: the delete is optimistic, so staying here would leave the
   // screen rendering a series that's already gone from the cache ("Not found") for a beat. Errors
@@ -226,11 +229,7 @@ export default function SeriesDetailScreen() {
           {synopsisBlock && <View style={styles.webSynopsisBlock}>{synopsisBlock}</View>}
           <View style={styles.webSectionLabelRow}>
             <Text style={styles.webSectionLabel}>SEASONS &amp; MOVIES</Text>
-            {progress.total > 0 && (
-              <Text style={styles.webSectionCount}>
-                {progress.watched} of {progress.total} {progress.total === 1 ? 'season' : 'seasons'}
-              </Text>
-            )}
+            {progressText.length > 0 && <Text style={styles.webSectionCount}>{progressText}</Text>}
           </View>
           <View style={styles.webEntriesList}>
             {numberEntriesByKind(series.entries).map((item) => {
@@ -351,13 +350,16 @@ export default function SeriesDetailScreen() {
 
       {synopsisBlock && <View style={styles.synopsisRow}>{synopsisBlock}</View>}
 
-      {progress.total > 0 && (
+      {/* Gated on there being entries at all, not on there being *seasons*: the old
+          `seasons > 0` gate meant a standalone movie's Detail screen got no header and no count,
+          so the one thing it has to track was the one thing with no number attached to it. */}
+      {series.entries.length > 0 && (
         <View style={styles.sectionLabelRow}>
           <Text variant="labelLarge" style={styles.sectionLabel}>
             SEASONS &amp; MOVIES
           </Text>
           <Text variant="labelLarge" style={styles.sectionCount}>
-            {progress.watched} of {progress.total} {progress.total === 1 ? 'season' : 'seasons'}
+            {progressText}
           </Text>
         </View>
       )}
@@ -466,9 +468,15 @@ function EntryRow({
   // to one line, that generic label was the only thing that could tell two same-named seasons
   // apart, and it couldn't.
   const kindLabel = entry.kind === 'MOVIE' ? `Movie ${kindNumber}` : `Season ${kindNumber}`;
-  const detail =
-    entry.kind === 'MOVIE' ? "doesn't count toward X/Y" : `${entry.episodeCount} episode${entry.episodeCount === 1 ? '' : 's'}`;
-  const subtitle = wontWatch ? `${kindLabel} · Won't watch` : `${kindLabel} · ${detail}`;
+  // A season adds its episode count; a movie adds nothing. It used to add "doesn't count toward
+  // X/Y", which stopped being true when the dual count landed — a film is its own half of the
+  // rollup now (seriesStatus.ts's watchedMovies/totalMovies, and WATCHED needs both halves
+  // resolved), so the row was flatly contradicting the counter above it. There's no runtime or
+  // release year on a SeriesEntry to put there instead, so "Movie 1" alone is what's left, and it
+  // is the part that was carrying the meaning anyway.
+  const detail = entry.kind === 'MOVIE' ? null : `${entry.episodeCount} episode${entry.episodeCount === 1 ? '' : 's'}`;
+  const trailing = wontWatch ? "Won't watch" : detail;
+  const subtitle = trailing === null ? kindLabel : `${kindLabel} · ${trailing}`;
 
   // The row is a plain View with three sibling controls, not a Pressable wrapping two more.
   // react-native-web turns accessibilityRole="button" into a real <button> (see
