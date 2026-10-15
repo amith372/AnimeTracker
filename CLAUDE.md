@@ -100,6 +100,8 @@ src/
 │   ├── realtime.ts             // Realtime subscription -> query invalidation (replaces the old sync engine)
 │   ├── queryClient.ts          // TanStack Query singleton + query-key registry
 │   ├── TasteProfileRepository.ts // reads/writes taste_profiles; sequences payload → model → row
+│   ├── ShareRepository.ts      // the owner's share link: create/rename/revoke (§9)
+│   ├── SharedLibraryRepository.ts // the viewer's read of a slug, + sharedLibraryMapping.ts (payload → derived status)
 │   └── apiCache.ts             // shared Postgres api_cache table — MAL response cache, guardrail #3
 ├── domain/                   // plain models + derivation logic (status, grouping) — pure, unit-tested
 ├── account/                  // Supabase account system
@@ -114,7 +116,7 @@ src/
 __tests__/                   // Jest — mirrors src/domain/ 1:1
 supabase/
 ├── migrations/                // Postgres schema + RLS for the whole data model
-└── functions/                  // Edge Functions (Deno) — MAL OAuth + all MAL API proxying
+└── functions/                  // Edge Functions (Deno) — MAL OAuth + all MAL API proxying, plus the ones that touch no MAL at all (delete-account, taste-*, shared-library)
     └── _shared/                  // cross-function helpers (Supabase admin/anon clients, MAL fetch/token-refresh, PKCE, CORS)
 ```
 
@@ -179,6 +181,14 @@ row-shape version plus `tasteFingerprint`, so a like, a drop or a *finishing* ti
 list and every other tick costs nothing; the screen still filters whatever list it holds against
 the live tracked-id set on every render, which is what makes a newly-tracked show disappear from a
 restored list with no recompute. Must never live in `api_cache` — that table is `anon`-readable.
+
+**`shared_libraries`** — one row per account holding the public share link (§9): `user_id` PK,
+`slug` (unique, from a `replace(gen_random_uuid()::text,'-','')` column default — 122 bits),
+`display_name` (the nickname the sharer types, length-checked), `created_at`. RLS owner-only and
+no `anon` grant, so a stranger can never query it or enumerate who is sharing; the slug is resolved
+server-side by `shared-library` as `service_role`. `authenticated` holds **column-level** grants —
+`insert (user_id)`, `update (display_name)`, plus `delete` — so the client cannot write or change
+a slug, and revoking really removes the row (which is what makes a revoked link permanently dead).
 
 **`api_cache`** — the MAL response cache (guardrail #3), **shared across every account** (not
 per-user): anime detail/recommendation data is user-independent, so `anon`-readable, `authenticated`-writable,
@@ -279,6 +289,15 @@ Statuses live **per series**. There are 6:
   - `DROPPED` and `WATCHED_FORGOT` are **never** pushed. Dropped has a direct MAL equivalent but was deliberately left out to keep the feature's blast radius to exactly what was asked for; `WATCHED_FORGOT` has no MAL equivalent at all (see §5).
 - Best-effort per entry inside `mal-push` — one failed PUT doesn't abort the batch, same pattern as Import/Discover/Recommendations. Reports a final "N updated, M failed" summary (no more granular per-request progress ticks now that it's one server call, see `MalPushRepository.ts`).
 
+### 9. Public share link (opt-in, explicit — the one read path for someone with no account)
+
+- **One revocable link per account** (`shared_libraries`, `unique` slug from a Postgres column default), created from a popup off the Library's three-dot menu (`src/components/ShareListDialog.tsx`, `src/repositories/ShareRepository.ts`). A guest may share like any other account. Revoking deletes the row, so the old slug is permanently dead and re-sharing mints a different one.
+- **The client cannot write the slug.** `authenticated` holds *column-level* grants — `insert (user_id)`, `update (display_name)` — so an unguessable slug is a privilege rather than a convention.
+- **RLS stays owner-only on every table and `anon` gets no grant anywhere.** The only thing that ever reads a library it doesn't own is `supabase/functions/shared-library`, which runs as `service_role`, takes no caller identity at all, and refuses unless the slug resolves. It returns a hand-built whitelist — no ids, no entry titles, nothing about the sharer but the nickname they typed — and derives no status: the page runs the real `deriveSeriesStatus`/`statusLabel` (`src/repositories/sharedLibraryMapping.ts`), so a viewer and the owner can never read a show differently.
+- **The page is `app/s/[slug].tsx`, outside `(tabs)/`** — the login-and-consent gate lives in `app/(tabs)/index.tsx`, so a viewer lands with no session and no redirect. It asks for nothing (no login, no consent, no analytics, no record of who looked) and offers no way into the app. A revoked, mistyped or never-real slug gets one plain sentence, deliberately indistinguishable.
+- **Unlisted, not secret:** `public/robots.txt` disallows `/s/`, and the route sets a `noindex` meta. Attribution and the app's own name are on the page (guardrail #4, §3(a)(xi)/(xiii)).
+- Compliance was read off the agreement rather than recalled — §3(a)(ii) restricts the *API*, not MyAnimeList Content; §2(b) anticipates public pages; §4(f) is about people, which is why no address, MAL username, MAL user id or account id goes near it. See `prd/2-public-share.md` while it exists.
+
 ---
 
 ## Conventions
@@ -363,4 +382,4 @@ anyone not opting in, same bar as Phases 1–6:
 
 ## Non-goals
 
-No multi-user data sharing between accounts (each account's library is private to it). No manga (anime only). No monetization of any kind. Writing back to MAL is scoped to exactly the opt-in push described in §8 — no other write path (score, dates, comments, arbitrary status edits, deleting entries from MAL) is in scope. (Accounts/server-backend were a non-goal through Phase 6; that changed with the Phase 7+ pivot above — see the standing plan doc for why.)
+No multi-user data sharing between accounts: no account can read another account's library, and there is no "share with user X", no inbox and no permissions model. What changed with plan 4 (§9) is that a library is no longer private *full stop* — its owner can publish it to anyone holding a URL, deliberately and revocably. No importing someone else's shared list, no comments, likes or follows, and no directory, browse or search over shared lists. No manga (anime only). No monetization of any kind. Writing back to MAL is scoped to exactly the opt-in push described in §8 — no other write path (score, dates, comments, arbitrary status edits, deleting entries from MAL) is in scope. (Accounts/server-backend were a non-goal through Phase 6; that changed with the Phase 7+ pivot above — see the standing plan doc for why.)

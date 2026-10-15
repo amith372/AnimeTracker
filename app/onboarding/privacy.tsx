@@ -83,7 +83,29 @@ export default function PrivacyScreen() {
         to — your own list when you export to them. Recommendations also send a de-identified list
         of anime titles and genres to an AI provider (Groq): no email, no account id, nothing that
         identifies you. Your library is private to your account. It is never shared with other
-        accounts, sold, or published.
+        accounts or sold. Nothing is published unless you publish it yourself — see below.
+      </Text>
+
+      {/* Plan 4 step 4. §4(f) requires the notice cover this, and it has to be written so that
+          someone who reads it is not surprised by anything the feature does: what a link exposes,
+          that it needs no account to open, that it stays live until revoked, and that revoking is
+          immediate. Copy that overstated what stays private would be worse than none — which is
+          why the paragraph above had to change in the same breath. */}
+      <Text variant="titleSmall" style={styles.heading}>
+        Sharing your list
+      </Text>
+      <Text variant="bodyMedium" style={styles.body}>
+        “Share your list” creates a web link to your library. Anyone who has that link can open it
+        in a browser and see every show on your list and its status — no account, no app and no
+        MyAnimeList login needed — and they can pass it on. The page never shows your email
+        address, your MyAnimeList username or your account id; the only name on it is one you type
+        yourself, and you can leave that blank.
+      </Text>
+      <Text variant="bodyMedium" style={styles.body}>
+        The link is unlisted — it is a long random address, it is not listed anywhere, and search
+        engines are asked not to index it. It stays live until you press “Stop sharing”, which
+        takes effect immediately and kills that address for good; sharing again gives you a
+        different one. Nothing about who opens the page is recorded.
       </Text>
 
       <Text variant="titleSmall" style={styles.heading}>
@@ -92,7 +114,8 @@ export default function PrivacyScreen() {
       <Text variant="bodyMedium" style={styles.body}>
         “Delete everything” on the Account screen removes your library, your MyAnimeList link and
         this account itself, permanently and immediately. It does not change your list on
-        MyAnimeList — that list is yours and stays exactly as it is.
+        MyAnimeList — that list is yours and stays exactly as it is. If you were sharing a link, it
+        stops working too.
       </Text>
 
       <Text variant="bodySmall" style={styles.footnote}>

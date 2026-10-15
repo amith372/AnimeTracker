@@ -326,7 +326,21 @@ Render, since `/s/<slug>` is not a file. Locally, `expo start --web` serves it a
   it and reload. Failure looks like a redirect to the login screen, a blank page, an error screen
   for a revoked link, or a status that disagrees with what the app shows you.
 
-### Step 4 — Say so, in the notice and in CLAUDE.md
+### Step 4 — Say so, in the notice and in CLAUDE.md · **built 2026-10-15, check outstanding**
+
+The sentence that had to go was in "What leaves the app": *"Your library is private to your
+account. It is never shared with other accounts, sold, or published."* The last word stopped being
+true the moment step 1 landed, which is why the amendment is part of the same plan rather than a
+follow-up. It now reads "never shared with other accounts or sold. Nothing is published unless you
+publish it yourself — see below."
+
+CLAUDE.md gained §9 (the whole feature, from the column-level grants to the page's refusals) and
+its Non-goals line was rewritten: what survives is "no account can read another account's library",
+along with the social features and the import-someone-else's-list case that were always out.
+
+**This file stays until the three outstanding checks are confirmed**, rather than being deleted the
+day its last step landed as the header says: steps 2, 3 and 4 each carry a check that reads off
+this file. Its decisions already live in CLAUDE.md §9, so deleting it after that costs nothing.
 
 - Privacy notice: a "Sharing your list" paragraph — what a link exposes, that anyone holding it can
   open it without an account, that it stays live until revoked, and that revoking is immediate.
