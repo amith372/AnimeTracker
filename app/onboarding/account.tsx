@@ -27,6 +27,7 @@ import { deleteAccountAndData, logInWithEmail, logOutAccount, signUpWithEmail, u
 import { useIsGuest } from '@/account/guestMode';
 import { linkMalAccount, useMalLinkStatus } from '@/account/malLinkRepository';
 import { useLibrary } from '@/repositories/AnimeRepository';
+import { dialogStyle } from '@/theme/dialog';
 import {
   createShareLink,
   renameShareLink,
@@ -348,7 +349,7 @@ export default function AccountScreen() {
           {/* The outward-facing confirmation: this is the press that makes a private library
               readable by anyone holding a URL, which is the one genuinely irreversible thing here
               (a link that has been sent cannot be un-sent, only killed). */}
-          <Dialog visible={shareConfirmVisible} onDismiss={() => setShareConfirmVisible(false)}>
+          <Dialog visible={shareConfirmVisible} onDismiss={() => setShareConfirmVisible(false)} style={dialogStyle}>
             <Dialog.Title>Share your list?</Dialog.Title>
             <Dialog.Content>
               <Text variant="bodyMedium">
@@ -378,7 +379,7 @@ export default function AccountScreen() {
               <Button onPress={handleStartSharing}>Share my list</Button>
             </Dialog.Actions>
           </Dialog>
-          <Dialog visible={revokeConfirmVisible} onDismiss={() => setRevokeConfirmVisible(false)}>
+          <Dialog visible={revokeConfirmVisible} onDismiss={() => setRevokeConfirmVisible(false)} style={dialogStyle}>
             <Dialog.Title>Stop sharing?</Dialog.Title>
             <Dialog.Content>
               <Text variant="bodyMedium">
@@ -419,7 +420,7 @@ export default function AccountScreen() {
           {wording.button}
         </Button>
         <Portal>
-          <Dialog visible={deleteConfirmVisible} onDismiss={() => setDeleteConfirmVisible(false)}>
+          <Dialog visible={deleteConfirmVisible} onDismiss={() => setDeleteConfirmVisible(false)} style={dialogStyle}>
             <Dialog.Title>{wording.title}</Dialog.Title>
             <Dialog.Content>
               {/* Scope first, then why it can't be undone: saying what is and isn't being deleted
