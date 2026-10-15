@@ -57,7 +57,9 @@ a step. Plan 3 was added 2026-10-11 and is unscheduled.
 
 1. **Plan 5** — eight small fixes found 2026-10-14. **Seven are built; one remains**, and the
    remaining one is listed under a `###` heading while the built ones are compressed to a
-   paragraph each — so "the first `###` heading" is the next thing to build. Three built items
+   paragraph each — so the next thing to build is the one `###` heading **inside plan 5's own
+   section**. Plan 2's `###` headings sit earlier in the file and are not scheduled; don't start
+   there. Three built items
    are still waiting on a check the user runs: the Edge Function error messages need
    `supabase secrets set GROQ_API_KEY=invalid` and a redeploy of `taste-profile` and
    `taste-candidates` (with `--use-api`); the onboarding column width needs a maximised browser,
@@ -276,12 +278,13 @@ any sign-in path broken (the MAL redirect URI was not re-registered).
 
 ---
 
-# Plan 5 — Five things found 2026-10-14 · **unblocked, small**
+# Plan 5 — Eight things found 2026-10-14 · **unblocked, small**
 
-The first two were found while checking plan 1 step 8; the next two while looking at the Account
-screen on a wide monitor; the fifth while looking at the Library on the same monitor. Fixes and copy, not features, so none of them needs a PRD — though the
-width item holds one number that a design skill should settle before any style is written. The last
-two both edit `app/onboarding/account.tsx`, so build them in one sitting.
+Found while checking plan 1 step 8, then while looking at the Account screen and the Library on a
+wide monitor. Fixes and copy, not features, so none of them needs a PRD — though the width item
+held one number that a design skill settled before any style was written. **Seven have landed and
+are compressed to a paragraph each below; the one left is the `###` heading at the end of this
+section.**
 
 Nested `<button>` on Series Detail · **done 2026-10-14** — the row is a plain `View` with sibling
 controls; the press target is the text block. `ArcListRow` matches it deliberately so neither can
