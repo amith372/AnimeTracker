@@ -25,6 +25,7 @@ import { isSupabaseConfigured } from '@/account/supabaseClient';
 import { deleteAccountAndData, logInWithEmail, logOutAccount, signUpWithEmail, useAccountSession } from '@/account/accountRepository';
 import { useIsGuest } from '@/account/guestMode';
 import { linkMalAccount, useMalLinkStatus } from '@/account/malLinkRepository';
+import { useLibrary } from '@/repositories/AnimeRepository';
 import { layout, radii, spacing } from '@/theme/colors';
 import { makeStyles, useThemeColors } from '@/theme/useTheme';
 
@@ -68,6 +69,8 @@ export default function AccountScreen() {
   const { session, loading } = useAccountSession();
   const isGuest = useIsGuest();
   const [malLinked, refreshMalLinked] = useMalLinkStatus();
+  // Only so the delete dialog can name how many shows are at stake — see trackedCountLine below.
+  const { series: librarySeries, isLoading: libraryLoading, error: libraryError } = useLibrary();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -143,6 +146,21 @@ export default function AccountScreen() {
     else setMessage(result.message);
   }
 
+  // The concrete stake, named in the dialog rather than left to the prose: "deletes your library"
+  // is abstract where "47 shows" is not, and this dialog is the only thing standing between a
+  // guest and a permanent delete. Reads the same TanStack Query the Library screen already holds,
+  // so on a warm cache it costs no extra round trip.
+  //
+  // Omitted entirely while that read is in flight or has failed, rather than falling back to a
+  // count of zero — telling someone with two hundred shows that nothing would be lost is far worse
+  // than saying nothing about the number at all.
+  const trackedCountLine =
+    libraryLoading || libraryError
+      ? null
+      : librarySeries.length === 0
+        ? 'Nothing has been tracked here yet.'
+        : `${librarySeries.length} ${librarySeries.length === 1 ? 'show' : 'shows'} tracked here will be deleted.`;
+
   // Rendered in both signed-in branches (real account and guest), because both have real data and
   // both are offered the same two things: the notice to re-read, and the way out. Written once as a
   // local fragment rather than copied into each branch — a delete button that exists in one branch
@@ -167,6 +185,11 @@ export default function AccountScreen() {
                   before the alarming sentence is what makes the alarm land on the right thing, and
                   it stops the one reassuring line on the screen sitting under a paragraph. */}
               <Text variant="bodyMedium">{wording.scope}</Text>
+              {trackedCountLine && (
+                <Text variant="bodyMedium" style={styles.dialogNote}>
+                  {trackedCountLine}
+                </Text>
+              )}
               <Text variant="bodyMedium" style={styles.dialogNote}>
                 {wording.warning}
               </Text>

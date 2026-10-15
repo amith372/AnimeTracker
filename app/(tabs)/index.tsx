@@ -35,7 +35,7 @@ import { STATUS_FILTER_KINDS, statusKindLabel, statusLabel } from '@/domain/stat
 import { hasVisibleNewSeasonAlert, type Series } from '@/domain/series';
 import { buildPushTargets } from '@/domain/malPush';
 import { statusDotColor } from '@/theme/statusColors';
-import { radii, shadows, spacing } from '@/theme/colors';
+import { layout, radii, shadows, spacing } from '@/theme/colors';
 import { makeStyles, useThemeColors } from '@/theme/useTheme';
 import { dialogStyle } from '@/theme/dialog';
 import { fontFamilies } from '@/theme/fonts';
@@ -135,6 +135,16 @@ export default function LibraryScreen() {
       ),
     [gridWidth],
   );
+
+  // Resets all three things that can hide a row — the status chip, the search box and the
+  // Watched X/Y count lens — rather than only the one the user is most likely looking at. The
+  // empty state can't tell which of them is responsible, and clearing two of three would leave
+  // the list still empty with the button already pressed.
+  const clearFilters = useCallback(() => {
+    setStatusFilter('ALL');
+    setSearchQuery('');
+    setCountScope('ALL');
+  }, []);
 
   const filteredList = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -449,11 +459,13 @@ export default function LibraryScreen() {
           </View>
           <View style={styles.webGrid} onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}>
             {filteredList.length === 0 ? (
-              <View style={styles.empty}>
-                <Text variant="bodyLarge">
-                  {seriesList.length === 0 ? 'Nothing here yet' : 'No series match your search/filter'}
-                </Text>
-              </View>
+              <LibraryEmptyState
+                libraryIsEmpty={seriesList.length === 0}
+                malLinked={malLinked}
+                onFindShows={() => router.push('/discover')}
+                onImport={() => router.push('/onboarding/account')}
+                onClearFilters={clearFilters}
+              />
             ) : gridWidth > 0 ? (
               <FlatList
                 key={gridColumns}
@@ -584,11 +596,13 @@ export default function LibraryScreen() {
               />
             )}
             ListEmptyComponent={
-              <View style={styles.empty}>
-                <Text variant="bodyLarge">
-                  {seriesList.length === 0 ? 'Nothing here yet' : 'No series match your search/filter'}
-                </Text>
-              </View>
+              <LibraryEmptyState
+                libraryIsEmpty={seriesList.length === 0}
+                malLinked={malLinked}
+                onFindShows={() => router.push('/discover')}
+                onImport={() => router.push('/onboarding/account')}
+                onClearFilters={clearFilters}
+              />
             }
           />
       {moreMenu}
@@ -598,6 +612,86 @@ export default function LibraryScreen() {
       <Snackbar visible={syncMessage !== null} onDismiss={() => setSyncMessage(null)} duration={4000}>
         {syncMessage}
       </Snackbar>
+    </View>
+  );
+}
+
+/**
+ * What the Library says when it has nothing to list. Two cases, and they are deliberately
+ * different kinds of thing:
+ *
+ *  - **An empty library** is the first screen every guest and every email signup meets, and the
+ *    bare "Nothing here yet" it used to show was a dead end: the three things that could fix it
+ *    were one tab away and two levels inside the ⋯ overflow. So this case is an onboarding card
+ *    with the action on it — one line of purpose, then somewhere to go.
+ *  - **A filtered-empty library** is not a dead end at all; the shows are there and a chip or the
+ *    search box is hiding them. So it gets the one control that undoes that, and nothing else.
+ *    This case can only be reached with a filter or a query actually set — with neither, the
+ *    filtered list *is* the library — so the button is never offered for nothing to do.
+ *
+ * Both registers render this rather than keeping two copies of the same copy; the wide-web grid
+ * and the phone list differ in layout, not in what the screen has to say.
+ */
+function LibraryEmptyState({
+  libraryIsEmpty,
+  malLinked,
+  onFindShows,
+  onImport,
+  onClearFilters,
+}: {
+  libraryIsEmpty: boolean;
+  malLinked: boolean;
+  onFindShows: () => void;
+  onImport: () => void;
+  onClearFilters: () => void;
+}) {
+  const styles = useStyles();
+  const colors = useThemeColors();
+
+  if (!libraryIsEmpty) {
+    return (
+      <View style={styles.empty}>
+        <Text variant="bodyLarge" style={styles.emptyTitle}>
+          No series match your search/filter
+        </Text>
+        <Button mode="text" onPress={onClearFilters} textColor={colors.primary}>
+          Clear filters
+        </Button>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.empty}>
+      <View style={styles.emptyCard}>
+        <Text variant="titleMedium" style={styles.emptyTitle}>
+          Nothing here yet
+        </Text>
+        {/* Says what the app is *for*, not what the screen is missing — this is the one place a
+            new account learns that tracking seasons is what makes the rest of it work. */}
+        <Text variant="bodyMedium" style={styles.emptyBody}>
+          Add the shows you&apos;re watching, tick off the seasons and films you&apos;ve seen, and
+          AnimeTracker keeps track of what&apos;s left and what to try next.
+        </Text>
+        <Button mode="contained" buttonColor={colors.primary} onPress={onFindShows} style={styles.emptyButton}>
+          Find shows to track
+        </Button>
+        {/* Only offered when MyAnimeList *isn't* linked, which is not backwards: once it is, the
+            import gate above this screen has already run, so there is no list left to offer. The
+            button goes to Account because linking comes first — and that is all it has to do,
+            since returning here re-reads the link status and the gate then redirects straight to
+            reconcile (see the useFocusEffect at the top of this file). */}
+        {!malLinked && (
+          <>
+            <Button mode="outlined" onPress={onImport} style={styles.emptyButton} textColor={colors.primary}>
+              Import from MyAnimeList
+            </Button>
+            <Text variant="bodySmall" style={styles.emptyNote}>
+              Links your MyAnimeList account first.
+            </Text>
+          </>
+        )}
+      </View>
     </View>
   );
 }
@@ -786,7 +880,28 @@ const useStyles = makeStyles((colors) => ({
   // it. The chip can get taller; the text must not be cut.
   newBadge: { alignSelf: 'flex-start', backgroundColor: colors.amberTint, minHeight: 24 },
   newBadgeText: { fontFamily: fontFamilies.bodySemiBold, color: colors.amber, fontSize: 11, lineHeight: 14 },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80 },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80, paddingHorizontal: spacing.lg },
+  // The onboarding card the empty library shows. Capped at the same measure as the onboarding
+  // screens and for the same reason — it is a short paragraph at bodyMedium's 14px plus a column
+  // of pill buttons, which is exactly the shape that number was settled for (see layout in
+  // theme/colors.ts). Not a fifth unrelated width, and on a phone the cap simply never binds.
+  emptyCard: {
+    width: '100%',
+    maxWidth: layout.onboardingColumn,
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.xl,
+    borderRadius: radii.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  emptyTitle: { color: colors.textPrimary, fontFamily: fontFamilies.bodySemiBold, textAlign: 'center' },
+  emptyBody: { color: colors.textMuted, textAlign: 'center' },
+  emptyButton: { alignSelf: 'stretch' },
+  // Sits directly under the Import button it qualifies, so the gap above it is closed — otherwise
+  // the card's own `gap` reads it as a third, unrelated line.
+  emptyNote: { color: colors.textMuted, textAlign: 'center', marginTop: -spacing.sm },
 
   // --- Wide web ---
   webContainer: { flex: 1, backgroundColor: colors.background },

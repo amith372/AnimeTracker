@@ -89,6 +89,16 @@ export default function LoginScreen() {
       <Button mode="text" onPress={handleContinueAsGuest} disabled={loading}>
         Continue without an account
       </Button>
+      {/* Disclosed here, where the risk is actually taken, rather than only at the exit where it
+          is too late to have chosen otherwise. A guest session is a real, anonymous Supabase
+          account (guestMode.ts): it survives restarts, but there is no password or email to sign
+          back into it with, so anything signing it out — including logging into a real account
+          from the Account screen — strands the list for good. One line, not a dialog: this is the
+          safe, reversible choice at the moment it is made, and it should stay one tap. */}
+      <Text variant="bodySmall" style={styles.guestNote}>
+        A guest list has no email or password to sign back in with, so signing out loses it. You can
+        turn it into a real account later from Account, and keep everything you&apos;ve tracked.
+      </Text>
       {/* Separate from MAL sign-in above — see app/onboarding/account.tsx. Doesn't require or
           import a MAL list; MyAnimeList can be linked to it later from that screen. */}
       <Button mode="text" onPress={() => router.push('/onboarding/account')} disabled={loading}>
@@ -110,5 +120,8 @@ const useStyles = makeStyles((colors) => ({
   subtitle: { textAlign: 'center', color: colors.textMuted, maxWidth: layout.onboardingColumn },
   error: { color: colors.red, textAlign: 'center', maxWidth: layout.onboardingColumn },
   loginButton: { borderRadius: radii.pill, minWidth: 240 },
+  // Capped and pulled up tight under the guest button it qualifies — the container's 16px gap
+  // would otherwise read it as a fourth, unrelated choice rather than a note on the third.
+  guestNote: { textAlign: 'center', color: colors.textMuted, maxWidth: layout.onboardingColumn, marginTop: -12 },
   attribution: { position: 'absolute', bottom: 24 },
 }));

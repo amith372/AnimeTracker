@@ -68,9 +68,10 @@ a step. Plan 3 was added 2026-10-11 and is unscheduled.
 2. **Plan 7** — execute what the design critique found. **Scheduled 2026-10-14 at the user's
    request**, after plan 5. Read its own section first: it carries a map of every dialog and
    transient state the critique could not see, and an ordering note about plan 5.
-   **Step 1 landed 2026-10-15 and its check is outstanding.** Of what remains, **step 4 is the
-   only one that can simply be started**: step 2 needs a PRD before any code, step 3 needs
-   sign-off, and step 5 is PRD-sized — all three are a conversation first.
+   **Steps 1 and 4 landed 2026-10-15 and both checks are outstanding.** Nothing left in plan 7
+   can simply be started: **step 2 needs a PRD** before any code, **step 3 needs sign-off**, and
+   **step 5 is PRD-sized**. All three are a conversation first, so don't open this plan expecting
+   to build — pick up plan 9 instead, or settle one of the three.
 3. **Plan 9** — make "For you" fast. Unblocked, no PRD, changes nothing about what the list
    contains. Independent of plan 3, which would multiply it rather than replace it.
 4. **Plan 4** — the public share link. PRD signed off 2026-10-14, no open questions, start at its
@@ -516,25 +517,32 @@ Discover → For you. Failure: white-on-pale-blue button labels, a light-mode ca
 dark page, or a status hue that shifts between appearances (status colours are meant to be
 appearance-invariant by design).
 
-### Step 4 — The empty Library's dead end, and the guest wipe · no PRD
-Two P1s, both fixes, both self-contained. Worth landing before plan 4 — a share link sends people
-to an app whose first screen may say nothing but "Nothing here yet".
-- `app/(tabs)/index.tsx:439` and `:573` render the bare string `"Nothing here yet"` with no action.
-  Every guest and every email signup meets the product there, and the three things they could do
-  next are one tab away and two levels inside a `dots-vertical` overflow. Make it an onboarding
-  card: one purpose line, a filled "Find shows to track" → Discover, plus "Import from
-  MyAnimeList" when `malLinked === false`. Give the filtered-empty sibling a "Clear filters".
-- `app/onboarding/account.tsx:215` destroys a guest's whole library on one unconfirmed tap
-  (`handleLogOut` → `signOut()`, unrecoverable for an anonymous session), styled `mode="outlined"`
-  in the same rhythm as every other button, while removing *one show* gets a titled dialog.
-  **Plan 5's guest-exit item deletes that tap outright**, so what is left here is the rest of the
-  same thought: name the count in the dialog that replaces it, and add one line under the login
-  screen's guest button so the risk is disclosed where it is taken. **That deletion landed
-  2026-10-15**, so the tap this bullet describes is already gone — read the guest branch of
-  `account.tsx` as it now stands rather than as described here, and build only the remainder.
+### Step 4 — The empty Library's dead end, and the guest wipe · **done 2026-10-15, check outstanding**
+Both P1s fixed. Three things worth carrying:
+- `LibraryEmptyState` in `app/(tabs)/index.tsx` is one component serving both registers and both
+  cases, because they are different kinds of thing: an empty library is a dead end and gets the
+  onboarding card, a filtered-empty one is not (the shows are there, a chip is hiding them) and
+  gets only `Clear filters`. That button resets all three hiders — status chip, search box *and*
+  the Watched X/Y count lens — since the empty state cannot tell which is to blame.
+- **"Import from MyAnimeList" showing only when `malLinked === false` is not backwards**, and the
+  comment in the file says so: once MAL *is* linked the import gate above this screen has already
+  run, so there is no list left to offer. The button goes to Account, because linking comes first,
+  and the `useFocusEffect` re-read plus the gate carry it to reconcile from there.
+- The delete dialog now names the count, and is deliberately silent about it while the library read
+  is in flight or failed rather than falling back to zero. The login screen's guest note stays one
+  line rather than a dialog — continuing as a guest is the safe, reversible choice at the moment it
+  is made, and it should stay one tap.
 
-**Check:** sign in fresh as a guest, confirm the empty Library offers somewhere to go, then tap
-"Leave guest mode" and confirm it asks first and names how many shows would be lost.
+**Check:** sign in fresh as a guest and confirm the login screen now says, under the guest button,
+that a guest list can't be signed back into. The empty Library should offer somewhere to go —
+"Find shows to track" reaches Discover, and "Import from MyAnimeList" is offered and reaches
+Account. Then on an account *with* shows, set a status filter that matches nothing and confirm
+"Clear filters" brings every row back. Finally open Account and press the exit: the dialog names
+how many shows would be lost, and the number matches the Library. Do the Library half in both
+registers — the wide-web grid and the phone list are the same component but not the same layout.
+Failure: an empty Library still offering nothing, "Clear filters" leaving the list empty (it must
+reset the search box and the Watched X/Y lens too, not just the chip), or a dialog claiming zero
+shows for a library that has some.
 
 ### Step 5 — Reconcile at real scale · **PRD-sized, the remaining P0**
 `app/onboarding/reconcile.tsx:250` hands the user a flat, collapsed list of their entire MAL
