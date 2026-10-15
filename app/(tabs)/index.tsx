@@ -31,6 +31,7 @@ import { pushStatusesToMal } from '@/repositories/MalPushRepository';
 import { MalAttribution } from '@/components/MalAttribution';
 import { AtLogoMark } from '@/components/AtLogoMark';
 import { SeriesTitleText } from '@/components/SeriesTitleText';
+import { ShareListDialog } from '@/components/ShareListDialog';
 import { STATUS_FILTER_KINDS, statusKindLabel, statusLabel } from '@/domain/statusLabel';
 import { hasVisibleNewSeasonAlert, type Series } from '@/domain/series';
 import { buildPushTargets } from '@/domain/malPush';
@@ -99,6 +100,8 @@ export default function LibraryScreen() {
   const [gridWidth, setGridWidth] = useState(0);
   const [pushing, setPushing] = useState(false);
   const [pushConfirmVisible, setPushConfirmVisible] = useState(false);
+  // Plan 4's share controls, a dialog rather than a screen (see ShareListDialog's header).
+  const [shareVisible, setShareVisible] = useState(false);
   // The series a long-press is offering to remove, or null. Long-press rather than a visible
   // per-row button: removal is rare next to the tapping this list exists for, and a delete affordance
   // on every row is one mis-tap away from losing a show's whole watch history.
@@ -332,17 +335,17 @@ export default function LibraryScreen() {
               <Text variant="bodyLarge">Export to MyAnimeList</Text>
             </Pressable>
           )}
-          {/* Plan 4's public share link (app/share.tsx). Not gated on `malLinked`, unlike the three
-              items above: sharing publishes what is in our own Postgres and never touches MAL, so
-              an account that imported nothing and added shows by hand can still share. Lives here
-              rather than on the account screen because it is something you do with your library,
-              not a setting on your account. */}
+          {/* Plan 4's public share link — opens ShareListDialog below rather than pushing a
+              screen, since it is a handful of controls you dip into and leave. Not gated on
+              `malLinked`, unlike the three items above: sharing publishes what is in our own
+              Postgres and never touches MAL, so an account that imported nothing and added shows
+              by hand can still share. */}
           <Pressable
             style={styles.moreMenuRow}
             accessibilityRole="menuitem"
             onPress={() => {
               setMoreMenuVisible(false);
-              router.push('/share');
+              setShareVisible(true);
             }}
           >
             <MaterialCommunityIcons name="link-variant" size={22} color={colors.textPrimary} />
@@ -509,6 +512,7 @@ export default function LibraryScreen() {
         </View>
         {moreMenu}
         {pushConfirmDialog}
+        <ShareListDialog visible={shareVisible} onDismiss={() => setShareVisible(false)} />
         {removeConfirmDialog}
         <Snackbar visible={syncMessage !== null} onDismiss={() => setSyncMessage(null)} duration={4000} style={styles.webToast}>
           {syncMessage}
@@ -623,6 +627,7 @@ export default function LibraryScreen() {
           />
       {moreMenu}
       {pushConfirmDialog}
+      <ShareListDialog visible={shareVisible} onDismiss={() => setShareVisible(false)} />
       {removeConfirmDialog}
       <MalAttribution />
       <Snackbar visible={syncMessage !== null} onDismiss={() => setSyncMessage(null)} duration={4000}>

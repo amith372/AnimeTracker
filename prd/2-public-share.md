@@ -209,13 +209,17 @@ implementation returned.
 
 ### Step 1 — The table and the sharer's own controls · **built 2026-10-15, check outstanding**
 
-**The controls live on their own screen** (`app/share.tsx`), reached from the Library's three-dot
-menu — not in a block on the account screen as the bullet below says. Moved 2026-10-15 at the
-user's request, and right for two reasons beyond that: sharing is something you do with your
-library rather than a setting on your account, and the account screen was already the longest in
-the app (email, password, MAL linking, the notice, two exits), so a URL and a text field at the
-bottom of it put the thing you return to behind the thing you visit once. Step 3's public page is
-a separate route (`app/s/[slug].tsx`) that a stranger opens; this one is the owner's side.
+**The controls are a dialog off the Library's three-dot menu** (`src/components/ShareListDialog.tsx`)
+— not a block on the account screen as the bullet below says, and not the standalone screen that
+was built in between. Settled 2026-10-15 at the user's request, and right beyond that: sharing is
+something you do with your library rather than a setting on your account, and it is a handful of
+controls you dip into and leave, which is a popup's shape. Step 3's public page is still a route
+(`app/s/[slug].tsx`) that a stranger opens; this is the owner's side of it.
+
+**That dialog holds its own confirmations as states rather than opening a second dialog.** Three:
+not sharing (which *is* the create confirmation, carrying the exposure copy and the guest
+sentence), sharing, and confirming a stop. A confirmation floating over the thing it confirms is
+hard to read and harder to dismiss correctly, and the first state has nothing else to show anyway.
 
 **Three further things step 1 settled that the text below did not say.** Recorded here rather than in
 `build_plan.md` because this file is what later steps read, and the first of them contradicts the

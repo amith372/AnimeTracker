@@ -89,7 +89,6 @@ app/                        // Expo Router routes — file path = screen
 ├── series/[id].tsx            // Series Detail — tap-to-mark
 ├── onboarding/                // login (MAL sign-in/guest/email) + import + reconcile + account (create/log in, link MAL, convert a guest)
 ├── discover.tsx                // search/browse to add unwatched anime
-├── share.tsx                   // the owner's share controls (create/copy/rename/revoke) - reached from the Library's three-dot menu
 └── recommend.tsx               // recommendations + "catch up"
 src/
 ├── api/                      // MAL DTOs + Edge Function client (≈ old data/remote)
@@ -110,7 +109,7 @@ src/
 │   ├── malLinkStatus.ts        // platform-agnostic isMalLinked/useMalLinkStatus
 │   ├── malLinkRepository.ts    // native OAuth trigger (signInWithMal/linkMalAccount)
 │   └── malLinkRepository.web.ts // web OAuth trigger — Metro picks this over the .ts on web builds
-├── components/                // small UI pieces shared by 2+ screens (poster tile, add-status dialog)
+├── components/                // small UI pieces shared by 2+ screens (poster tile, add-status dialog), plus ShareListDialog (the owner's share controls, off the Library's three-dot menu)
 └── context/
 __tests__/                   // Jest — mirrors src/domain/ 1:1
 supabase/

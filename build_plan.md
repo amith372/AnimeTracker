@@ -222,11 +222,11 @@ Four steps: the table plus the sharer's controls; the public read function; the 
 the privacy notice and the CLAUDE.md amendment. Each has its own user-run check in the PRD.
 
 **Step 1 landed 2026-10-15**, check outstanding. Four things it settled that the PRD did not say,
-now written into `prd/2-public-share.md` so the next step reads them there: the controls are their
-own screen (`app/share.tsx`) off the Library's three-dot menu, not a block on the account screen;
-the create press gets
-its own confirmation dialog (the PRD put the exposure copy on the revoke, where the guest warning
-could no longer be acted on); `EXPO_PUBLIC_SITE_URL` is set in the local `.env` and falls back to
+now written into `prd/2-public-share.md` so the next step reads them there: the controls are a
+dialog off the Library's three-dot menu (`src/components/ShareListDialog.tsx`), not a block on the
+account screen, and it carries its own confirmations as states rather than stacking a second
+dialog (the PRD put the exposure copy on the revoke, where the guest warning could no longer be
+acted on); `EXPO_PUBLIC_SITE_URL` is set in the local `.env` and falls back to
 `window.location.origin` on web, so a dev server produces a working link; and `expo-clipboard` is
 a new dependency, so **a native build needs `npx expo run:android` rather than a Metro reload**.
 
