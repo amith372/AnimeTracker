@@ -127,12 +127,14 @@ Carried forward from finished work. None of these is a defect, and none is sched
 - **`groupIntoSeries` drops `ova`/`ona`/`special`/`music` entirely** rather than grouping them.
   Fine for the library today, but it means an ONA recommendation silently produces no row — which
   will quietly lower step 7's yield. Its own piece of work if it ever matters.
-- **Step 7's degrade path has never been exercised.** Half 1 of its check passed; the user
-  declined half 2 (revoke `GROQ_API_KEY`, confirm the list still renders with its one-line notice)
-  as not worth running. So the branch where the model provider is unreachable is coded and
-  commented but unobserved — if it is broken, it shows up as a blank or error "For you" during a
-  Groq outage. One `supabase secrets set GROQ_API_KEY=invalid`, one refresh, and setting the real
-  key back is the whole of it, whenever it is worth five minutes.
+- ~~**Step 7's degrade path has never been exercised.**~~ **Observed in the wild 2026-10-15**, and
+  it held: Groq decommissioned `llama-3.3-70b-versatile`, the card reported the provider's 404 on
+  its own line, and the rest of the screen carried on — which is exactly what the branch was
+  written to do. The deliberate test (revoke the key, refresh) was never needed. Fixed by moving
+  both functions to `openai/gpt-oss-120b`; see that commit for why a reasoning model is not a
+  drop-in swap. **The lesson worth keeping is that a hardcoded model id is a dated fact**: Groq
+  retires them without notice, the symptom is a 404 nobody sees until a user presses the button,
+  and the fix is two constants plus a deploy.
 - **Phase 13's list-performance cleanup** is still open in `PLAN.md` and untouched by this plan.
 - **`src/theme/colors.ts`'s `shadows` use the deprecated `shadow*` style props.** react-native-web
   warns on every web dev run ("shadow* style props are deprecated. Use boxShadow"). Nothing is
