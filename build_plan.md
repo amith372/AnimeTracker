@@ -32,7 +32,7 @@ never read off what the implementation returned.
 
 ---
 
-## Current state, 2026-10-14
+## Current state, 2026-10-15
 
 **Plan 1 is complete** — every step built and checked, and `prd/1-recommendation-variety.md`
 deleted. Step 8's check passed on 48 rows rather than the 60 the constant allows, which is the
@@ -81,7 +81,8 @@ linking, import or push).
 **Unscheduled:** plans 2 and 3.
 
 **Nothing is pushed yet, and there is now a condition on it.** `origin/master` is at `244f20f`,
-roughly 40 commits behind the branch as of 2026-10-14. The user's standing "do not push" was
+50 commits behind the branch as of 2026-10-15 (`git rev-list --count 244f20f..HEAD` — count it
+again rather than trusting this number). The user's standing "do not push" was
 lifted that day to: **push once we are done with the current build plan.**
 
 **Do not act on that alone — confirm the scope first.** "The current build plan" was not pinned
@@ -461,10 +462,10 @@ web hover styles on cards, nav rows and poster tiles; Discover's full-screen sea
 profile card in each of its four states (not enough signal, generating, generated-collapsed,
 generated-expanded); and the reconcile screen at real scale, which step 5 below already covers.
 
-**Ordering note:** step 1 edits the same entry-row block that plan 5's nested-`<button>`
-restructure rewrites (`app/series/[id].tsx` around :408–:412). Build plan 5 first and step 1
-becomes a two-line change inside a structure that is already correct; build it second and one of
-the two will be rewriting the other's work.
+**Ordering note — satisfied 2026-10-15.** Step 1 edits the same entry-row block that plan 5's
+nested-`<button>` restructure rewrote (`app/series/[id].tsx` around :408–:412), and plan 5 has
+landed, so step 1 is now the two-line change inside a structure that is already correct. Nothing
+blocks it.
 
 ### Step 1 — Make the movie half of the rollup tell the truth · no PRD
 Three defects, not design changes: the code contradicts `deriveSeriesStatus`.
@@ -528,8 +529,9 @@ to an app whose first screen may say nothing but "Nothing here yet".
   in the same rhythm as every other button, while removing *one show* gets a titled dialog.
   **Plan 5's guest-exit item deletes that tap outright**, so what is left here is the rest of the
   same thought: name the count in the dialog that replaces it, and add one line under the login
-  screen's guest button so the risk is disclosed where it is taken. If plan 5 has not landed yet,
-  build it first rather than putting a dialog on a button that is about to be removed.
+  screen's guest button so the risk is disclosed where it is taken. **That deletion landed
+  2026-10-15**, so the tap this bullet describes is already gone — read the guest branch of
+  `account.tsx` as it now stands rather than as described here, and build only the remainder.
 
 **Check:** sign in fresh as a guest, confirm the empty Library offers somewhere to go, then tap
 "Leave guest mode" and confirm it asks first and names how many shows would be lost.
