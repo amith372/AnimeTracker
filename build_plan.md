@@ -54,8 +54,8 @@ a 404 that surfaces as a generic error.
 a step. Plan 3 was added 2026-10-11 and is unscheduled.
 
 **What comes next, in order.** As of 2026-10-15 the first thing a session told "continue" should
-actually build is **plan 9's step 1** — items 1 and 2 below are both build-complete, and what is
-left in them needs you, not code.
+actually build is **plan 9's step 2** — items 1 and 2 below are both build-complete, and what is
+left in them needs you, not code; plan 9's step 1 landed the same day.
 
 1. **Plan 5** — eight small fixes found 2026-10-14. **All eight are built**, and nothing in it is
    left to write — it has no `###` heading of its own any more. (Plan 2's `###` headings sit
@@ -76,6 +76,8 @@ left in them needs you, not code.
    to build — pick up plan 9 instead, or settle one of the three.
 3. **Plan 9** — make "For you" fast. Unblocked, no PRD, changes nothing about what the list
    contains. Independent of plan 3, which would multiply it rather than replace it.
+   **Step 1 landed 2026-10-15 and its check is outstanding.** Start at step 2, which is where the
+   remaining round trips are.
 4. **Plan 4** — the public share link. PRD signed off 2026-10-14, no open questions, start at its
    step 1. Its one precondition is **met**: plan 7's step 4 landed 2026-10-15, so an empty Library
    now offers somewhere to go rather than being what a share link puts people in front of.
@@ -602,15 +604,11 @@ precisely so a 60-row list can fill, and lowering it would buy speed with yield.
 all three steps below (~350ms → ~50ms a trip would cut whatever remains by roughly 7×) and is
 independent of them; neither waits on the other.
 
-### Step 1 — Stop fetching what the pipeline already holds
-`fetchRecommendations` fills a `detailById` map for every candidate, then hands the ranked list to
-`fetchDetailsAndGroup`, which calls `getAnimeDetailCached` for **those same ids all over again**
-(`src/repositories/DiscoverRepository.ts:152`) at `DETAIL_FETCH_CONCURRENCY = 6`. On a library
-producing ~150 ranked candidates that is ~150 round trips — call it ten seconds — for data already
-in memory. The closure-expansion passes below it are genuinely new ids and stay as they are.
-
-Fix: `fetchDetailsAndGroup` takes an optional preloaded `Map<number, AnimeDetailDto>` and skips the
-fetch for any id already in it. Discover's callers pass nothing and are untouched.
+### Step 1 — Stop fetching what the pipeline already holds · **done 2026-10-15, check outstanding**
+`fetchDetailsAndGroup` now takes an optional `preloadedDetails` map and skips the detail fetch for
+any id already in it; Recommendations passes the map it ranked from. Discover's callers pass
+nothing and are unchanged. The closure-expansion passes still fetch, as planned — those ids are
+genuinely new.
 
 **Check:** open "For you" on a warm cache and watch the progress line. `Grouping results (n/N)`
 should reach N almost immediately rather than crawling, and the finished list must be *the same

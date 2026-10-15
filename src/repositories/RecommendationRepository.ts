@@ -317,7 +317,11 @@ export async function fetchRecommendations(
           break;
       }
     },
-    { bypassCache: opts?.bypassCache },
+    // Every ranked id already has its detail in `detailById` — it is what ranking was computed
+    // from — so handing the map over saves one round trip per candidate (~150 on a full pool)
+    // for data this function is holding anyway. On a manual refresh those entries were fetched
+    // with the cache bypassed, so they are the fresh copy a re-fetch would have produced.
+    { bypassCache: opts?.bypassCache, preloadedDetails: detailById },
   );
 
   if (groupingError !== null) {

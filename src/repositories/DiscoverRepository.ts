@@ -140,16 +140,30 @@ export interface AnimeIdRef {
 export async function fetchDetailsAndGroup(
   nodes: AnimeIdRef[],
   onProgress: (p: DiscoverProgress) => void,
-  opts?: { bypassCache?: boolean },
+  opts?: { bypassCache?: boolean; preloadedDetails?: Map<number, AnimeDetailDto> },
 ): Promise<void> {
   const detailById = new Map<number, AnimeDetailDto>();
-  let completed = 0;
-  onProgress({ kind: 'FETCHING_DETAILS', completed: 0, total: nodes.length });
+  // `preloadedDetails` is detail the caller has already fetched for these exact ids. It exists for
+  // Recommendations, which fetches a detail call per candidate to rank them and then hands the
+  // ranked list straight here — without this, every one of those ~150 ids got a second
+  // `getAnimeDetailCached` round trip for data already sitting in memory, which was most of the
+  // wall time on a warm cache. Discover's own callers pass nothing and fetch everything as before.
+  // Only the ids in `nodes` are read from it; the closure expansion below asks for genuinely new
+  // ids, so it keeps fetching normally.
+  const nodesToFetch: AnimeIdRef[] = [];
+  for (const node of nodes) {
+    const preloaded = opts?.preloadedDetails?.get(node.id);
+    if (preloaded === undefined) nodesToFetch.push(node);
+    else detailById.set(node.id, preloaded);
+  }
+
+  let completed = detailById.size;
+  onProgress({ kind: 'FETCHING_DETAILS', completed, total: nodes.length });
 
   // Best-effort per node — a single hung/broken MAL id (observed happening for real, not just
   // hypothetically) would otherwise abort the whole batch. It's simply left out of the grouping
   // below, same as the closure-expansion loop already treats a related id it can't fetch.
-  await mapWithConcurrency(nodes, DETAIL_FETCH_CONCURRENCY, async (node) => {
+  await mapWithConcurrency(nodesToFetch, DETAIL_FETCH_CONCURRENCY, async (node) => {
     try {
       detailById.set(node.id, await getAnimeDetailCached(node.id, { bypass: opts?.bypassCache }));
     } catch {
