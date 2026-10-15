@@ -34,64 +34,48 @@ never read off what the implementation returned.
 
 ## Current state, 2026-10-15
 
-**Plan 1 is complete** — every step built and checked, and `prd/1-recommendation-variety.md`
-deleted. Step 8's check passed on 48 rows rather than the 60 the constant allows, which is the
-correct behaviour rather than a shortfall: the pool is supply-limited, not budget-limited, so the
-list grows with the library and `MAX_RECOMMENDATIONS` is a ceiling it reaches only once enough
-series are watched. Confirmed live — adding watched series raised the count.
+**What a session told "continue" should build: plan 9's step 3.** Plan 9's steps 1 and 2 both
+landed 2026-10-15; everything else scheduled either needs you or needs a conversation first.
 
-Nothing in plan 1 has been pushed — the branch holds every commit from step 0 onward, by the
-user's instruction, so `origin/master` is still at `244f20f`.
+**Checks waiting on you, and nothing else is blocking them.** Seven pieces of built work are
+waiting on a check only you can run: plan 5's two remaining items (the Edge Function error
+messages, the onboarding column width), plan 7's steps 1 and 4, and plan 9's steps 1 and 2. Each
+one's **Check:** block says what to open and what failure looks like. Nothing is pushed until they
+are confirmed.
 
-The live project is fully set up for the model steps as of 2026-10-14: the `taste_profiles` and
+**Everything scheduled, in order:**
+
+1. **Plan 5** — eight small fixes. All eight built, six checked; the two above are the only thing
+   holding it open, and nothing in it is left to write. Ask about them before pushing — plan 5 is
+   what the push condition below most likely means.
+2. **Plan 7** — execute what the design critique found. **Nothing in it can simply be started**:
+   steps 1 and 4 landed 2026-10-15 with checks outstanding, **step 2 needs a PRD**, **step 3 needs
+   sign-off**, and **step 5 is PRD-sized**. All three are a conversation first, so don't open this
+   plan expecting to build. Read its section before any UI work anyway — it carries a map of every
+   dialog and transient state the critique could not see.
+3. **Plan 9** — make "For you" fast. Unblocked, no PRD, changes nothing about what the list
+   contains. **Start at step 3.** Independent of plan 3, which would multiply it rather than
+   replace it.
+4. **Plan 4** — the public share link. PRD signed off 2026-10-14, no open questions, its one
+   precondition met (plan 7's step 4 landed), so start at its step 1.
+
+**Unscheduled:** plans 2 and 3. Plan 3 needs a PRD before any of it is touched.
+
+**Done and checked:** plan 1 (recommendation variety), plan 6 (the sidebar greeting) and plan 8
+(MAL sign-in on a localhost dev server, which unblocked every check touching sign-in, linking,
+import or push) — all 2026-10-14 — plus six of plan 5's eight items.
+
+**The live project is set up for the model steps** as of 2026-10-14: the `taste_profiles` and
 `model_call_quota` migrations are applied, `taste-profile` and `taste-candidates` are deployed,
 `GROQ_API_KEY` is set, and Global ZDR is on.
 **Deploying an Edge Function from this machine needs `--use-api`** — Docker isn't installed, and
 without that flag the deploy fails in a way that is easy to scroll past, leaving the client to get
 a 404 that surfaces as a generic error.
 
-`prd/1-recommendation-variety.md` is signed off in shape and has no open questions left that block
-a step. Plan 3 was added 2026-10-11 and is unscheduled.
-
-**What comes next, in order.** As of 2026-10-15 the first thing a session told "continue" should
-actually build is **plan 9's step 2** — items 1 and 2 below are both build-complete, and what is
-left in them needs you, not code; plan 9's step 1 landed the same day.
-
-1. **Plan 5** — eight small fixes found 2026-10-14. **All eight are built**, and nothing in it is
-   left to write — it has no `###` heading of its own any more. (Plan 2's `###` headings sit
-   earlier in the file and are not scheduled; don't start there.) **Four of the eight are waiting
-   on a check the user runs**, and they are the only thing holding the plan open: the Edge Function
-   error messages need `supabase secrets set GROQ_API_KEY=invalid` and a redeploy of
-   `taste-profile` and `taste-candidates` (with `--use-api`); the onboarding column width needs a
-   maximised browser, then the Android emulator; the guest's single exit needs a guest session plus
-   the Supabase dashboard; and the Library grid needs a maximised browser resized slowly across its
-   whole range. Ask about these outstanding checks before pushing anything, since plan 5 is what
-   the push condition below most likely means.
-2. **Plan 7** — execute what the design critique found. **Scheduled 2026-10-14 at the user's
-   request**, after plan 5. Read its own section first: it carries a map of every dialog and
-   transient state the critique could not see, and an ordering note about plan 5.
-   **Steps 1 and 4 landed 2026-10-15 and both checks are outstanding.** Nothing left in plan 7
-   can simply be started: **step 2 needs a PRD** before any code, **step 3 needs sign-off**, and
-   **step 5 is PRD-sized**. All three are a conversation first, so don't open this plan expecting
-   to build — pick up plan 9 instead, or settle one of the three.
-3. **Plan 9** — make "For you" fast. Unblocked, no PRD, changes nothing about what the list
-   contains. Independent of plan 3, which would multiply it rather than replace it.
-   **Step 1 landed 2026-10-15 and its check is outstanding.** Start at step 2, which is where the
-   remaining round trips are.
-4. **Plan 4** — the public share link. PRD signed off 2026-10-14, no open questions, start at its
-   step 1. Its one precondition is **met**: plan 7's step 4 landed 2026-10-15, so an empty Library
-   now offers somewhere to go rather than being what a share link puts people in front of.
-
-**Done and checked 2026-10-14:** plan 1 (recommendation variety), plan 6 (the sidebar greeting),
-and plan 8 (MAL sign-in on a localhost dev server, which unblocked every check touching sign-in,
-linking, import or push).
-
-**Unscheduled:** plans 2 and 3.
-
-**Nothing is pushed yet, and there is now a condition on it.** `origin/master` is at `244f20f`,
-53 commits behind the branch as of 2026-10-15 (`git rev-list --count 244f20f..HEAD` — count it
-again rather than trusting this number). The user's standing "do not push" was
-lifted that day to: **push once we are done with the current build plan.**
+**Nothing is pushed yet, and there is a condition on it.** `origin/master` is at `244f20f`, **55
+commits** behind the branch as of 2026-10-15 (`git rev-list --count 244f20f..HEAD` — count it
+again rather than trusting this number). The standing "do not push" was lifted on 2026-10-14 to:
+**push once we are done with the current build plan.**
 
 **Do not act on that alone — confirm the scope first.** "The current build plan" was not pinned
 down, and the readings differ by a lot of work: plan 5 (the most likely, since it was the plan in
@@ -163,23 +147,11 @@ Carried forward from finished work. None of these is a defect, and none is sched
 
 ---
 
-# Plan 1 — Recommendations with deeper taste and real variety
+# Plan 1 — Recommendations with deeper taste and real variety · **done 2026-10-14**
 
-**Complete 2026-10-14.** `prd/1-recommendation-variety.md` held the detail and was deleted when
-step 8 landed, as planned; `git log` is where that reasoning lives now.
-
-Step 0 — the pre-commit gate, and the `genres` question · **done 2026-10-11**
-Step 1 — diversify the final list · **done 2026-10-11**
-Step 2 — broaden the candidate pool · **done 2026-10-11**
-Step 3 — learn from dropped series · **done 2026-10-11**
-Step 4 — minimum-episodes filter · **done 2026-10-11**
-Step 5 — more taste axes and the obscurity signal · **done 2026-10-11**
-Step 5½ — privacy notice, consent, and delete everything · **done 2026-10-11**
-Step 6 — the taste profile (model, part 1) · **done 2026-10-11**
-
-Step 7 — the candidate generator (model, part 2) · **done 2026-10-14**
-
-Step 8 — make the list as long as it says it is · **done 2026-10-14**
+Nine steps (0–8, including 5½), all built and checked. `prd/1-recommendation-variety.md` was
+deleted when step 8 landed, as planned, so `git log` is where its reasoning lives; what it left
+owed is in "What is still owed" above.
 
 ---
 
@@ -286,140 +258,66 @@ any sign-in path broken (the MAL redirect URI was not re-registered).
 
 ---
 
-# Plan 5 — Eight things found 2026-10-14 · **all eight built, four checks outstanding**
+# Plan 5 — Eight things found 2026-10-14 · **all eight built, two checks outstanding**
 
 Found while checking plan 1 step 8, then while looking at the Account screen and the Library on a
-wide monitor. Fixes and copy, not features, so none of them needs a PRD — though the width item
-held one number that a design skill settled before any style was written. **Nothing here is left to
-write.** Each item is a paragraph below, and the four that still carry a **Check:** block are the
-four waiting on the user; the rest are checked and done.
+wide monitor. Fixes and copy, not features, so none of them needed a PRD. **Nothing here is left
+to write.** Six are built and checked, one line each below; the two that still carry a **Check:**
+block are the only thing holding the plan open.
 
-Nested `<button>` on Series Detail · **done 2026-10-14** — the row is a plain `View` with sibling
-controls; the press target is the text block. `ArcListRow` matches it deliberately so neither can
-drift back.
+Nested `<button>` on Series Detail · **done + checked 2026-10-14**
+The hero's heart and trash were unclickable · **done + checked 2026-10-14**
+The ⓘ button duplicated the summary · **done + checked 2026-10-14**
+Discover's Add dialog truncated the synopsis · **done + checked 2026-10-14**
+A guest had two ways out and only one deleted anything · **done + checked 2026-10-15**
+The wide-web Library grid laid out 6 cards, then 1 · **done + checked 2026-10-15**
 
-The hero's heart and trash were unclickable · **done 2026-10-14** — `headerTopRow` needed
-`zIndex: 1`, because react-native-web makes every View positioned and the later `headerContent`
-painted over it. **Worth remembering why this mattered beyond a dead button:** `liked` carries
-`LIKED_WEIGHT = 3` against a default of 1 across four ranking signals, so every recommendation
-produced before this fix ran with no liked signal at all. The buttons also gained hover captions
-(`HeroActionButton`, not Paper's `Tooltip` — see the commit for the three reasons that was removed)
-and the heart fills `colors.red`.
+### Edge Function error messages were unwrapped and then discarded · **built 2026-10-14, check outstanding**
+`invoke()` throws `UserFacingError` when the response status is anything but a catch-all 500, so
+the sentence a function deliberately wrote for the user survives `userFacingMessage()` instead of
+being replaced by a generic fallback. **The status is the tag**: every branch that worded its own
+error returns a deliberate status, every handler's catch-all returns 500 with `describeError(e)` or
+a raw PostgrestError message. `isUserFacingEdgeStatus` in `src/repositories/errorMessage.ts` is the
+rule and `__tests__/errorMessage.test.ts` holds the functions to their half of it — a developer
+string returned at 403 would otherwise land in a Snackbar with nothing to notice it. Both model
+functions log Groq's body and return only the provider-refused sentence with its status, since the
+status is what distinguishes a revoked key from a rate limit and the body is developer JSON.
 
-The ⓘ button duplicated the summary · **done 2026-10-14** — removed from both registers; the blurb
-now says **"Read more"**, matching what the Detail screen's synopsis already says for the same job.
-The copy question this briefly opened is **closed, not deferred**: "click" was wrong on the phone
-this component also renders on, and "tap" would have been wrong on the desktop, so the only
-candidate that is not false on one platform is the one the app already used. The two screens still
-reveal the text differently — Detail expands in place and can offer "Show less", Preview opens a
-dialog and cannot — but the invitation to read it is now one phrase.
+**Check:** `supabase secrets set GROQ_API_KEY=invalid`, redeploy `taste-profile` and
+`taste-candidates` (**with `--use-api`** — no Docker on this machine, and without the flag the
+deploy fails quietly), then open "For you". The notice must be the function's own sentence, naming
+the provider and carrying the HTTP status it got back. Put the real key back afterwards. Failure: a
+generic "something went wrong" instead, or developer JSON reaching the screen.
 
-**Reaching `app/series/preview.tsx` is not obvious, and the check for this item got it wrong
-once.** It is pushed from **exactly one place**: `app/(tabs)/recommend.tsx:173` — "For you" → the
-**Recommended** tab → tap a card. Discover's poster tiles do *not* open it, they open the quick
-`AddSeriesDialog`; Catch-up cards go to the real Detail screen. Nothing about the screen's name
-suggests it is reachable only from recommendations, so check it there or not at all.
-
-Edge Function error messages were unwrapped and then discarded · **done 2026-10-14** —
-`invoke()` now throws `UserFacingError` when the response status is anything but a catch-all 500,
-so the sentence a function deliberately wrote for the user survives `userFacingMessage()` instead
-of being replaced by a generic fallback. **The status is the tag**, decided 2026-10-14: every
-branch that worded its own error returns a deliberate status, every handler's catch-all returns 500
-with `describeError(e)` or a raw PostgrestError message. `isUserFacingEdgeStatus` in
-`src/repositories/errorMessage.ts` is the rule and `__tests__/errorMessage.test.ts` holds the
-functions to their half of it — a developer string returned at 403 would otherwise land in a
-Snackbar with nothing to notice it. The provider-wording judgement call is **closed**: both model
-functions log Groq's body and return only `The model provider refused the request (429).`, since
-the status is what distinguishes a revoked key from a rate limit and the body is developer JSON.
-**Out of scope deliberately:** fresh picks still degrade to one notice
-(`GeneratedCandidateRepository.ts:139`) — that is the PRD's decision, not this discard.
-
-The Account screen stretched across a wide monitor · **done 2026-10-14** — the four onboarding
-screens cap their content at `layout.onboardingColumn` (480) and centre it, with the page
-background moved to a full-bleed parent so the cap doesn't paint a 480px stripe of Warm Paper on
-the navigator's own background. **One number, not two**, settled by an `$impeccable` run: the
-privacy notice is set at `bodyMedium`'s 14px, so 448 of content is ~64 characters — a wider reading
-column would overrun the measure rather than improve it — and 480 is the Discover searchbar's
-existing cap rather than a fifth unrelated width. Recorded in `DESIGN.md`'s wide-web register,
-including why it is the one entry there *not* gated on the 900px breakpoint. Not gated because the
-same style is already correct on a phone. `login.tsx` needed no column (its controls shrink-wrap)
-but its subtitle and error text did, which matters more now that an Edge Function's own sentence
-reaches them verbatim. `reconcile.tsx` got the cheap version the plan asked for — one wrapper
-around count, list and button — since plan 7 step 5 rewrites that screen.
+### The Account screen stretched across a wide monitor · **built 2026-10-14, check outstanding**
+The four onboarding screens cap their content at `layout.onboardingColumn` (480) and centre it,
+with the page background moved to a full-bleed parent so the cap doesn't paint a 480px stripe of
+Warm Paper on the navigator's own background. **One number, not two**, settled by an `$impeccable`
+run: the privacy notice is set at `bodyMedium`'s 14px, so 448 of content is ~64 characters, and 480
+is the Discover searchbar's existing cap rather than a fifth unrelated width. Recorded in
+`DESIGN.md`'s wide-web register, including why it is the one entry there *not* gated on the 900px
+breakpoint — the same style is already correct on a phone. `login.tsx` needed no column (its
+controls shrink-wrap) but its subtitle and error text did, which matters more now that an Edge
+Function's own sentence reaches them verbatim. `reconcile.tsx` got the cheap version, one wrapper
+around count, list and button, since plan 7 step 5 rewrites that screen.
 
 Measured over CDP at 1920 / 900 / 390 / 320: the column is 480 and centred above the cap, full
 width below it, `scrollWidth == clientWidth` at every one. **A headless screenshot at 390 looked
 like it overflowed and the measurement says it doesn't** — the window-size screenshot crops a wider
 layout viewport. Privacy and reconcile both need a session, so neither could be reached headlessly;
-they share account's verified container exactly, and the user's check is what covers them.
+they share account's verified container exactly, which is why your check is what covers them.
 
-A guest had two ways out and only one deleted anything · **done 2026-10-15** — the guest branch
-of `app/onboarding/account.tsx` now has exactly one exit, `Leave guest mode and delete this list`,
-calling `deleteAccountAndData()`; `logOutAccount` is reachable from the real-account branch only.
-`dataSection()` takes a `DeleteWording` pair (button, title, scope, warning, confirm) rather than
-being branched on inside, so the two branches' words can differ while the delete button's existence
-cannot. The guest wording never says "account" or "log out" — both are false for an anonymous
-session. **Scope leads and the warning follows**, decided 2026-10-15: saying what is and isn't
-deleted before the irreversible sentence is what makes the alarm land on the right thing, and it
-stops the one reassuring line (MyAnimeList untouched) sitting under a paragraph. The guest branch
-also gained `Log in to an existing account`, since signing out was a guest's only route to the
-login screen and collapsing the exits would otherwise have made owning an account cost the guest
-list. **One thing that was not in the item and should be read before the check:** logging in from
-a guest session abandons the guest's rows exactly as signing out did — the same orphan this item
-exists to stop — so the button carries a `bodySmall` line saying the list stays behind and offering
-the delete first. Cut it if that is the wrong call; the alternative is a confirmation dialog on
-`Log in`, which is more machinery than a disclosure.
-
-**Check:** continue as a guest and open Account. There is exactly one way out, it names the guest
-list rather than an account, and confirming it leaves nothing behind — verify in the Supabase
-dashboard that the `auth.users` row is gone, not merely signed out. Then confirm `Log in to an
-existing account` reaches an existing account from the guest branch without deleting anything, and
-that a real account still sees both log-out and Delete everything, unchanged. Failure: a guest told
-the app is deleting an "account", a second silent exit still present, or an `auth.users` row
-surviving the delete.
-
-Discover's Add dialog truncated the synopsis · **done 2026-10-14** — `AddSeriesDialog` now expands
-the summary in place, with the same "Read more" / "Show less" wording as Detail and Preview. It
-expands rather than linking away because this dialog is where the decision to add is made; sending
-someone to another screen to finish a sentence meant cancelling the dialog they were completing.
-`Dialog.ScrollArea` already scrolled, so the longer text cost nothing.
-
-The affordance is **bold** (`fontFamilies.bodyBold`, overriding Paper's `labelSmall` Medium) in all
-three places, asked for 2026-10-14. It is the one thing on the dialog a user has to notice
-unprompted — nothing else says the clipped text continues — and at 500 it read as more paragraph.
-
-The wide-web Library grid laid out 6 cards, then 1 · **done 2026-10-15** — both halves of the fix
-went in. The measured width is now discounted by a `GRID_SCROLLBAR_ALLOWANCE` before the division,
-and `webGridRow` is **deliberately no longer `flexWrap`**, with the cards flexible
-(`gridCardFlexible`: grow/shrink from a zero basis, `maxWidth` 184, `minWidth: 0`) instead of fixed
-at 184. **The second half is the one that holds**: a non-wrapping row of shrinkable cards has
-nowhere to put a row break, so a residual miscount costs a few pixels a card rather than the ragged
-grid. The arithmetic, derived on paper: the pitch is 206, so the old `floor((w - 34) / 206)` asked
-for 7 columns from `w >= 1476` while 7 cards plus their gaps genuinely need `w >= 1491` once the
-~15px scrollbar is taken off — the 6-then-1 band was exactly those 15 pixels, which is why it came
-and went with a resize. The new threshold is 1492, one pixel conservative.
-
-**One thing that was not in the item.** `gridCardHovered`'s comment still says a wash would shift
-the cover art "off its exact 184px spec", and 184 is now a ceiling rather than an exact width — in
-the band where the cards absorb the slack a cover is a few pixels narrower. That is the trade the
-item asked for, and the comment's point about hover styling is unaffected, so it was left alone.
-`flexible` is a prop rather than being worked out inside the card because FlatList gives a
-single-column cell no row wrapper at all, and a flexGrow in a `column`-direction parent would
-stretch the card's height down the page; the one-column case keeps the fixed `gridCard`. Discover's
-grid was confirmed unaffected (fixed `numColumns`, no `columnWrapperStyle`) and untouched.
-
-**Check:** open the Library maximised on the wide monitor and drag the window slowly from narrow to
-full width. At every width every row holds the same number of cards, and no row ever holds a single
-card with empty space beside it. Failure: the 6-then-1 pattern reappearing at some width, a card
-clipped at the right edge, or the column count no longer growing with the window at all.
-
----
+**Check:** maximised browser, then the four onboarding screens — login, account, the privacy
+notice and reconcile. Content sits in one centred column rather than stretching the full width, and
+no screen scrolls sideways. Then the same screens on the Android emulator: there the column should
+simply be full width, with nothing clipped. Failure: a screen whose text runs the whole width of the
+monitor, a 480px stripe of a different background colour behind the column, or a phone layout that
+now has margins it didn't have before.
 
 # Plan 6 — "Welcome X" in the web sidebar · **done 2026-10-14**
 
-Checked both halves: the sidebar greets by MAL username, and a guest reads "Welcome Guest".
-`prd/3-welcome-greeting.md` deleted. Step 2 (`mal-me`) was dropped on evidence — see "What is
-still owed" for the one case it would have covered.
+Both halves checked. `prd/3-welcome-greeting.md` deleted. Step 2 (`mal-me`) was dropped on
+evidence — "What is still owed" has the one case it would have covered.
 
 # Plan 7 — What the design critique found · **scheduled 2026-10-14, after plan 5**
 
@@ -577,14 +475,10 @@ same patterns as HTML/CSS fire two rules. Do not read a clean detector run here 
 
 # Plan 8 — MAL sign-in that works in dev and production at once · **done 2026-10-14**
 
-Both halves of its check passed: a dev server on localhost now completes MAL sign-in, and the
-deployed site still does. `prd/4-dev-oauth-origin.md` deleted.
-
-**The one thing worth carrying forward**, because widening it would be a real security hole rather
-than a tuning change: `supabase/functions/_shared/oauthOrigin.ts`'s allowlist is `SITE_URL` plus
-loopback, and loopback is only safe because such a redirect resolves on whichever machine follows
-it. Any entry naming a routable host would hand out session handoff codes. The reasoning is in that
-file's header and in commit `d65eada`; `__tests__/oauthOrigin.test.ts` holds the twelve cases.
+Both halves checked: a dev server on localhost completes MAL sign-in and the deployed site still
+does. `prd/4-dev-oauth-origin.md` deleted. The one constraint it left behind — that
+`oauthOrigin.ts`'s allowlist must never name a routable host, since what such a redirect carries is
+a code exchangeable for a session — lives in that file's header and in `__tests__/oauthOrigin.test.ts`.
 
 ---
 
@@ -616,22 +510,26 @@ shows in the same order* as before the change — compare the first ten rows aga
 taken first. Failure: a row that was there is missing, the order changed, or the stage still crawls
 (the map isn't reaching it).
 
-### Step 2 — One cache read per stage, not one per anime
-Add `cachedMany(keys, fetchMissing)` beside `cached()` in `apiCache.ts`: a single
-`select('key, json, fetched_at').in('key', keys)`, partition the result into fresh hits / stale /
-missing, run the fetcher only for the misses at the existing concurrency, and write back with one
-array upsert instead of one per key. Chunk the `in` list (~200 keys) so a long one can't run into a
-URL-length limit. `cached()` stays for genuine single-key callers.
+### Step 2 — One cache read per stage, not one per anime · **done 2026-10-15, check outstanding**
+`cachedMany()` sits beside `cached()` in `apiCache.ts`: one chunked `select … in (keys)`, the
+partition, MAL calls for the misses only at the caller's own concurrency, and one array upsert back.
+All three stages are on it — the source stage's `recs:`/`detail:` pair (two bulk reads where there
+were `2 × watched series`), the candidate detail stage, and each closure pass in
+`fetchDetailsAndGroup`. Key space, TTL and version segments are untouched, so no warm cache was
+thrown away, and the MAL request count is unchanged in both directions.
 
-Then move the three stages onto it: the source stage's `recs:`/`detail:` pair, the candidate
-detail stage, and each closure pass's `missing` set. **Key space, TTL and version segments are
-unchanged** — these are the same rows, read in bulk — so nothing needs a version bump and no warm
-cache is thrown away. Guardrail #3 is unaffected in the right direction: fewer requests, and the
-batched read goes to our own Postgres, never to MAL.
-
-The partition (which keys count as fresh, stale, or absent) is pure logic and gets a Jest test with
-fixed `fetched_at` values and an injected clock — **expected splits derived on paper from those
-timestamps**, not read off what the implementation returned.
+Three things worth carrying:
+- **The partition is its own module**, `src/repositories/cachePartition.ts`, not a function inside
+  `apiCache.ts`: importing `apiCache.ts` pulls in `supabaseClient.ts` and through it AsyncStorage's
+  native module, which no Jest test can load. `__tests__/cachePartition.test.ts` pins it with an
+  injected `now` and timestamps dated on paper, including a row *exactly* one TTL old — the case a
+  `<=` would get wrong. Verified by flipping that comparison: three of its tests fail.
+- **`concurrency` is a required option, not a default.** It is the pacing of real MAL requests
+  (guardrail #3), so each call site states its own rather than inheriting a number from the cache.
+- **The source stage counts a series done only once both its key spaces have settled.** Both bulk
+  reads drive one counter, so without that pair count "Checking your watched series (n/N)" would
+  reach N twice. A cold run still has 2 × 12 MAL requests in flight, exactly as the old
+  twelve-series-wide loop making two calls apiece did.
 
 **Check:** time "For you" end to end on a warm cache before and after. Open the browser Network tab
 during a run: requests to `api_cache` should number in the handful, not the hundreds, and the stage
