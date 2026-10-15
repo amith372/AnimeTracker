@@ -72,45 +72,40 @@ version 3), which cleared the one deploy that had been outstanding and picked up
 3. **Plan 9** — make "For you" fast. **All three steps built**, nothing left to write; the three
    checks above are what remain, and its migration is applied. Changed nothing about what the list
    contains. Plan 3 would multiply its gains rather than replace them.
-4. **Plan 4** — the public share link. PRD signed off 2026-10-14, no open questions. **Step 1
-   landed and was checked 2026-10-15** (the table, the sharer's controls — create, copy, rename,
-   and a revoke that genuinely mints a fresh slug on re-share). **Step 2 landed 2026-10-15 and is
-   deployed**, with its curl check outstanding. **Steps 3 and 4 landed 2026-10-15**, checks
-   outstanding. **All four steps are built**; what remains is the three checks, each written into
-   `prd/2-public-share.md` and its commit. Delete that PRD once they are confirmed — its decisions
-   are already in CLAUDE.md §9.
+4. **Plan 4** — the public share link. **Done and checked 2026-10-16.**
 
 **Unscheduled:** plans 2 and 3. Plan 3 needs a PRD before any of it is touched.
 
 **Do not take "the first step not marked done" by file order** — this list is the order, not the
-file. Three sets of `###` headings sit *above* plan 4 and none of them is what to build: plan 2's
-two headings are unscheduled, plan 7's steps 2, 3 and 5 each need a PRD or sign-off first, and
-plan 5's two remaining items are built and waiting on a check. Plan 4's own steps are not `###`
-headings in this file at all — they live in `prd/2-public-share.md`, and the next one to build is
-its step 2.
+file, and right now **nothing in it is buildable**. Every `###` heading left in this file is either
+unscheduled (plan 2's two) or waiting on a PRD, a sign-off or a check (plan 7's, plan 5's). The
+next session that is told "continue" should say so and ask what to pick up, rather than starting
+the first heading it finds.
 
 **Done and checked:** plan 1 (recommendation variety), plan 6 (the sidebar greeting) and plan 8
 (MAL sign-in on a localhost dev server, which unblocked every check touching sign-in, linking,
-import or push) — all 2026-10-14 — plus six of plan 5's eight items, and plan 4's step 1
-(2026-10-15).
+import or push) — all 2026-10-14 — plus six of plan 5's eight items, and **plan 4 in full**
+(the public share link, 2026-10-16).
 
 **The live project is set up for the model steps** as of 2026-10-14: the `taste_profiles` and
 `model_call_quota` migrations are applied, `taste-profile` and `taste-candidates` are deployed,
-`GROQ_API_KEY` is set, and Global ZDR is on.
+`GROQ_API_KEY` is set, and Global ZDR is on. Both functions were **redeployed 2026-10-16 on
+`openai/gpt-oss-120b`** after Groq retired the previous model — see "What is still owed" for why a
+hardcoded model id is a dated fact, and the commit for why a reasoning model is not a drop-in swap.
 **Deploying an Edge Function from this machine needs `--use-api`** — Docker isn't installed, and
 without that flag the deploy fails in a way that is easy to scroll past, leaving the client to get
 a 404 that surfaces as a generic error.
 
-**Nothing is pushed yet, and there is a condition on it.** `origin/master` is at `244f20f`, **55
-commits** behind the branch as of 2026-10-15 (`git rev-list --count 244f20f..HEAD` — count it
-again rather than trusting this number). The standing "do not push" was lifted on 2026-10-14 to:
-**push once we are done with the current build plan.**
+**Everything is pushed, as of 2026-10-16.** The 72-commit backlog that had been sitting unpushed
+since `244f20f` went up when plan 4 was finished, on the user's explicit say-so, and the two
+commits after it the same way. The old "push once we are done with the current build plan"
+condition is spent; **ask before the next push rather than assuming it carried over**, since it
+was granted for a backlog that no longer exists.
 
-**Do not act on that alone — confirm the scope first.** "The current build plan" was not pinned
-down, and the readings differ by a lot of work: plan 5 (the most likely, since it was the plan in
-flight when they said it), everything scheduled in the ordering list above, or this file in its
-entirety. Ask which, then push. A push is outward-facing and the one action here that cannot be
-quietly undone.
+**Two things the deployed web build needs, set on Render and not in this repo** (confirmed live
+2026-10-16): `EXPO_PUBLIC_SITE_URL` as a *build-time* environment variable, since Expo bakes
+`EXPO_PUBLIC_*` into the bundle and `.env` is gitignored; and the SPA rewrite `/*` →
+`/index.html`, without which a cold `/s/<slug>` is a 404 because it is not a file.
 
 **Two different plans were numbered 7 on 2026-10-14** — the design critique's and the OAuth fix's
 — because they were written into this file from two directions on the same day. The OAuth one was
@@ -208,41 +203,11 @@ proposing new ones.
 
 ---
 
-# Plan 4 — A public, account-free share link for your list · **scheduled, unblocked**
+# Plan 4 — A public, account-free share link for your list · **done 2026-10-16**
 
-Asked for 2026-10-12; **PRD signed off and scheduled 2026-10-14**, to be picked up the moment
-plans 5 and 6 clear. Detail, decisions, the compliance reading and the step plan live in
-**`prd/2-public-share.md`** — not duplicated here. Delete the PRD when its step 4 lands. Four shape decisions were settled the same day:
-a public Edge Function returning JSON (so RLS stays owner-only on every table), the whole library
-with every status, one revocable link per account, and an optional nickname rather than any name
-the app already holds.
-
-**It amends a standing non-goal**, which is why it needs sign-off rather than just scheduling.
-CLAUDE.md says a library is private to its account; this makes it publishable by its owner to
-anyone holding a URL. No account can still read another account's library — that half of the
-non-goal stands.
-
-**Settled against the agreement, read 2026-10-12 rather than recalled:** §3(a)(ii) restricts
-distributing *the API*, not MyAnimeList Content; §2(b) grants MAL crawler rights over "any webpage
-on which you display MyAnimeList Content", so public pages are anticipated; and no clause requires
-a viewer to hold a MAL account. §4(f) is the binding one and is about people, not shows — so no
-email, MAL username, MAL user id or account id goes anywhere near the page.
-
-**No open questions block it.** The guest one was settled 2026-10-14: a guest may share, and the
-confirmation dialog says plainly that losing the guest session means losing the ability to stop
-sharing. Nothing in the plan special-cases an anonymous session.
-
-Four steps: the table plus the sharer's controls; the public read function; the viewer's page; then
-the privacy notice and the CLAUDE.md amendment. Each has its own user-run check in the PRD.
-
-**Step 1 landed and was checked 2026-10-15.** Four things it settled that the PRD did not say,
-now written into `prd/2-public-share.md` so the next step reads them there: the controls are a
-dialog off the Library's three-dot menu (`src/components/ShareListDialog.tsx`), not a block on the
-account screen, and it carries its own confirmations as states rather than stacking a second
-dialog (the PRD put the exposure copy on the revoke, where the guest warning could no longer be
-acted on); `EXPO_PUBLIC_SITE_URL` is set in the local `.env` and falls back to
-`window.location.origin` on web, so a dev server produces a working link; and `expo-clipboard` is
-a new dependency, so **a native build needs `npx expo run:android` rather than a Metro reload**.
+Four steps, all built and checked. `prd/2-public-share.md` was deleted when the last one cleared,
+as planned; its decisions live in **CLAUDE.md §9** and the rest is in `git log`. What it left owed
+is in "What is still owed" above.
 
 ---
 
