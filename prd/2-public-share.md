@@ -268,7 +268,23 @@ predictable" is enforced by Postgres rather than by convention — `authenticate
   like the same slug coming back (a revoke that only hid the row), or a slug containing anything
   recognisable from your account.
 
-### Step 2 — The public read function
+### Step 2 — The public read function · **built 2026-10-15, check outstanding**
+
+Two things it settled. **It takes the slug from a query string as well as a JSON body** — the page
+will POST through `supabase.functions.invoke`, but a human checking a link reaches for curl, where
+`?slug=` is the obvious thing to type; the slug is a lookup key rather than a credential, so
+neither form is more trusted. And **the response is camelCase**, matching `src/domain/`'s model
+rather than the column names listed below, since the page runs the real status derivation on it
+and a renaming layer would exist for nothing.
+
+The library read is **one embedded select** (`series_entries(...)` nested under `series`) rather
+than the client's two selects. It is a cold page load for a stranger on a ~350ms backend with no
+cache to hide behind — and it also means no row ids are ever *selected*, where the two-select
+version needs `id`/`series_id` to group by.
+
+As in `delete-account`, the names of the tables this function must never read appear nowhere in
+its source, so the test can assert their absence rather than trusting a comment. That is why its
+header describes them ("the taste profile", "the MAL token table") instead of naming them.
 
 - `supabase/functions/shared-library`: slug in, the whitelisted library out, as `service_role`. No
   `getRequestUserId` — there is deliberately no caller identity. 404-shaped response for an unknown
