@@ -11,9 +11,8 @@
 // plus one line of notice saying so. The
 // "Catch up" list is unrelated and purely local — no MAL calls, no ranking, just unwatched TV
 // seasons inside series that are already Watched/Watched X/Y.
-import { mapWithConcurrency } from '@/api/concurrency';
 import { type AnimeDetailDto } from '@/api/malDataApi';
-import { getAnimeDetailCached, getAnimeRecommendationsCached } from './apiCache';
+import { getAnimeDetailCachedMany, getAnimeRecommendationsCachedMany } from './apiCache';
 import {
   buildEraCentre,
   buildGenreAffinity,
@@ -122,37 +121,67 @@ export async function fetchRecommendations(
   const generatedPromise = fetchGeneratedCandidates(allSeries, { bypassCache: opts?.bypassCache });
 
   onProgress({ kind: 'FETCHING_SOURCES', completed: 0, total: sourceSeries.length });
+  const rootMalIds = sourceSeries.map((s) => s.rootMalId);
+  // A series is only "done" once *both* its key spaces have settled, which is what keeps this
+  // counter meaning what it meant when the stage made two calls per series inside one lambda.
+  // Both bulk reads drive the same counter, so without the pair count it would reach the total
+  // twice. `unique(user_id, root_mal_id)` is what makes counting by root id safe — two source
+  // series cannot share one.
+  const settledSpacesByRootId = new Map<number, number>();
   let sourcesCompleted = 0;
+  const countSettled = (id: number) => {
+    const settled = (settledSpacesByRootId.get(id) ?? 0) + 1;
+    settledSpacesByRootId.set(id, settled);
+    if (settled < 2) return;
+    sourcesCompleted++;
+    onProgress({ kind: 'FETCHING_SOURCES', completed: sourcesCompleted, total: sourceSeries.length });
+  };
+  // Two bulk reads rather than two calls per series: on a warm cache this stage is now two cache
+  // round trips instead of `2 × watched series` of them, which on a real library was most of the
+  // wall time before the finished list could even start being computed (plan 9 step 2).
+  //
+  // The second half is the studio/source/era half of the taste profile. The `series` table stores
+  // `genres` and no other metadata, so unlike genre these have to come from MAL — one cached
+  // `anime/{rootMalId}` detail call per watched series, asked for here in the stage that was
+  // already fetching per source series rather than as a stage of its own. Cheap on a warm cache
+  // (mal-import writes the very same `detail:` keys for every entry in the user's list), and the
+  // whole cost of a cold one is this stage going from one call per source series to two.
+  //
+  // Best-effort on both sides, which the bulk read gives for free: an id whose fetch failed is
+  // simply absent from its map, so a series whose detail is missing still contributes to the MAL
+  // tally and vice versa — the reason this used to need `allSettled` over a pair of calls. The two
+  // run concurrently at the same width each, so a cold run has the same number of MAL requests in
+  // flight (2 × 12) as the old twelve-series-wide loop making two calls apiece.
+  const [recommendationsByRootId, detailByRootId] = await Promise.all([
+    getAnimeRecommendationsCachedMany(rootMalIds, {
+      concurrency: SOURCE_FETCH_CONCURRENCY,
+      bypass: opts?.bypassCache,
+      onResolved: countSettled,
+    }),
+    getAnimeDetailCachedMany(rootMalIds, {
+      concurrency: SOURCE_FETCH_CONCURRENCY,
+      bypass: opts?.bypassCache,
+      onResolved: countSettled,
+    }),
+  ]);
+
+  // Re-keyed from MAL root id to series id, which is what every consumer below is written against.
   const recommendedBySeries = new Map<string, RecommendedRef[]>();
-  // The studio/source/era half of the taste profile. The `series` table stores `genres` and no
-  // other metadata, so unlike genre these have to come from MAL — one cached `anime/{rootMalId}`
-  // detail call per watched series, made here in the stage that was already fetching per source
-  // series rather than as a stage of its own. Cheap on a warm cache (mal-import writes the very
-  // same `detail:` keys for every entry in the user's list), and the whole cost of a cold one is
-  // this stage going from one call per source series to two.
   const detailBySeries = new Map<string, AnimeDetailDto>();
-  // Best-effort here too — a series whose recommendations can't be fetched just contributes
-  // nothing to the tally/profile, rather than failing every other series' contribution too.
-  // Both calls are independent and either can fail alone, hence allSettled rather than one try:
-  // a series whose detail is missing should still contribute to the MAL tally, and vice versa.
-  await mapWithConcurrency(sourceSeries, SOURCE_FETCH_CONCURRENCY, async (series) => {
-    const [recs, detail] = await Promise.allSettled([
-      getAnimeRecommendationsCached(series.rootMalId, { bypass: opts?.bypassCache }),
-      getAnimeDetailCached(series.rootMalId, { bypass: opts?.bypassCache }),
-    ]);
-    if (recs.status === 'fulfilled') {
+  for (const series of sourceSeries) {
+    const recs = recommendationsByRootId.get(series.rootMalId);
+    if (recs) {
       recommendedBySeries.set(
         series.id,
-        (recs.value.recommendations ?? []).map((r) => ({
+        (recs.recommendations ?? []).map((r) => ({
           id: r.node.id,
           numRecommendations: r.num_recommendations ?? 0,
         })),
       );
     }
-    if (detail.status === 'fulfilled') detailBySeries.set(series.id, detail.value);
-    sourcesCompleted++;
-    onProgress({ kind: 'FETCHING_SOURCES', completed: sourcesCompleted, total: sourceSeries.length });
-  });
+    const detail = detailByRootId.get(series.rootMalId);
+    if (detail) detailBySeries.set(series.id, detail);
+  }
 
   const malTally = tallyMalRecommendations(
     sourceSeries.map((s) => ({ liked: s.liked, recommended: recommendedBySeries.get(s.id) ?? [] })),
@@ -225,19 +254,21 @@ export async function fetchRecommendations(
 
   onProgress({ kind: 'FETCHING_CANDIDATES', completed: 0, total: candidateIds.length });
   let candidatesCompleted = 0;
-  const detailById = new Map<number, AnimeDetailDto>();
-  // Best-effort per candidate: one bad MAL id (a genuine, observed failure mode — one candidate
-  // consistently timed out here, not just a flaky one-off) shouldn't sink every recommendation.
-  // It's simply dropped from consideration, same as the closure-expansion loop in
-  // fetchDetailsAndGroup already does for a related id it can't fetch.
-  await mapWithConcurrency(candidateIds, CANDIDATE_FETCH_CONCURRENCY, async (id) => {
-    try {
-      detailById.set(id, await getAnimeDetailCached(id, { bypass: opts?.bypassCache }));
-    } catch {
-      // Dropped — see comment above.
-    }
-    candidatesCompleted++;
-    onProgress({ kind: 'FETCHING_CANDIDATES', completed: candidatesCompleted, total: candidateIds.length });
+  // One cache round trip for the whole pool (up to MAX_CANDIDATE_DETAILS + the generator's ids)
+  // instead of one per candidate — the single biggest of the three stages plan 9 step 2 moved onto
+  // the bulk read, since this is where a warm run spent ~160 sequential trips to our own Postgres.
+  //
+  // Best-effort per candidate is unchanged and now comes from the bulk read itself: one bad MAL id
+  // (a genuine, observed failure mode — one candidate consistently timed out here, not just a
+  // flaky one-off) is absent from the map rather than sinking every recommendation, and the
+  // `.filter(detailById.has)` below is what drops it from consideration.
+  const detailById = await getAnimeDetailCachedMany(candidateIds, {
+    concurrency: CANDIDATE_FETCH_CONCURRENCY,
+    bypass: opts?.bypassCache,
+    onResolved: () => {
+      candidatesCompleted++;
+      onProgress({ kind: 'FETCHING_CANDIDATES', completed: candidatesCompleted, total: candidateIds.length });
+    },
   });
 
   const candidates: RecommendationCandidate[] = candidateIds

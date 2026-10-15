@@ -1,5 +1,9 @@
-// Preview screen for a show that isn't in the library yet — reached by tapping a "For you"
-// recommendation. Same gradient-banner/status-chip/season-list shape as the real Series Detail
+// Preview screen for a show that isn't in the library yet — pushed from **exactly one place**,
+// app/(tabs)/recommend.tsx's "For you" → Recommended tab → tap a card. Nothing about the screen's
+// name says so, and two things that look like they would reach it don't: Discover's poster tiles
+// open the quick AddSeriesDialog, and Catch-up cards go to the real Detail screen. Check this
+// screen from "For you" or not at all.
+// Same gradient-banner/status-chip/season-list shape as the real Series Detail
 // screen (app/series/[id].tsx), so a show reads the same whether you're already tracking it or
 // not, but two things differ because there's nothing tracked yet: an info button shows the MAL
 // synopsis (the real Detail screen has no need for that — you already know the show once you're

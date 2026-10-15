@@ -1,4 +1,4 @@
-// Which origins a web MAL OAuth flow is allowed to finish on — plan 7 / prd/4-dev-oauth-origin.md.
+// Which origins a web MAL OAuth flow is allowed to finish on — plan 8 / prd/4-dev-oauth-origin.md.
 //
 // Deliberately free of imports and of `Deno.` globals, so the one piece of this with real decision
 // logic can be imported and tested directly by Jest (__tests__/oauthOrigin.test.ts) instead of

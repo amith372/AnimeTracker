@@ -11,7 +11,6 @@
 // multiple rows. missingSequelPrequelIds() (ported in Phase 1 for exactly this) closes that gap by
 // fetching whatever sibling seasons are missing before grouping runs.
 import { useEffect, useState } from 'react';
-import { mapWithConcurrency } from '@/api/concurrency';
 import {
   BROWSE_PAGE_SIZE,
   getRanking,
@@ -20,7 +19,7 @@ import {
   type AnimeBrowseNodeDto,
   type AnimeDetailDto,
 } from '@/api/malDataApi';
-import { getAnimeDetailCached } from './apiCache';
+import { getAnimeDetailCachedMany } from './apiCache';
 import { addSeries as addSeriesToLibrary, useTrackedMalIds } from './AnimeRepository';
 import { applyAddChoice } from '@/domain/addChoice';
 import type { AddChoice } from '@/domain/statusLabel';
@@ -160,18 +159,23 @@ export async function fetchDetailsAndGroup(
   let completed = detailById.size;
   onProgress({ kind: 'FETCHING_DETAILS', completed, total: nodes.length });
 
-  // Best-effort per node — a single hung/broken MAL id (observed happening for real, not just
-  // hypothetically) would otherwise abort the whole batch. It's simply left out of the grouping
-  // below, same as the closure-expansion loop already treats a related id it can't fetch.
-  await mapWithConcurrency(nodesToFetch, DETAIL_FETCH_CONCURRENCY, async (node) => {
-    try {
-      detailById.set(node.id, await getAnimeDetailCached(node.id, { bypass: opts?.bypassCache }));
-    } catch {
-      // Dropped — see comment above.
-    }
-    completed++;
-    onProgress({ kind: 'FETCHING_DETAILS', completed, total: nodes.length });
-  });
+  // One cache round trip for every id this batch still needs, rather than one per id (plan 9
+  // step 2). Best-effort per node is unchanged and now comes from the bulk read itself: a single
+  // hung/broken MAL id (observed happening for real, not just hypothetically) is absent from the
+  // returned map instead of aborting the whole batch, and is left out of the grouping below —
+  // same as the closure-expansion loop already treats a related id it can't fetch.
+  const fetchedById = await getAnimeDetailCachedMany(
+    nodesToFetch.map((node) => node.id),
+    {
+      concurrency: DETAIL_FETCH_CONCURRENCY,
+      bypass: opts?.bypassCache,
+      onResolved: () => {
+        completed++;
+        onProgress({ kind: 'FETCHING_DETAILS', completed, total: nodes.length });
+      },
+    },
+  );
+  for (const [id, detail] of fetchedById) detailById.set(id, detail);
 
   if (detailById.size === 0) {
     onProgress({ kind: 'FAILED', message: 'Could not reach MAL for any of these results.' });
@@ -186,20 +190,19 @@ export async function fetchDetailsAndGroup(
   for (let pass = 0; pass < MAX_CLOSURE_PASSES; pass++) {
     const missing = Array.from(missingSequelPrequelIds(animeById));
     if (missing.length === 0) break;
-    // Throttled to the same width as the detail stage above, not fired off at once with
-    // Promise.all. A pass's `missing` set scales with the batch handed to this function, and
-    // Recommendations' candidate pool is now 160 — so an unbounded pass was a burst of a few
-    // hundred simultaneous MAL requests, which is the "never hammer endpoints in tight loops" half
-    // of CLAUDE.md guardrail #3. Total request count is unchanged; only their pacing is.
-    await mapWithConcurrency(missing, DETAIL_FETCH_CONCURRENCY, async (id) => {
-      try {
-        const detail = await getAnimeDetailCached(id);
-        detailById.set(id, detail);
-        animeById.set(id, toAnimeRelationInput(detail));
-      } catch {
-        // Best-effort: if a related id can't be fetched, it's simply left out of the chain.
-      }
-    });
+    // One cache round trip for the pass, then MAL calls only for what the cache didn't answer,
+    // throttled to the same width as the detail stage above rather than fired off at once. A
+    // pass's `missing` set scales with the batch handed to this function, and Recommendations'
+    // candidate pool is now 160 — so an unbounded pass was a burst of a few hundred simultaneous
+    // MAL requests, which is the "never hammer endpoints in tight loops" half of CLAUDE.md
+    // guardrail #3. Total MAL request count is unchanged; only their pacing, and the number of
+    // cache reads, is. Best-effort as before: a related id that can't be fetched is absent from
+    // the map and simply left out of the chain.
+    const fetched = await getAnimeDetailCachedMany(missing, { concurrency: DETAIL_FETCH_CONCURRENCY });
+    for (const [id, detail] of fetched) {
+      detailById.set(id, detail);
+      animeById.set(id, toAnimeRelationInput(detail));
+    }
   }
 
   const grouped = groupIntoSeries(animeById);
