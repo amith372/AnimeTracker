@@ -207,7 +207,7 @@ exposing anything.
 Every step's expected test figures are derived on paper from the inputs, never read off what the
 implementation returned.
 
-### Step 1 — The table and the sharer's own controls · **built 2026-10-15, check outstanding**
+### Step 1 — The table and the sharer's own controls · **done, checked 2026-10-15**
 
 **The controls are a dialog off the Library's three-dot menu** (`src/components/ShareListDialog.tsx`)
 — not a block on the account screen as the bullet below says, and not the standalone screen that

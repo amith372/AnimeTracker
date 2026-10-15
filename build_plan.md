@@ -38,11 +38,11 @@ never read off what the implementation returned.
 PRD is signed off and whose precondition is met. Plan 9 is finished as of 2026-10-15 (all three
 steps built), and everything else scheduled either needs you or needs a conversation first.
 
-**Checks waiting on you, and nothing else is blocking them.** Nine pieces of built work are
+**Checks waiting on you, and nothing else is blocking them.** Eight pieces of built work are
 waiting on a check only you can run: plan 5's two remaining items (the Edge Function error
-messages, the onboarding column width), plan 7's steps 1 and 4, all three of plan 9's steps, and
-plan 4's step 1. Each one's **Check:** block says what to open and what failure looks like. Nothing
-is pushed until they are confirmed.
+messages, the onboarding column width), plan 7's steps 1 and 4, and all three of plan 9's steps.
+Each one's **Check:** block says what to open and what failure looks like. Nothing is pushed until
+they are confirmed.
 
 **The live project is in step with the code, and nothing is owed on it.**
 `20261015010000_shared_libraries.sql` was pushed 2026-10-15 and `npx supabase migration list` shows
@@ -64,10 +64,10 @@ version 3), which cleared the one deploy that had been outstanding and picked up
    checks above are what remain, and its migration is applied. Changed nothing about what the list
    contains. Plan 3 would multiply its gains rather than replace them.
 4. **Plan 4** — the public share link. PRD signed off 2026-10-14, no open questions. **Step 1
-   landed 2026-10-15** (the table, the sharer's controls) with its check outstanding; **step 2 —
-   the public read function — is what to build next**, and its own steps live in
-   `prd/2-public-share.md`, not here. Nothing is public until step 3, so step 1 exposes nothing on
-   its own.
+   landed and was checked 2026-10-15** (the table, the sharer's controls — create, copy, rename,
+   and a revoke that genuinely mints a fresh slug on re-share). **Step 2 — the public read
+   function — is what to build next**, and its own steps live in `prd/2-public-share.md`, not
+   here. Nothing is public until step 3.
 
 **Unscheduled:** plans 2 and 3. Plan 3 needs a PRD before any of it is touched.
 
@@ -80,7 +80,8 @@ its step 2.
 
 **Done and checked:** plan 1 (recommendation variety), plan 6 (the sidebar greeting) and plan 8
 (MAL sign-in on a localhost dev server, which unblocked every check touching sign-in, linking,
-import or push) — all 2026-10-14 — plus six of plan 5's eight items.
+import or push) — all 2026-10-14 — plus six of plan 5's eight items, and plan 4's step 1
+(2026-10-15).
 
 **The live project is set up for the model steps** as of 2026-10-14: the `taste_profiles` and
 `model_call_quota` migrations are applied, `taste-profile` and `taste-candidates` are deployed,
@@ -221,7 +222,7 @@ sharing. Nothing in the plan special-cases an anonymous session.
 Four steps: the table plus the sharer's controls; the public read function; the viewer's page; then
 the privacy notice and the CLAUDE.md amendment. Each has its own user-run check in the PRD.
 
-**Step 1 landed 2026-10-15**, check outstanding. Four things it settled that the PRD did not say,
+**Step 1 landed and was checked 2026-10-15.** Four things it settled that the PRD did not say,
 now written into `prd/2-public-share.md` so the next step reads them there: the controls are a
 dialog off the Library's three-dot menu (`src/components/ShareListDialog.tsx`), not a block on the
 account screen, and it carries its own confirmations as states rather than stacking a second
