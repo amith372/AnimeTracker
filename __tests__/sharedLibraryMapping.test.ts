@@ -186,6 +186,68 @@ describe('toSharedLibrary', () => {
     expect(row.type).toBe('SERIES');
   });
 
+  test('carries a plain resolved-of-total tally for the progress bar', () => {
+    // 3 of 5 seasons and 2 of 3 movies resolved -> 5 of 8 overall, which is what the bar fills to.
+    const [row] = toSharedLibrary(
+      payload([
+        series({
+          entries: [
+            season(1, 'WATCHED'),
+            season(2, 'WATCHED'),
+            season(3, 'WATCHED'),
+            season(4, 'UNWATCHED'),
+            season(5, 'UNWATCHED'),
+            movie(1, 'WATCHED'),
+            movie(2, 'WATCHED'),
+            movie(3, 'UNWATCHED'),
+          ],
+        }),
+      ]),
+    ).series;
+
+    expect(row.progress).toEqual({ seasons: { watched: 3, total: 5 }, movies: { watched: 2, total: 3 } });
+  });
+
+  test('the tally counts a gap that the status label does not', () => {
+    // Seasons 1 and 3 watched, 2 not. The label is run-based and says 1/3 ("where am I up to");
+    // the tally is 2/3 ("how much have I got through"). They are different questions and the two
+    // numbers are allowed to differ — the Series Detail screen already pairs them this way. This
+    // test exists so that pairing is deliberate rather than something a later change "fixes".
+    const [row] = toSharedLibrary(
+      payload([series({ entries: [season(1, 'WATCHED'), season(2, 'UNWATCHED'), season(3, 'WATCHED')] })]),
+    ).series;
+
+    expect(row.status).toMatchObject({ kind: 'WATCHED_PARTIAL', watchedSeasons: 1, totalSeasons: 3 });
+    expect(row.progress.seasons).toEqual({ watched: 2, total: 3 });
+  });
+
+  test('counts WONT_WATCH as resolved in the tally too', () => {
+    // Same rule as the status derivation: the mark means "I'm done with this one", so a bar that
+    // ignored it would show a show you have finished as permanently incomplete.
+    const [row] = toSharedLibrary(
+      payload([series({ entries: [season(1, 'WATCHED'), season(2, 'WONT_WATCH'), season(3, 'UNWATCHED')] })]),
+    ).series;
+
+    expect(row.progress.seasons).toEqual({ watched: 2, total: 3 });
+  });
+
+  test('gives a manual-status series real counts, which its status has none of', () => {
+    // A dropped show derives to {kind:'DROPPED'} with no figures at all. "1/4 seasons in, then
+    // dropped" is exactly the row a reader wants a number on, which is why the tally is computed
+    // from the entries rather than read off the status.
+    const [row] = toSharedLibrary(
+      payload([
+        series({
+          manualStatus: 'DROPPED',
+          entries: [season(1, 'WATCHED'), season(2, 'UNWATCHED'), season(3, 'UNWATCHED'), season(4, 'UNWATCHED')],
+        }),
+      ]),
+    ).series;
+
+    expect(row.status).toEqual({ kind: 'DROPPED' });
+    expect(row.progress.seasons).toEqual({ watched: 1, total: 4 });
+  });
+
   test('an empty library maps to an empty list, not a failure', () => {
     expect(toSharedLibrary(payload([]))).toEqual({ displayName: null, series: [] });
   });

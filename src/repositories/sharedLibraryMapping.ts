@@ -11,7 +11,8 @@
 //
 // Pure and free of the Supabase client so Jest can test it directly.
 import { deriveSeriesStatus, type SeriesStatus } from '@/domain/seriesStatus';
-import type { AiringStatus, EntryKind, ManualStatus, SeriesType, WatchState } from '@/domain/types';
+import type { ProgressHalves } from '@/domain/statusLabel';
+import { isResolved, type AiringStatus, type EntryKind, type ManualStatus, type SeriesType, type WatchState } from '@/domain/types';
 
 /** One entry exactly as `supabase/functions/shared-library` sends it. No id, no MAL id, no title:
  * the page shows series-level status, so a season's own name has no reader (the PRD's One Piece
@@ -47,6 +48,21 @@ export interface SharedSeries {
   genres: string[];
   type: SeriesType;
   status: SeriesStatus;
+  /**
+   * Resolved-of-total for both halves, as a plain tally.
+   *
+   * Deliberately *not* read off `status`: a manual status (Dropped, Currently watching) carries no
+   * counts at all, so a page that took its numbers from there could only show progress for shows
+   * whose status happens to be derived — which is backwards, since "1/4 seasons in and dropped" is
+   * exactly the row a reader wants the number on.
+   *
+   * It is also a plain tally rather than the status label's leading run, so a show with a gap
+   * (seasons 1 and 3 but not 2) reads "Watched 1/3 seasons" on the pill and 2/3 on the bar. That
+   * is not a bug and not new: the Series Detail screen already pairs `entryProgress`'s tally with
+   * `statusLabel`'s run for the same reason — the pill answers "where am I up to", the counter
+   * answers "how much have I got through".
+   */
+  progress: ProgressHalves;
 }
 
 export interface SharedLibrary {
@@ -69,6 +85,13 @@ export function sharedLibraryHeading(displayName: string | null | undefined): st
   return name ? `${name}’s anime list` : 'A shared anime list';
 }
 
+/** Resolved-of-total for one kind of entry. `WONT_WATCH` counts as resolved, exactly as it does
+ * everywhere else in the app — the mark exists to say "I'm done with this one". */
+function tally(entries: SharedEntryPayload[], kind: EntryKind): { watched: number; total: number } {
+  const of = entries.filter((entry) => entry.kind === kind);
+  return { watched: of.filter((entry) => isResolved(entry.watchState)).length, total: of.length };
+}
+
 /**
  * Payload -> renderable rows, deriving each series' status with the app's own function.
  *
@@ -80,19 +103,23 @@ export function sharedLibraryHeading(displayName: string | null | undefined): st
 export function toSharedLibrary(payload: SharedLibraryPayload): SharedLibrary {
   return {
     displayName: payload.displayName ?? null,
-    series: (payload.series ?? []).map((row) => ({
-      title: row.title,
-      coverUrl: row.coverUrl ?? null,
-      genres: row.genres ?? [],
-      type: row.type,
-      status: deriveSeriesStatus(
-        row.manualStatus,
-        (row.entries ?? []).map((entry) => ({
-          kind: entry.kind,
-          orderIndex: entry.orderIndex,
-          watchState: entry.watchState,
-        })),
-      ),
-    })),
+    series: (payload.series ?? []).map((row) => {
+      const entries = row.entries ?? [];
+      return {
+        title: row.title,
+        coverUrl: row.coverUrl ?? null,
+        genres: row.genres ?? [],
+        type: row.type,
+        status: deriveSeriesStatus(
+          row.manualStatus,
+          entries.map((entry) => ({
+            kind: entry.kind,
+            orderIndex: entry.orderIndex,
+            watchState: entry.watchState,
+          })),
+        ),
+        progress: { seasons: tally(entries, 'TV_SEASON'), movies: tally(entries, 'MOVIE') },
+      };
+    }),
   };
 }

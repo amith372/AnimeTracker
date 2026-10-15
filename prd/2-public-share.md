@@ -310,6 +310,20 @@ and knows it: `public/robots.txt`'s disallow is what stops a crawler reaching th
 the meta tag catches the ones that render first. (`public/` is copied into `dist/` by
 `expo export --platform web` — verified, not assumed.)
 
+**The layout is a status sidebar with compact rows** (chosen from three mockups, 2026-10-15; the
+first build was a poster grid and the complaint was that it read as one long list). The sidebar is
+the filter and the summary at once; every row carries its own progress bar and figures. Below the
+wide-web breakpoint it becomes two chip rows above the list. Two label decisions came with it, both
+because the audience has never used the app: **"Part-way through"** replaces the app's "Watched
+X/Y" chip wording, and **`WATCHED_FORGOT` is shown inside "Watched"** — that distinction means
+something to the person tracking and to nobody else, and a public bucket reading "Watched (forgot
+details)" publishes something faintly embarrassing for no reader's benefit. Neither changes what
+`deriveSeriesStatus` derived.
+
+**Viewer-side filtering is not the per-link filter the scope rules out.** That one is the *sharer*
+restricting what gets published, which is still out. This is a reader narrowing a list they can
+already see in full, and it publishes nothing extra.
+
 **The response carries no ids, so the list is keyed by index** — correct here rather than a
 shortcut, since it renders once per load with no reordering, insertion or removal.
 
