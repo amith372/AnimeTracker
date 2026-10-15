@@ -30,8 +30,16 @@ const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 // The same production model id taste-profile uses, and for the same reason — a preview id is
 // retired without notice and this is a user-facing refresh. Kept as a separate constant rather
 // than shared: if one of the two calls ever wants a different model, that is a change to one line
-// here, not a change that silently moves the other.
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
+// here, not a change that silently moves the other. (Which is also why both had to be edited when
+// `llama-3.3-70b-versatile` was decommissioned on 2026-10-15 — a deliberate cost, not an
+// oversight.)
+const GROQ_MODEL = 'openai/gpt-oss-120b';
+
+// See taste-profile's twin of this constant: gpt-oss spends reasoning tokens out of the same
+// completion budget as the answer, so without this the old ceiling was reached before any JSON
+// closed. 'low' is right for a list of fifteen titles — this call needs taste matching, not deep
+// deliberation — and a measured run costs ~260 completion tokens all in.
+const GROQ_REASONING_EFFORT = 'low';
 
 // Higher than taste-profile's 0.4, deliberately. That call is a reading of a fixed library and
 // should be close to reproducible; this one is asked for suggestions, and the user presses refresh
@@ -39,10 +47,10 @@ const GROQ_MODEL = 'llama-3.3-70b-versatile';
 // return the same twelve shows forever, which is the narrowness this whole plan exists to fix.
 const GROQ_TEMPERATURE = 0.9;
 
-// Twelve short titles plus JSON scaffolding. Generous enough that a truncated response is a real
-// failure rather than routine, tight enough that a runaway generation cannot bill the free tier
-// for a thousand lines nobody reads.
-const GROQ_MAX_TOKENS = 500;
+// Fifteen short titles plus JSON scaffolding, with headroom for the reasoning that now shares the
+// budget (see GROQ_REASONING_EFFORT). Truncation here costs the whole response rather than the
+// last title or two, because the JSON never closes — which is what made the old 500 a trap.
+const GROQ_MAX_TOKENS = 1500;
 
 // How many model calls one account gets per UTC day, enforced by model_call_consume in Postgres
 // (supabase/migrations/20261011020000_model_call_quota.sql).
@@ -197,6 +205,7 @@ Deno.serve(async (req) => {
         model: GROQ_MODEL,
         temperature: GROQ_TEMPERATURE,
         max_tokens: GROQ_MAX_TOKENS,
+        reasoning_effort: GROQ_REASONING_EFFORT,
         // Asks the provider to constrain the output to parseable JSON, so a stray sentence of
         // preamble can't cost a generation. The client still validates every title through the
         // resolution gate — this narrows what arrives, it doesn't make it trustworthy.

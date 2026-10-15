@@ -29,7 +29,19 @@ const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 // preview ids are retired without notice, and this is a user-facing button. If Groq ever retires
 // it the symptom is a 404 from the call below, which degrades to "couldn't generate" rather than
 // breaking the screen; change it here, in one place.
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
+//
+// It happened: `llama-3.3-70b-versatile` was decommissioned and the card started reporting a 404
+// (2026-10-15). Chosen by asking Groq's own /models endpoint what it still serves rather than
+// from memory, and the whole request was run against the real prompt before changing anything.
+const GROQ_MODEL = 'openai/gpt-oss-120b';
+
+// gpt-oss is a *reasoning* model, which changes two things about the call below and is the reason
+// this constant exists at all. Its reasoning tokens are spent out of the same completion budget as
+// the answer, so at the old 700-token ceiling the model reasoned past the limit and Groq returned
+// `json_validate_failed: max completion tokens reached before generating a valid document` —
+// observed, not predicted. 'low' keeps the thinking proportionate to a four-field reply; the
+// measured cost of this prompt is ~250 completion tokens all in.
+const GROQ_REASONING_EFFORT = 'low';
 
 // Low but not zero. The profile should be a reading of the library rather than a different guess
 // each press — but the regenerate button exists so the user can reject a bad one, and at
@@ -37,10 +49,11 @@ const GROQ_MODEL = 'llama-3.3-70b-versatile';
 // makes the button a lie.
 const GROQ_TEMPERATURE = 0.4;
 
-// A profile is four short fields; this is roughly double what that needs, so a truncated response
-// is a real failure rather than a routine one, and a runaway generation can't bill the free tier
-// for a thousand lines nobody reads.
-const GROQ_MAX_TOKENS = 700;
+// A profile is four short fields, and a measured call spends ~250 tokens including its reasoning.
+// The headroom is for the reasoning rather than the answer (see GROQ_REASONING_EFFORT): a
+// truncated response here is not a short profile, it is no profile at all, because the JSON never
+// closes. Still far below anything that could bill the free tier for lines nobody reads.
+const GROQ_MAX_TOKENS = 1500;
 
 const SYSTEM_PROMPT = [
   'You describe a person\'s taste in anime from three lists of titles they have watched or dropped.',
@@ -129,6 +142,7 @@ Deno.serve(async (req) => {
         model: GROQ_MODEL,
         temperature: GROQ_TEMPERATURE,
         max_tokens: GROQ_MAX_TOKENS,
+        reasoning_effort: GROQ_REASONING_EFFORT,
         // Asks the provider to constrain the output to parseable JSON, so a stray sentence of
         // preamble can't cost a generation. parseTasteProfile still validates the shape
         // client-side — this narrows what arrives, it doesn't make it trustworthy.
