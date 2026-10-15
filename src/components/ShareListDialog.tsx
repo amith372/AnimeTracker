@@ -22,7 +22,6 @@
 // and the page a stranger sees is step 3.
 import { useEffect, useState } from 'react';
 import * as Clipboard from 'expo-clipboard';
-import { View } from 'react-native';
 import { Button, Dialog, Portal, Text, TextInput } from 'react-native-paper';
 import { useIsGuest } from '@/account/guestMode';
 import { MAX_SHARE_NAME_LENGTH, normalizeShareName } from '@/domain/shareLink';
@@ -37,6 +36,17 @@ import { userFacingMessage } from '@/repositories/errorMessage';
 import { radii, spacing } from '@/theme/colors';
 import { dialogStyle } from '@/theme/dialog';
 import { makeStyles, useThemeColors } from '@/theme/useTheme';
+
+/** One button in Dialog.Actions. `disabled` defaults to `busy`, which is what every one of them
+ * wants bar the share button, whose own loading state needs it spelled out. */
+interface ActionSpec {
+  key: string;
+  label: string;
+  onPress: () => void;
+  danger?: boolean;
+  loading?: boolean;
+  disabled?: boolean;
+}
 
 export function ShareListDialog({ visible, onDismiss }: { visible: boolean; onDismiss: () => void }) {
   const styles = useStyles();
@@ -134,6 +144,29 @@ export function ShareListDialog({ visible, onDismiss }: { visible: boolean; onDi
   // user is looking at — "Share your list?" with a question mark is a question being asked, and
   // the same words without one are a heading over a link that already exists.
   const title = isLoading ? 'Share your list' : confirmingStop ? 'Stop sharing?' : link ? 'Share your list' : 'Share your list?';
+
+  // The buttons for whichever state is showing. A list rather than JSX branches, so
+  // Dialog.Actions receives plain children it can clone (see its comment below).
+  const actions: ActionSpec[] = confirmingStop
+    ? [
+        { key: 'cancel-stop', label: 'Cancel', onPress: () => setConfirmingStop(false) },
+        { key: 'stop', label: 'Stop sharing', onPress: handleStopSharing, danger: true },
+      ]
+    : link
+      ? [
+          { key: 'stop', label: 'Stop sharing', onPress: () => setConfirmingStop(true), danger: true },
+          { key: 'done', label: 'Done', onPress: onDismiss },
+        ]
+      : [
+          { key: 'cancel', label: 'Cancel', onPress: onDismiss },
+          {
+            key: 'share',
+            label: 'Share my list',
+            onPress: handleStartSharing,
+            loading: busy,
+            disabled: busy || isLoading,
+          },
+        ];
 
   return (
     <Portal>
@@ -238,39 +271,23 @@ export function ShareListDialog({ visible, onDismiss }: { visible: boolean; onDi
             </Text>
           )}
         </Dialog.Content>
-        {/* One row of actions per state. "Stop sharing" sits on the left of its own row rather
-            than in the content, so the destructive action is where every other dialog in the app
-            puts one. */}
-        <Dialog.Actions>
-          {confirmingStop ? (
-            <>
-              <Button onPress={() => setConfirmingStop(false)} disabled={busy}>
-                Cancel
-              </Button>
-              <Button onPress={handleStopSharing} disabled={busy} textColor={colors.red}>
-                Stop sharing
-              </Button>
-            </>
-          ) : link ? (
-            <>
-              <Button onPress={() => setConfirmingStop(true)} disabled={busy} textColor={colors.red}>
-                Stop sharing
-              </Button>
-              <View style={styles.spacer} />
-              <Button onPress={onDismiss} disabled={busy}>
-                Done
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button onPress={onDismiss} disabled={busy}>
-                Cancel
-              </Button>
-              <Button onPress={handleStartSharing} disabled={busy || isLoading} loading={busy}>
-                Share my list
-              </Button>
-            </>
-          )}
+        {/* One row of actions per state, flattened into a list rather than branched into
+            fragments: Paper's Dialog.Actions clones each child to pass it `compact`, and a
+            Fragment refuses every prop but `key` and `children` — so a `<>…</>` here is a console
+            error rather than a layout choice. The split style is what puts "Stop sharing" on the
+            left, away from "Done", instead of a spacer View that would be cloned the same way. */}
+        <Dialog.Actions style={link && !confirmingStop ? styles.actionsSplit : undefined}>
+          {actions.map((action) => (
+            <Button
+              key={action.key}
+              onPress={action.onPress}
+              disabled={action.disabled ?? busy}
+              loading={action.loading}
+              textColor={action.danger ? colors.red : undefined}
+            >
+              {action.label}
+            </Button>
+          ))}
         </Dialog.Actions>
       </Dialog>
     </Portal>
@@ -284,8 +301,8 @@ const useStyles = makeStyles((colors) => ({
   button: { marginTop: spacing.sm, borderRadius: radii.pill },
   input: { backgroundColor: colors.surface, marginTop: spacing.md },
   // Pushes "Done" to the right so the destructive action isn't sitting next to it — Paper's
-  // Actions row is a flex row, and without this the two read as a pair.
-  spacer: { flex: 1 },
+  // Actions row is a flex row ending flush right, and without this the two read as a pair.
+  actionsSplit: { justifyContent: 'space-between' as const },
   // The link itself. On its own surface because it is the one piece of text here meant to be
   // selected and copied, and because a long URL needs to look like data rather than prose.
   url: {
