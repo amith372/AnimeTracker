@@ -43,6 +43,11 @@ const OWNED_TABLES = [
   'taste_profiles',
   'model_call_quota',
   'recommendation_lists',
+  // Plan 4 step 1's public share link. The one row in this list whose survival would be visible
+  // from outside the app: a live URL serving a deleted account's library, with nobody left who
+  // could revoke it. The `on delete cascade` is what actually removes it (the auth.users row goes
+  // first, above), and this is the belt to that braces.
+  'shared_libraries',
 ] as const;
 
 /**

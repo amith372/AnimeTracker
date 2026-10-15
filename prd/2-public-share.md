@@ -207,7 +207,30 @@ exposing anything.
 Every step's expected test figures are derived on paper from the inputs, never read off what the
 implementation returned.
 
-### Step 1 — The table and the sharer's own controls
+### Step 1 — The table and the sharer's own controls · **built 2026-10-15, check outstanding**
+
+**Three things it settled that the text below did not say.** Recorded here rather than in
+`build_plan.md` because this file is what later steps read, and the first of them contradicts the
+bullet two paragraphs down:
+
+1. **The confirmation is on *create*, and revoking gets a second, lighter one.** The bullet below
+   puts the exposure copy on "Stop sharing", which is the wrong half: creating the link is the
+   outward-facing, hard-to-reverse press (a link that has been sent cannot be un-sent), and the
+   guest warning — that losing this session means losing the ability to revoke — is only actionable
+   *before* the link exists. The revoke dialog says the link dies immediately and that re-sharing
+   mints a different one.
+2. **`EXPO_PUBLIC_SITE_URL` falls back to `window.location.origin` on web** when unset
+   (`src/repositories/ShareRepository.ts`'s `siteOrigin`), so `expo start --web` produces a link
+   that actually works against the dev server. There is no fallback on native — an app bundle has
+   no origin — and the screen shows the slug alone with a note rather than a half-built URL.
+3. **`expo-clipboard` is a new dependency** (the copy button). A native build therefore needs
+   `npx expo run:android`, not a Metro reload.
+
+The grants came out narrower than written below, and deliberately: `insert (user_id)` and
+`update (display_name)` are **column-level**, so "impossible for a client bug to make the slug
+predictable" is enforced by Postgres rather than by convention — `authenticated` cannot write
+`slug` at all, and a slug can never be *changed*, only created fresh.
+
 
 - Migration: `shared_libraries` (`user_id` PK → `auth.users` `on delete cascade`, `slug text unique
   not null default replace(gen_random_uuid()::text,'-','')`, `display_name text` with a length

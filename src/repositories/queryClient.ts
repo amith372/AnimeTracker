@@ -37,4 +37,9 @@ export const libraryKeys = {
   // above: it is derived from one account's library, and a list computed for one account must not
   // survive another signing in on the same device.
   recommendations: (userId: string) => ['library', userId, 'recommendations'] as const,
+  // Plan 4 step 1's public share link. Under the same root as the rest, for the same reason as
+  // `taste` and `recommendations` above — but here the consequence of getting it wrong is sharper
+  // than a stale screen: a share URL left in the cache after another account signs in on the same
+  // device would offer one person a copy button for someone else's link.
+  share: (userId: string) => ['library', userId, 'share'] as const,
 };

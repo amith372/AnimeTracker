@@ -34,6 +34,10 @@ describe('delete-account', () => {
     // liked and dropped, so it is personal data in the same way the taste profile is, and leaving
     // it behind would leave a description of someone's taste keyed to a deleted account.
     'recommendation_lists',
+    // Plan 4 step 1's public share link. Left behind, this is the only row in the list that stays
+    // *reachable from outside the app*: the slug would keep resolving for anyone holding the URL,
+    // against a library whose owner no longer exists and so can never revoke it.
+    'shared_libraries',
   ];
 
   test.each(ownedTables)('deletes %s', (table) => {

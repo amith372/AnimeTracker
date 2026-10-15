@@ -72,6 +72,7 @@ The MAL API License & Developer Agreement binds us. These are hard rules — nev
 - **Session storage:** Supabase session in `@react-native-async-storage/async-storage` (see `src/account/supabaseClient.ts` for why); MAL tokens never touch the device at all (server-side custody).
 - **Background work:** monthly sync is a scheduled Supabase Edge Function (`supabase/functions/mal-monthly-sync`, `pg_cron` + `pg_net`) — no per-device background job. `src/repositories/SyncRepository.ts` is just the "Check for new seasons" button's thin client of that function.
 - **Images:** `expo-image`
+- **Clipboard:** `expo-clipboard` (plan 4's "Copy link"). A native module, so adding it meant a `npx expo run:android` rather than a Metro reload — worth knowing if a copy button is ever silently absent on a device.
 - **State/reactivity model:** repositories (`src/repositories/`) export plain `async function`s for one-shot reads/writes, and `use*` hooks (built on TanStack Query) for reactive reads a screen re-renders on automatically — this two-part split exists because React's reactivity is tied to the component lifecycle. See `src/repositories/AnimeRepository.ts` for the pattern.
 - **DI:** none needed — repositories/clients are plain module-level singletons, imported directly (the RN equivalent of the old `AppContainer`/service-locator)
 
@@ -298,7 +299,10 @@ Statuses live **per series**. There are 6:
 ```
 EXPO_PUBLIC_SUPABASE_URL=YOUR_PROJECT_URL
 EXPO_PUBLIC_SUPABASE_ANON_KEY=YOUR_PROJECT_ANON_KEY
+EXPO_PUBLIC_SITE_URL=https://animetracker-btpk.onrender.com
 ```
+`EXPO_PUBLIC_SITE_URL` is the client's copy of `SITE_URL` below, added by plan 4's share link: the client is the thing constructing a `/s/<slug>` URL for the user to copy, so it needs the app's own public address. Not a secret, and optional on web — `src/repositories/ShareRepository.ts`'s `siteOrigin()` falls back to `window.location.origin` there, so a dev server still produces a working link. A **native** build with it unset has no origin at all and shows the slug with a note instead of a URL. It is baked in at build time like every `EXPO_PUBLIC_` var, so a web deploy must set it as a build-time variable.
+
 Safe to expose in the client bundle — Postgres Row-Level Security (not key secrecy) is what protects a user's rows; see `supabase/migrations/`. `src/account/supabaseClient.ts` treats a blank/missing pair as "accounts not configured yet" rather than crashing, so the app keeps working with no Supabase project set up.
 
 **The MAL Client ID is a Supabase Edge Function secret as of Phase 8** (`MAL_CLIENT_ID`, set via the dashboard's Edge Functions secrets page or `supabase secrets set MAL_CLIENT_ID=...`), never an `EXPO_PUBLIC_` var — the client bundle doesn't hold it, print it, or send it anywhere. Only `supabase/functions/_shared/malAuth.ts` reads it (`Deno.env.get('MAL_CLIENT_ID')`).

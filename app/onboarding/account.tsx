@@ -18,7 +18,8 @@
 // differs is invisible to the person choosing. So the guest branch has exactly one exit and it is
 // the one that deletes.
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import * as Clipboard from 'expo-clipboard';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { Button, Dialog, Portal, Text, TextInput } from 'react-native-paper';
 import { isSupabaseConfigured } from '@/account/supabaseClient';
@@ -26,6 +27,15 @@ import { deleteAccountAndData, logInWithEmail, logOutAccount, signUpWithEmail, u
 import { useIsGuest } from '@/account/guestMode';
 import { linkMalAccount, useMalLinkStatus } from '@/account/malLinkRepository';
 import { useLibrary } from '@/repositories/AnimeRepository';
+import {
+  createShareLink,
+  renameShareLink,
+  revokeShareLink,
+  shareUrlFor,
+  useShareLink,
+} from '@/repositories/ShareRepository';
+import { userFacingMessage } from '@/repositories/errorMessage';
+import { MAX_SHARE_NAME_LENGTH, normalizeShareName } from '@/domain/shareLink';
 import { layout, radii, spacing } from '@/theme/colors';
 import { makeStyles, useThemeColors } from '@/theme/useTheme';
 
@@ -78,7 +88,25 @@ export default function AccountScreen() {
   // Behind a confirmation dialog for the same reason the MAL push is (CLAUDE.md §8): this is
   // irreversible, and it is the user's whole library.
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  // Plan 4 step 1. Two dialogs rather than one, which is a departure from the PRD's wording and
+  // deliberate: *creating* the link is the outward-facing, hard-to-reverse half (a library becomes
+  // readable by anyone holding a URL), and the guest warning — that losing this session means
+  // losing the ability to stop sharing — is only useful before the link exists. Confirming only
+  // the revoke would put that sentence where it can no longer be acted on. Stopping gets its own,
+  // lighter confirmation because the URL may already be in someone else's chat history.
+  const { link: shareLink, isLoading: shareLoading } = useShareLink();
+  const [shareConfirmVisible, setShareConfirmVisible] = useState(false);
+  const [revokeConfirmVisible, setRevokeConfirmVisible] = useState(false);
+  const [shareName, setShareName] = useState('');
   const router = useRouter();
+
+  // Seeds the nickname field from the stored row, keyed on the slug rather than the name: the slug
+  // changes exactly when the link is created or re-created, so this fills the field once when the
+  // row arrives and never fights the user mid-type. Keying it on displayName would reset the draft
+  // on every save and discard an in-progress edit the moment a rename landed.
+  useEffect(() => {
+    setShareName(shareLink?.displayName ?? '');
+  }, [shareLink?.slug]);
 
   // For a real (non-guest) signup this creates a brand-new account, same as always. For a guest
   // (anonymous session), signUpWithEmail instead *upgrades* that same session in place — see its
@@ -146,6 +174,65 @@ export default function AccountScreen() {
     else setMessage(result.message);
   }
 
+  // The three share writes. Each one reports through the same `message` line the rest of this
+  // screen uses, and each catches rather than throwing: a failed share must leave the user looking
+  // at a reason, not an unhandled rejection — and the repository's optimistic writes have already
+  // rolled the cache back by the time we get here, so what is on screen is true either way.
+  async function handleStartSharing() {
+    setShareConfirmVisible(false);
+    setBusy(true);
+    setMessage(null);
+    try {
+      await createShareLink();
+      setMessage('Your list is shared. Copy the link below to send it to someone.');
+    } catch (e) {
+      setMessage(userFacingMessage(e, 'Couldn’t start sharing. Try again.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSaveShareName() {
+    setBusy(true);
+    setMessage(null);
+    try {
+      await renameShareLink(shareName);
+      setMessage('Saved.');
+    } catch (e) {
+      setMessage(userFacingMessage(e, 'Couldn’t save that name. Try again.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleStopSharing() {
+    setRevokeConfirmVisible(false);
+    setBusy(true);
+    setMessage(null);
+    try {
+      await revokeShareLink();
+      setMessage('Sharing stopped. That link no longer works.');
+    } catch (e) {
+      setMessage(userFacingMessage(e, 'Couldn’t stop sharing. Try again.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Copies the whole URL, never the bare slug: a code on its own is not something the recipient
+  // can do anything with, and silently copying one would look identical to copying a link.
+  async function handleCopyShareUrl() {
+    const url = shareLink ? shareUrlFor(shareLink.slug) : null;
+    if (!url) return;
+    setMessage(null);
+    try {
+      await Clipboard.setStringAsync(url);
+      setMessage('Link copied.');
+    } catch (e) {
+      setMessage(userFacingMessage(e, 'Couldn’t copy the link — select it above and copy it by hand.'));
+    }
+  }
+
   // The concrete stake, named in the dialog rather than left to the prose: "deletes your library"
   // is abstract where "47 shows" is not, and this dialog is the only thing standing between a
   // guest and a permanent delete. Reads the same TanStack Query the Library screen already holds,
@@ -160,6 +247,160 @@ export default function AccountScreen() {
       : librarySeries.length === 0
         ? 'Nothing has been tracked here yet.'
         : `${librarySeries.length} ${librarySeries.length === 1 ? 'show' : 'shows'} tracked here will be deleted.`;
+
+  // Plan 4 step 1's "Share your list" block. Rendered in both signed-in branches, like
+  // dataSection below — a guest may share (PRD decision table, settled 2026-10-14), since every
+  // other feature in the app treats a guest as the real account it is and special-casing them here
+  // would be the only place that doesn't.
+  //
+  // Unlike dataSection, the guest/account difference is read from `isGuest` in scope rather than
+  // passed in. The reasoning inverts: dataSection's two variants differ in *wording that must not
+  // be mismatched to its branch*, whereas here there is one extra sentence whose condition is
+  // exactly "is this session anonymous" — reading the source of truth makes a mismatch impossible
+  // rather than merely unlikely.
+  function shareSection() {
+    const url = shareLink ? shareUrlFor(shareLink.slug) : null;
+    // What "Save name" exists for. Compared through normalizeShareName so trailing spaces, or
+    // clearing a blank field, don't present themselves as an unsaved change.
+    const nameChanged = shareLink !== null && normalizeShareName(shareName) !== shareLink.displayName;
+    return (
+      <>
+        <Text variant="titleSmall" style={styles.sectionTitle}>
+          Share your list
+        </Text>
+        {/* Tri-state: while the row is still loading this renders neither state. Offering "Share
+            your list" to someone who already has a live link is how a second press looks like
+            nothing happened — or worse, like the link was lost. */}
+        {shareLoading && (
+          <Text variant="bodySmall" style={styles.hint}>
+            Checking…
+          </Text>
+        )}
+        {!shareLoading && !shareLink && (
+          <>
+            <Text variant="bodySmall" style={styles.hint}>
+              Create a link that shows what you’ve watched. Anyone you send it to can open it in a
+              browser — no account, no app and no MyAnimeList login needed.
+            </Text>
+            <Button mode="outlined" onPress={() => setShareConfirmVisible(true)} disabled={busy} style={styles.button}>
+              Share your list
+            </Button>
+          </>
+        )}
+        {!shareLoading && shareLink && (
+          <>
+            <Text variant="bodySmall" style={styles.hint}>
+              Anyone with this link can see your list. It stays live until you stop sharing.
+            </Text>
+            {/* Selectable, so the link can still be copied by hand if the clipboard refuses — and
+                so it is visible rather than hidden behind a button that claims to have copied
+                something. Shows the slug alone when this build has no web address configured
+                (src/repositories/ShareRepository.ts's siteOrigin), with the note below saying so;
+                a half-built URL pasted into a chat is worse than none. */}
+            <Text variant="bodyMedium" selectable style={styles.shareUrl}>
+              {url ?? shareLink.slug}
+            </Text>
+            {url === null && (
+              <Text variant="bodySmall" style={styles.hint}>
+                This build doesn’t know the app’s web address, so only the link’s code is shown. Set
+                EXPO_PUBLIC_SITE_URL to get a full URL to copy.
+              </Text>
+            )}
+            <Button
+              mode="outlined"
+              icon="content-copy"
+              onPress={handleCopyShareUrl}
+              disabled={busy || url === null}
+              style={styles.button}
+            >
+              Copy link
+            </Button>
+            <TextInput
+              mode="outlined"
+              label="Name on the page (optional)"
+              value={shareName}
+              onChangeText={setShareName}
+              maxLength={MAX_SHARE_NAME_LENGTH}
+              style={styles.input}
+            />
+            <Text variant="bodySmall" style={styles.hint}>
+              Shown as the page’s heading — leave it blank for “A shared anime list”. Anyone with
+              the link sees it, so use whatever you’d be happy posting publicly rather than your
+              real name.
+            </Text>
+            {nameChanged && (
+              <Button mode="text" onPress={handleSaveShareName} disabled={busy} style={styles.button}>
+                Save name
+              </Button>
+            )}
+            <Button
+              mode="outlined"
+              onPress={() => setRevokeConfirmVisible(true)}
+              disabled={busy}
+              textColor={colors.red}
+              style={styles.button}
+            >
+              Stop sharing
+            </Button>
+          </>
+        )}
+        <Portal>
+          {/* The outward-facing confirmation: this is the press that makes a private library
+              readable by anyone holding a URL, which is the one genuinely irreversible thing here
+              (a link that has been sent cannot be un-sent, only killed). */}
+          <Dialog visible={shareConfirmVisible} onDismiss={() => setShareConfirmVisible(false)}>
+            <Dialog.Title>Share your list?</Dialog.Title>
+            <Dialog.Content>
+              <Text variant="bodyMedium">
+                This creates a web link showing every show on your list and its status. Anyone who
+                has the link can open it without an account, and could pass it on.
+              </Text>
+              <Text variant="bodyMedium" style={styles.dialogNote}>
+                It never shows your email, your MyAnimeList username or anything else about you —
+                only the list, and a name you choose yourself.
+              </Text>
+              <Text variant="bodyMedium" style={styles.dialogNote}>
+                You can stop sharing at any time, which kills the link immediately.
+              </Text>
+              {/* The sentence that lets guests share at all (PRD, settled 2026-10-14). It has to be
+                  read before the link exists: afterwards, a lost guest session is exactly the
+                  situation it warns about and there is nothing left to act on. */}
+              {isGuest && (
+                <Text variant="bodyMedium" style={styles.dialogNote}>
+                  You’re browsing as a guest, and a guest session can’t be signed into again. If you
+                  lose it, the link keeps working and nobody will be able to stop it — set a password
+                  or link MyAnimeList above first if that matters to you.
+                </Text>
+              )}
+            </Dialog.Content>
+            <Dialog.Actions>
+              <Button onPress={() => setShareConfirmVisible(false)}>Cancel</Button>
+              <Button onPress={handleStartSharing}>Share my list</Button>
+            </Dialog.Actions>
+          </Dialog>
+          <Dialog visible={revokeConfirmVisible} onDismiss={() => setRevokeConfirmVisible(false)}>
+            <Dialog.Title>Stop sharing?</Dialog.Title>
+            <Dialog.Content>
+              <Text variant="bodyMedium">
+                The link stops working straight away. Anyone you sent it to will see that the list
+                isn’t being shared.
+              </Text>
+              <Text variant="bodyMedium" style={styles.dialogNote}>
+                If you share again later you’ll get a different link, so the old one can never be
+                used again.
+              </Text>
+            </Dialog.Content>
+            <Dialog.Actions>
+              <Button onPress={() => setRevokeConfirmVisible(false)}>Cancel</Button>
+              <Button onPress={handleStopSharing} textColor={colors.red}>
+                Stop sharing
+              </Button>
+            </Dialog.Actions>
+          </Dialog>
+        </Portal>
+      </>
+    );
+  }
 
   // Rendered in both signed-in branches (real account and guest), because both have real data and
   // both are offered the same two things: the notice to re-read, and the way out. Written once as a
@@ -295,6 +536,7 @@ export default function AccountScreen() {
           Logging in switches to that account. This guest list stays behind and can’t be reached
           again — delete it below first if you don’t want it kept.
         </Text>
+        {shareSection()}
         {dataSection(GUEST_DELETE_WORDING)}
       </ScrollView>
       </KeyboardAvoidingView>
@@ -304,7 +546,11 @@ export default function AccountScreen() {
   if (session) {
     return (
       <View style={styles.flex}>
-        <View style={styles.container}>
+        {/* A ScrollView rather than the plain View this branch used to be: the share block adds a
+            URL, a text field and three buttons, which is more than a short phone screen fits with
+            the MAL link and both exits below it. A fixed View would clip the delete button out of
+            reach rather than letting it scroll. */}
+        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
           <Text variant="titleMedium">Signed in as</Text>
           <Text variant="bodyLarge" style={styles.emailText}>
             {session.user.email}
@@ -329,11 +575,12 @@ export default function AccountScreen() {
               MyAnimeList is linked to this account.
             </Text>
           )}
+          {shareSection()}
           <Button mode="outlined" onPress={handleLogOut} loading={busy} disabled={busy} style={styles.button}>
             Log out
           </Button>
           {dataSection(ACCOUNT_DELETE_WORDING)}
-        </View>
+        </ScrollView>
       </View>
     );
   }
@@ -420,4 +667,15 @@ const useStyles = makeStyles((colors) => ({
   message: { color: colors.textMuted },
   button: { borderRadius: radii.pill },
   dialogNote: { marginTop: spacing.sm },
+  // The share block's own heading, so it reads as a section of this screen rather than another
+  // button in the same stack.
+  sectionTitle: { color: colors.textPrimary, marginTop: spacing.md },
+  // The link itself. On its own surface because it is the one piece of text on this screen meant
+  // to be selected and copied, and because a long URL needs to look like data rather than prose.
+  shareUrl: {
+    color: colors.textPrimary,
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    padding: spacing.sm,
+  },
 }));

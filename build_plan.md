@@ -38,18 +38,17 @@ never read off what the implementation returned.
 PRD is signed off and whose precondition is met. Plan 9 is finished as of 2026-10-15 (all three
 steps built), and everything else scheduled either needs you or needs a conversation first.
 
-**Checks waiting on you, and nothing else is blocking them.** Eight pieces of built work are
+**Checks waiting on you, and nothing else is blocking them.** Nine pieces of built work are
 waiting on a check only you can run: plan 5's two remaining items (the Edge Function error
-messages, the onboarding column width), plan 7's steps 1 and 4, and all three of plan 9's steps.
-Each one's **Check:** block says what to open and what failure looks like. Nothing is pushed until
-they are confirmed.
+messages, the onboarding column width), plan 7's steps 1 and 4, all three of plan 9's steps, and
+plan 4's step 1. Each one's **Check:** block says what to open and what failure looks like. Nothing
+is pushed until they are confirmed.
 
-**The live project is in step with the code.** Plan 9 step 3's
-`20261015000000_recommendation_lists.sql` was pushed 2026-10-15 and `npx supabase migration list`
-shows every migration applied with no drift, so nothing is waiting on a schema change. The one
-deploy still outstanding is `delete-account` (`--use-api`), to pick up `recommendation_lists` in
-its sweep — belt-and-braces, since the table's `on delete cascade` is what actually removes the
-row, so it blocks no check.
+**The live project is in step with the code, and nothing is owed on it.**
+`20261015010000_shared_libraries.sql` was pushed 2026-10-15 and `npx supabase migration list` shows
+every migration applied with no drift. `delete-account` was deployed the same day (`--use-api`,
+version 3), which cleared the one deploy that had been outstanding and picked up both
+`recommendation_lists` and `shared_libraries` in its sweep.
 
 **Everything scheduled, in order:**
 
@@ -64,8 +63,11 @@ row, so it blocks no check.
 3. **Plan 9** — make "For you" fast. **All three steps built**, nothing left to write; the three
    checks above are what remain, and its migration is applied. Changed nothing about what the list
    contains. Plan 3 would multiply its gains rather than replace them.
-4. **Plan 4** — the public share link. PRD signed off 2026-10-14, no open questions, its one
-   precondition met (plan 7's step 4 landed). **This is what to build next**; start at its step 1.
+4. **Plan 4** — the public share link. PRD signed off 2026-10-14, no open questions. **Step 1
+   landed 2026-10-15** (the table, the sharer's controls) with its check outstanding; **step 2 —
+   the public read function — is what to build next**, and its own steps live in
+   `prd/2-public-share.md`, not here. Nothing is public until step 3, so step 1 exposes nothing on
+   its own.
 
 **Unscheduled:** plans 2 and 3. Plan 3 needs a PRD before any of it is touched.
 
@@ -73,7 +75,8 @@ row, so it blocks no check.
 file. Three sets of `###` headings sit *above* plan 4 and none of them is what to build: plan 2's
 two headings are unscheduled, plan 7's steps 2, 3 and 5 each need a PRD or sign-off first, and
 plan 5's two remaining items are built and waiting on a check. Plan 4's own steps are not `###`
-headings in this file at all — they live in `prd/2-public-share.md`.
+headings in this file at all — they live in `prd/2-public-share.md`, and the next one to build is
+its step 2.
 
 **Done and checked:** plan 1 (recommendation variety), plan 6 (the sidebar greeting) and plan 8
 (MAL sign-in on a localhost dev server, which unblocked every check touching sign-in, linking,
@@ -217,6 +220,13 @@ sharing. Nothing in the plan special-cases an anonymous session.
 
 Four steps: the table plus the sharer's controls; the public read function; the viewer's page; then
 the privacy notice and the CLAUDE.md amendment. Each has its own user-run check in the PRD.
+
+**Step 1 landed 2026-10-15**, check outstanding. Three things it settled that the PRD did not say,
+now written into `prd/2-public-share.md` so the next step reads them there: the create press gets
+its own confirmation dialog (the PRD put the exposure copy on the revoke, where the guest warning
+could no longer be acted on); `EXPO_PUBLIC_SITE_URL` is set in the local `.env` and falls back to
+`window.location.origin` on web, so a dev server produces a working link; and `expo-clipboard` is
+a new dependency, so **a native build needs `npx expo run:android` rather than a Metro reload**.
 
 ---
 
